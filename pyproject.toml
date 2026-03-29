@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "helix-core"
+version = "1.0.0"
+description = "Unified agent runtime — orchestration, reasoning, tool registry, and UCF metrics"
+readme = "README.md"
+license = { text = "Proprietary" }
+requires-python = ">=3.10"
+authors = [{ name = "Helix Collective" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "helix-flow>=1.0.0",
+    "helix-circle>=1.0.0",
+]
+
+[project.optional-dependencies]
+llm = ["torch>=2.0"]
+all = ["helix-core[llm]"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["helix_core*"]
