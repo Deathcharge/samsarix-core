@@ -1,4 +1,4 @@
-# Helix Core Framework
+# Samsara Helix Core Framework
 
 **Foundational utilities for LLM integration, reasoning, and autonomous tool execution**
 
@@ -143,4 +143,4 @@ See [LICENSING.md](./LICENSING.md) for details.
 
 ---
 
-**Built with ❤️ as part of the Helix Collective**
+**Built with ❤️ as part of the Samsara Helix**

@@ -9,7 +9,7 @@ description = "Unified agent runtime — orchestration, reasoning, tool registry
 readme = "README.md"
 license = { text = "Proprietary" }
 requires-python = ">=3.10"
-authors = [{ name = "Helix Collective" }]
+authors = [{name = "Samsara Helix"}]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
