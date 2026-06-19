@@ -1,146 +1,93 @@
-# Samsara Helix Core Framework
+# helix-core
 
-**Foundational utilities for LLM integration, reasoning, and autonomous tool execution**
+Foundational utilities for LLM integration and reasoning. Provides LLM provider abstraction, tool execution framework, and error handling.
 
-The core framework that powers Helix's intelligent agent capabilities. Provides LLM bridges, advanced reasoning engines, tool registry systems, and UCF consciousness metrics integration.
+## 🎯 Overview
 
-## 🎯 Features
-
-### LLM Bridge
-- Multi-model support (OpenAI, Anthropic, local models)
-- Streaming and batch processing
-- Token counting and cost estimation
-- Error handling and retry logic
-
-### Reasoning Engines
-- **Algo of Thoughts** - Advanced chain-of-thought reasoning
-- **Self-Consistency** - Multiple reasoning paths for robust outputs
-- Extensible reasoning framework
-
-### Tool System
-- Decorator-based tool registration
-- Automatic schema generation
-- Type validation and error handling
-- Tool execution engine
-
-### UCF Integration
-- Consciousness metrics tracking
-- State management and persistence
-- Adapter for external systems
-- Real-time metrics collection
-
-### Core Components
-- Context management
-- Message bus for inter-component communication
-- Execution engine
-- Runtime management
-
-## 📦 Installation
-
-```bash
-pip install helix-core
-```
+This repository is part of the [Helix Collective](https://github.com/Deathcharge/helix-platform), a comprehensive ecosystem for building intelligent, multi-agent systems with consciousness frameworks and advanced LLM integration.
 
 ## 🚀 Quick Start
 
-```python
-from helix_core import HelixCore, Tool
+### Installation
 
-# Initialize core
-core = HelixCore()
+\`\`\`bash
+git clone https://github.com/Deathcharge/helix-core.git
+cd helix-core
+pip install -r requirements.txt
+\`\`\`
 
-# Define a tool
-@Tool
-def calculate(expression: str) -> str:
-    """Evaluate a mathematical expression"""
-    return str(eval(expression))
+### Basic Usage
 
-# Use with reasoning
-result = core.reason(
-    "What is 2 + 2?",
-    tools=[calculate]
-)
-```
-
-## 📊 Statistics
-
-- **Lines of Code**: 4,339
-- **Modules**: 8 core modules
-- **Python Files**: 22 files
-- **Dependencies**: Minimal, production-ready
-
-## 🏗️ Architecture
-
-```
-helix_core/
-├── core/                    # Core components
-│   ├── base.py             # Base classes
-│   ├── context.py          # Context management
-│   ├── execution.py        # Execution engine
-│   ├── message_bus.py      # Inter-component communication
-│   ├── orchestrator.py     # Orchestration logic
-│   └── runtime.py          # Runtime management
-├── reasoning/              # Reasoning engines
-│   ├── algo_of_thoughts.py # Advanced CoT reasoning
-│   └── self_consistency.py # Multiple reasoning paths
-├── tools/                  # Tool system
-│   ├── decorator.py        # Tool decorators
-│   ├── executor.py         # Tool execution
-│   └── registry.py         # Tool registry
-├── ucf/                    # UCF integration
-│   ├── adapter.py          # UCF adapter
-│   ├── metrics.py          # Metrics collection
-│   └── store.py            # State storage
-├── llm_bridge.py           # LLM integration
-├── adapter.py              # External adapters
-└── __init__.py             # Package initialization
-```
-
-## 🔧 Core Modules
-
-### LLM Bridge
-Unified interface for multiple LLM providers with streaming, batching, and cost tracking.
-
-### Reasoning Engines
-Advanced reasoning capabilities including chain-of-thought, self-consistency, and custom reasoning strategies.
-
-### Tool Registry
-Declarative tool definition and automatic schema generation for LLM integration.
-
-### UCF Adapter
-Integration with the Universal Consciousness Framework for metrics tracking and state management.
-
-### Context Manager
-Manages execution context, state, and information flow between components.
-
-### Message Bus
-Enables loose coupling between components through event-driven communication.
+See the [examples/](examples/) directory for working examples and integration patterns.
 
 ## 📚 Documentation
 
-- [LLM Bridge Guide](./docs/llm_bridge.md)
-- [Reasoning Engines](./docs/reasoning.md)
-- [Tool System](./docs/tools.md)
-- [UCF Integration](./docs/ucf.md)
-- [API Reference](./docs/api.md)
+- **[Architecture](docs/ARCHITECTURE.md)** - System design and components
+- **[API Reference](docs/API.md)** - Complete API documentation
+- **[Integration Guide](docs/INTEGRATION.md)** - How to integrate with other Helix repos
+- **[Deployment](docs/DEPLOYMENT.md)** - Production deployment guide
+- **[Contributing](CONTRIBUTING.md)** - How to contribute
+
+## 🔗 Related Repositories
+
+- **[helix-platform](https://github.com/Deathcharge/helix-platform)** - Central hub and integration guide
+- **[helix-unified](https://github.com/Deathcharge/helix-unified)** - Main unified codebase
+- **[helix-core](https://github.com/Deathcharge/helix-core)** - Core utilities and LLM integration
+
+See [HELIX_REPOSITORY_INDEX.md](https://github.com/Deathcharge/helix-platform/blob/main/HELIX_REPOSITORY_INDEX.md) for the complete ecosystem map.
+
+## 🧪 Testing
+
+Run tests with pytest:
+
+\`\`\`bash
+pytest tests/ -v --cov=src
+\`\`\`
+
+## 🔄 CI/CD
+
+This repository uses GitHub Actions for:
+- ✅ Automated testing (Python 3.9, 3.10, 3.11)
+- ✅ Code linting (flake8)
+- ✅ Type checking (mypy)
+- ✅ Security scanning (bandit, safety)
+- ✅ Coverage reporting (Codecov)
+
+See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
+
+## 📋 Requirements
+
+- Python 3.9+
+- Dependencies listed in requirements.txt
+- Development dependencies in requirements-dev.txt
 
 ## 🤝 Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Code style guide
+- Testing requirements
+- Pull request process
 
 ## 📄 License
 
-Dual licensed under:
-- **Apache License 2.0** - For open-source use (free)
-- **Proprietary Commercial License** - For businesses ($99-999/year)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-See [LICENSING.md](./LICENSING.md) for details.
+## 🆘 Support
 
-## 🙋 Support
+- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/Deathcharge/helix-core/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/Deathcharge/helix-core/discussions)
+- **Documentation**: See the [docs/](docs/) directory
+- **Ecosystem**: Visit [helix-platform](https://github.com/Deathcharge/helix-platform)
 
-- **Open Source**: Community support via GitHub issues
-- **Commercial**: Priority email support (licensing@helixcollective.io)
+## 🎓 Learn More
+
+- [Helix Collective Repository Index](https://github.com/Deathcharge/helix-platform/blob/main/HELIX_REPOSITORY_INDEX.md)
+- [Architecture Guide](https://github.com/Deathcharge/helix-platform/blob/main/docs/ARCHITECTURE.md)
+- [Integration Examples](https://github.com/Deathcharge/helix-platform/tree/main/examples)
 
 ---
 
-**Built with ❤️ as part of the Samsara Helix**
+**Status**: ✅ Production Ready  
+**Last Updated**: June 17, 2026  
+**Maintainer**: Helix Collective Contributors
