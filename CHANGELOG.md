@@ -1,0 +1,37 @@
+# Changelog
+
+## 2.0.0a1 - Unreleased
+
+This is a replacement alpha rather than a compatibility release.
+
+### Added
+
+- dependency-free typed sync/async tool declarations;
+- JSON Schema Draft 2020-12 contract export;
+- strict argument/default/output validation;
+- structured results with exception redaction by default;
+- bounded concurrency, a private sync thread pool, timeouts, cancellation, and
+  ordered batch invocation;
+- content-free runtime metrics;
+- real behavioral tests, strict typing/linting, package smoke tests, and accurate docs.
+
+### Changed
+
+- packaging now uses a real `src/samsarix_core` layout, retains a lightweight
+  `helix_core` compatibility import, and has no unavailable sibling dependencies;
+- the distribution and public product branding are now `samsarix-core` and
+  Samsarix Core, maintained by Samsarix LLC;
+- licensing is now the unmodified Mozilla Public License 2.0, with Samsarix LLC
+  copyright, attribution, and trademark notices;
+- the supported product is a local tool runtime, not the previously described
+  orchestration, reasoning, UCF, or provider platform.
+
+### Removed from the supported surface
+
+- the pre-2.0 prototype modules and their mock-only tests are archived under
+  `legacy/` and excluded from built distributions.
+
+### Release blockers
+
+- owner selection of a publication destination and credentials for a future
+  package-index release.
