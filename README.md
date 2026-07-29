@@ -1,93 +1,153 @@
-# helix-core
+# Samsarix Core
 
-Foundational utilities for LLM integration and reasoning. Provides LLM provider abstraction, tool execution framework, and error handling.
+[![CI](https://github.com/Deathcharge/samsarix-core/actions/workflows/ci.yml/badge.svg)](https://github.com/Deathcharge/samsarix-core/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](pyproject.toml)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](LICENSE)
 
-## 🎯 Overview
+Samsarix Core is a small, dependency-free Python runtime from
+[Samsarix LLC](https://samsarix.com) for declaring typed local tools and invoking
+them through one predictable async API.
 
-This repository is part of the [Helix Collective](https://github.com/Deathcharge/helix-platform), a comprehensive ecosystem for building intelligent, multi-agent systems with consciousness frameworks and advanced LLM integration.
+This `2.0.0a1` line is an honest alpha: the primary workflow is implemented and
+tested, but the API and distribution are not yet declared stable. It does not
+provide an LLM, agent loop, plugin marketplace, network service, authentication,
+persistence, or an untrusted-code sandbox.
 
-## 🚀 Quick Start
+## What it does
 
-### Installation
+- turns annotated sync or async functions into inspectable tool contracts;
+- emits JSON Schema Draft 2020-12 input and output schemas;
+- validates arguments and outputs without surprising scalar coercion;
+- returns structured success, validation, timeout, missing-tool, and failure results;
+- bounds concurrent work and thread-pool use;
+- supports ordered batch invocation and cooperative async cancellation;
+- keeps metrics content-free and redacts exception messages by default.
 
-\`\`\`bash
-git clone https://github.com/Deathcharge/helix-core.git
-cd helix-core
-pip install -r requirements.txt
-\`\`\`
+Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
+accounts, no API keys, no external service, and no hosted operating cost.
 
-### Basic Usage
+## Install from this repository
 
-See the [examples/](examples/) directory for working examples and integration patterns.
+Python 3.10 or newer is required.
 
-## 📚 Documentation
+```bash
+python -m pip install .
+```
 
-- **[Architecture](docs/ARCHITECTURE.md)** - System design and components
-- **[API Reference](docs/API.md)** - Complete API documentation
-- **[Integration Guide](docs/INTEGRATION.md)** - How to integrate with other Helix repos
-- **[Deployment](docs/DEPLOYMENT.md)** - Production deployment guide
-- **[Contributing](CONTRIBUTING.md)** - How to contribute
+For development:
 
-## 🔗 Related Repositories
+```bash
+python -m pip install -e ".[dev]"
+```
 
-- **[helix-platform](https://github.com/Deathcharge/helix-platform)** - Central hub and integration guide
-- **[helix-unified](https://github.com/Deathcharge/helix-unified)** - Main unified codebase
-- **[helix-core](https://github.com/Deathcharge/helix-core)** - Core utilities and LLM integration
+The project is not represented here as a published PyPI release. Release approval
+and package publication remain owner actions.
 
-See [HELIX_REPOSITORY_INDEX.md](https://github.com/Deathcharge/helix-platform/blob/main/HELIX_REPOSITORY_INDEX.md) for the complete ecosystem map.
+## One complete example
 
-## 🧪 Testing
+```python
+import asyncio
+from typing import Literal
 
-Run tests with pytest:
+from samsarix_core import ToolRuntime, samsarix_tool
 
-\`\`\`bash
-pytest tests/ -v --cov=src
-\`\`\`
 
-## 🔄 CI/CD
+@samsarix_tool(timeout=2, tags=("demo",))
+def convert_temperature(
+    value: float,
+    to: Literal["celsius", "fahrenheit"],
+) -> dict[str, float | str]:
+    """Convert a temperature to the requested unit."""
 
-This repository uses GitHub Actions for:
-- ✅ Automated testing (Python 3.9, 3.10, 3.11)
-- ✅ Code linting (flake8)
-- ✅ Type checking (mypy)
-- ✅ Security scanning (bandit, safety)
-- ✅ Coverage reporting (Codecov)
+    converted = value * 9 / 5 + 32 if to == "fahrenheit" else (value - 32) * 5 / 9
+    return {"unit": to, "value": round(converted, 2)}
 
-See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
 
-## 📋 Requirements
+async def main() -> None:
+    async with ToolRuntime(max_concurrency=4) as runtime:
+        runtime.register(convert_temperature)
 
-- Python 3.9+
-- Dependencies listed in requirements.txt
-- Development dependencies in requirements-dev.txt
+        print(runtime.registry.schema_catalog())
+        result = await runtime.invoke(
+            "convert_temperature",
+            {"value": 20, "to": "fahrenheit"},
+        )
+        print(result.to_dict())
 
-## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- Development setup
-- Code style guide
-- Testing requirements
-- Pull request process
+asyncio.run(main())
+```
 
-## 📄 License
+The distribution name is `samsarix-core`. The former `helix_core` import,
+`helix_tool` decorator, and `HelixError` base class remain compatibility aliases
+for existing prototypes; new code should use the Samsarix names above.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+The decorator rejects ambiguous definitions early. Every parameter and return
+value needs a supported type annotation, and every tool needs a description or
+docstring. Supported types are `str`, `bool`, `int`, finite `float`, `None`,
+`Literal`, unions/optionals, typed `list`, typed `tuple`, and `dict[str, T]`.
+`Annotated[T, "description"]` adds a property description to the schema.
 
-## 🆘 Support
+## Runtime contract
 
-- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/Deathcharge/helix-core/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/Deathcharge/helix-core/discussions)
-- **Documentation**: See the [docs/](docs/) directory
-- **Ecosystem**: Visit [helix-platform](https://github.com/Deathcharge/helix-platform)
+`ToolRuntime.invoke()` never turns an ordinary tool failure into an uncaught
+exception. It returns a `ToolResult` with one of these states:
 
-## 🎓 Learn More
+- `success`
+- `not_found`
+- `invalid_arguments`
+- `timed_out`
+- `failed`
+- `runtime_closed`
 
-- [Helix Collective Repository Index](https://github.com/Deathcharge/helix-platform/blob/main/HELIX_REPOSITORY_INDEX.md)
-- [Architecture Guide](https://github.com/Deathcharge/helix-platform/blob/main/docs/ARCHITECTURE.md)
-- [Integration Examples](https://github.com/Deathcharge/helix-platform/tree/main/examples)
+Caller cancellation is different: `asyncio.CancelledError` propagates so normal
+structured-concurrency semantics keep working.
 
----
+`expose_exceptions=False` is the default. Failure results include the exception
+class but not its message or traceback. Enable exception messages only in a
+trusted local debugging context.
 
-**Status**: ✅ Production Ready  
-**Last Updated**: June 17, 2026  
-**Maintainer**: Helix Collective Contributors
+## Important boundaries
+
+- Registered functions are trusted application code and run in the current process.
+  Registration is not a security sandbox.
+- Async timeouts cancel the running coroutine when it cooperates with cancellation.
+- A timed-out sync function may keep running in its worker thread. The pool stays
+  bounded, but the function itself must use its own I/O deadlines and terminate.
+- Tool outputs are returned to the caller. Do not return secrets to an untrusted
+  model, client, or log sink.
+- Use one runtime within one event-loop lifecycle; close it with `async with` or
+  `await runtime.aclose()`.
+
+See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
+[architecture](docs/ARCHITECTURE.md), [best practices](docs/BEST_PRACTICES.md), and the
+[productization record](docs/PRODUCTIZATION.md).
+
+## Quality status
+
+The release gate runs Black, Ruff, strict mypy, the test suite with at least 90%
+branch-aware coverage, a source/wheel build, and an isolated wheel import smoke
+test across supported Python versions where applicable.
+
+## Support and contact
+
+- Company website: [samsarix.com](https://samsarix.com)
+- Product and partnership questions: `contact@samsarix.com`
+- Technical support and conduct reports: `support@samsarix.com`
+- Bugs and feature requests: [GitHub Issues](https://github.com/Deathcharge/samsarix-core/issues)
+
+This project is maintained by Samsarix LLC. Support is currently best-effort and
+does not include a service-level agreement.
+
+## License and trademarks
+
+Samsarix Core is licensed under the [Mozilla Public License 2.0](LICENSE). Changes
+to covered source files that are distributed must remain available under the MPL,
+while the files may be combined with differently licensed larger works.
+
+Copyright 2026 Samsarix LLC. See [NOTICE](NOTICE) for ownership and attribution
+information, [CITATION.cff](CITATION.cff) for citation metadata, and
+[TRADEMARKS.md](TRADEMARKS.md) for use of Samsarix names and marks.
+
+Security reports should follow [SECURITY.md](SECURITY.md). Contributions should
+follow [CONTRIBUTING.md](CONTRIBUTING.md).

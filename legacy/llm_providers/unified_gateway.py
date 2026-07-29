@@ -838,11 +838,18 @@ class UnifiedLLMService:
         return self._redis if self._redis else None
 
     @staticmethod
-    def _cache_key(messages: list[dict[str, str]], model: str, temperature: float, max_tokens: int) -> str:
+    def _cache_key(
+        messages: list[dict[str, str]],
+        provider: str,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
         """Build a deterministic cache key from request params."""
         payload = _json.dumps(
             {
                 "m": messages,
+                "provider": provider,
                 "model": model,
                 "t": temperature,
                 "mt": max_tokens,
@@ -920,17 +927,6 @@ class UnifiedLLMService:
         Returns UnifiedLLMResponse with content, model, provider, usage, etc.
         On failure, returns response with error field set and empty content.
         """
-        # ── Response cache check ──────────────────────────────────────
-        # Only cache when temperature ≤ 0.2 (deterministic queries).
-        # High temperature implies the caller wants variety.
-        use_cache = temperature <= 0.2 and self._cache_ttl > 0
-        cache_key = None
-        if use_cache:
-            cache_key = self._cache_key(messages, model or "auto", temperature, max_tokens)
-            cached = await self._cache_get(cache_key)
-            if cached is not None:
-                return cached
-
         provider_obj, resolved_model = await self._resolve_provider(provider, model, user_id)
 
         if provider_obj is None:
@@ -943,6 +939,24 @@ class UnifiedLLMService:
             )
 
         provider_name = self._provider_name(provider_obj)
+
+        # Historical code used a shared key before resolving the provider, which
+        # could mix BYOT/user policy with shared platform responses. Never cache a
+        # user-scoped request, and bind shared cache entries to the resolved
+        # provider and model.
+        use_cache = user_id is None and temperature <= 0.2 and self._cache_ttl > 0
+        cache_key = None
+        if use_cache:
+            cache_key = self._cache_key(
+                messages,
+                provider_name,
+                resolved_model,
+                temperature,
+                max_tokens,
+            )
+            cached = await self._cache_get(cache_key)
+            if cached is not None:
+                return cached
 
         try:
             flow_response: FlowLLMResponse = await self._call_provider(

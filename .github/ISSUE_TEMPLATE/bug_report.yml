@@ -1,0 +1,53 @@
+name: Bug report
+description: Report reproducible behavior that differs from the documented contract.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Samsarix Core. Do not include secrets or vulnerability details here; use private security reporting instead.
+  - type: input
+    id: version
+    attributes:
+      label: Samsarix Core version
+      placeholder: 2.0.0a1 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Python and operating system
+      placeholder: Python 3.12.4 on Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the actual and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest self-contained example that reproduces the problem.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Include safe logs or tracebacks if they help explain the problem.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed credentials, private data, and other secrets from this report.
+          required: true
+        - label: I checked the documentation and existing issues for the same behavior.
+          required: true
