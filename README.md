@@ -95,6 +95,19 @@ decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
 read/write/destructive annotations, scalar-output wrapping, stdio requirements,
 and security boundaries.
 
+## Proven external consumer
+
+[Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
+pins Core commit `6f54bcdf428359f1eee654944b6abc8788575eab` and uses only the
+public API to expose a privacy-first, resumable redaction workflow over MCP. Its
+consumer-owned tests exercise initialization, discovery, stdio invocation,
+structured results, privacy boundaries, path traversal and linked-file refusal,
+artifact conflict handling, package installation, and CLI entry points.
+
+This is compatibility evidence, not a claim of third-party production adoption.
+See the [adoption record](docs/ADOPTION.md) for exact commits, commands, artifact
+digests, limitations, and rollback.
+
 The distribution name is `samsarix-core`. The former `helix_core` import,
 `helix_tool` decorator, and `HelixError` base class remain compatibility aliases
 for existing prototypes; new code should use the Samsarix names above.
@@ -147,7 +160,7 @@ them to the host's actual workload.
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
 [architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),
 [best practices](docs/BEST_PRACTICES.md), [benchmark guide](docs/BENCHMARKS.md),
-and the [productization
+the [adoption record](docs/ADOPTION.md), and the [productization
 record](docs/PRODUCTIZATION.md).
 
 ## Quality status
