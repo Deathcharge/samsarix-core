@@ -28,6 +28,11 @@ class ToolConfig:
     timeout: float | None
     version: str
     tags: tuple[str, ...]
+    title: str | None
+    read_only: bool
+    destructive: bool
+    idempotent: bool
+    open_world: bool
 
 
 @overload
@@ -44,6 +49,11 @@ def samsarix_tool(
     timeout: float | None = None,
     version: str = "1",
     tags: tuple[str, ...] = (),
+    title: str | None = None,
+    read_only: bool = False,
+    destructive: bool | None = None,
+    idempotent: bool | None = None,
+    open_world: bool = True,
 ) -> Callable[[F], F]: ...
 
 
@@ -56,6 +66,11 @@ def samsarix_tool(
     timeout: float | None = None,
     version: str = "1",
     tags: tuple[str, ...] = (),
+    title: str | None = None,
+    read_only: bool = False,
+    destructive: bool | None = None,
+    idempotent: bool | None = None,
+    open_world: bool = True,
 ) -> F | Callable[[F], F]:
     """Declare a typed sync or async function as a Samsarix tool."""
 
@@ -81,6 +96,27 @@ def samsarix_tool(
             raise ToolDefinitionError("Tool versions must be non-empty strings")
         if any(not isinstance(tag, str) or not tag.strip() for tag in tags):
             raise ToolDefinitionError("Tool tags must be non-empty strings")
+        if title is not None and (not isinstance(title, str) or not title.strip()):
+            raise ToolDefinitionError("Tool titles must be non-empty strings")
+        boolean_options = {
+            "read_only": read_only,
+            "open_world": open_world,
+        }
+        if destructive is not None:
+            boolean_options["destructive"] = destructive
+        if idempotent is not None:
+            boolean_options["idempotent"] = idempotent
+        invalid_option = next(
+            (option for option, value in boolean_options.items() if not isinstance(value, bool)),
+            None,
+        )
+        if invalid_option is not None:
+            raise ToolDefinitionError(f"Tool option '{invalid_option}' must be a boolean")
+
+        destructive_hint = not read_only if destructive is None else destructive
+        idempotent_hint = read_only if idempotent is None else idempotent
+        if read_only and destructive_hint:
+            raise ToolDefinitionError("Read-only tools cannot be marked destructive")
 
         compile_tool_contract(candidate)
         config = ToolConfig(
@@ -89,6 +125,11 @@ def samsarix_tool(
             timeout=float(timeout) if timeout is not None else None,
             version=version.strip(),
             tags=tuple(dict.fromkeys(tag.strip() for tag in tags)),
+            title=title.strip() if title is not None else None,
+            read_only=read_only,
+            destructive=destructive_hint,
+            idempotent=idempotent_hint,
+            open_world=open_world,
         )
         setattr(candidate, _TOOL_CONFIG_ATTRIBUTE, config)
         return candidate

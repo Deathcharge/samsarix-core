@@ -13,6 +13,8 @@ This is a replacement alpha rather than a compatibility release.
 - bounded concurrency, a private sync thread pool, timeouts, cancellation, and
   ordered batch invocation;
 - content-free runtime metrics;
+- dependency-free MCP `2025-11-25`/`2025-06-18` lifecycle, tool discovery,
+  invocation, structured results, behavioral annotations, and bounded stdio;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs.
 
 ### Changed

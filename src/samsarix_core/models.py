@@ -63,6 +63,11 @@ class ToolSpec:
     version: str
     tags: tuple[str, ...]
     is_async: bool
+    title: str | None = None
+    read_only: bool = False
+    destructive: bool = True
+    idempotent: bool = False
+    open_world: bool = True
 
     def to_dict(self) -> dict[str, JSONValue]:
         """Return a detached JSON-compatible representation."""
@@ -76,6 +81,11 @@ class ToolSpec:
             "version": self.version,
             "tags": list(self.tags),
             "is_async": self.is_async,
+            "title": self.title,
+            "read_only": self.read_only,
+            "destructive": self.destructive,
+            "idempotent": self.idempotent,
+            "open_world": self.open_world,
         }
 
 

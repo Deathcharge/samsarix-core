@@ -22,6 +22,7 @@ persistence, or an untrusted-code sandbox.
 - bounds concurrent work and thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - keeps metrics content-free and redacts exception messages by default.
+- exposes the same contracts through a dependency-free MCP stdio bridge.
 
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
 accounts, no API keys, no external service, and no hosted operating cost.
@@ -78,6 +79,21 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Connect an MCP client
+
+Samsarix Core implements the stable MCP tool lifecycle, discovery, invocation,
+structured output, and behavioral annotations without adding an SDK dependency.
+A complete inventory server is included:
+
+```bash
+python examples/mcp_inventory_server.py
+```
+
+Configure that command in a trusted local MCP client to discover and call the
+decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
+read/write/destructive annotations, scalar-output wrapping, stdio requirements,
+and security boundaries.
+
 The distribution name is `samsarix-core`. The former `helix_core` import,
 `helix_tool` decorator, and `HelixError` base class remain compatibility aliases
 for existing prototypes; new code should use the Samsarix names above.
@@ -120,8 +136,9 @@ trusted local debugging context.
   `await runtime.aclose()`.
 
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
-[architecture](docs/ARCHITECTURE.md), [best practices](docs/BEST_PRACTICES.md), and the
-[productization record](docs/PRODUCTIZATION.md).
+[architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),
+[best practices](docs/BEST_PRACTICES.md), and the [productization
+record](docs/PRODUCTIZATION.md).
 
 ## Quality status
 

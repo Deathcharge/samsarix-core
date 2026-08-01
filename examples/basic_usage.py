@@ -12,7 +12,13 @@ from typing import Literal
 from samsarix_core import ToolCall, ToolRuntime, samsarix_tool
 
 
-@samsarix_tool(timeout=2, tags=("example", "math"))
+@samsarix_tool(
+    timeout=2,
+    tags=("example", "math"),
+    title="Calculate",
+    read_only=True,
+    open_world=False,
+)
 def calculate(left: float, operation: Literal["add", "multiply"], right: float) -> float:
     """Apply one safe arithmetic operation to two numbers."""
 
