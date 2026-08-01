@@ -12,6 +12,11 @@ from `samsarix_core.__all__` are internal.
     timeout: float | None = None,
     version: str = "1",
     tags: tuple[str, ...] = (),
+    title: str | None = None,
+    read_only: bool = False,
+    destructive: bool | None = None,
+    idempotent: bool | None = None,
+    open_world: bool = True,
 )
 ```
 
@@ -19,6 +24,9 @@ Works as `@samsarix_tool` or `@samsarix_tool(...)` on standalone sync and async 
 Names use `[A-Za-z][A-Za-z0-9_-]{0,63}`. Descriptions fall back to the first
 docstring line. Unsupported types, unresolved annotations, generators, positional-
 only parameters, `*args`, and `**kwargs` raise `ToolDefinitionError`.
+The final five options produce MCP display and behavioral annotations. Read-only
+tools infer `destructive=False` and `idempotent=True`; other tools retain MCP's
+conservative destructive/non-idempotent defaults unless explicitly annotated.
 
 ## `ToolRegistry`
 
@@ -54,12 +62,50 @@ Timeout precedence is invocation override, decorator timeout, then runtime defau
 The timeout includes time waiting for a concurrency slot. Batch results preserve
 order. `aclose()` is idempotent.
 
+## `MCPServer`
+
+```python
+MCPServer(
+    runtime: ToolRuntime,
+    *,
+    name: str = "samsarix-core",
+    title: str = "Samsarix Core",
+    version: str = __version__,
+    instructions: str | None = None,
+)
+```
+
+- `await handle(message) -> dict | None`
+
+`handle()` accepts one parsed MCP JSON-RPC message. It supports lifecycle
+initialization, `ping`, `tools/list`, `tools/call`, and initialized notifications.
+It negotiates MCP `2025-11-25` and `2025-06-18`. Application-level tool failures
+are successful JSON-RPC responses with `isError: true`; malformed protocol calls
+use standard JSON-RPC error objects.
+
+## `serve_stdio`
+
+```python
+await serve_stdio(
+    server: MCPServer,
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+    max_message_bytes: int = 1_048_576,
+    close_runtime: bool = True,
+)
+```
+
+Runs the server using newline-delimited MCP messages. The limit must be at least
+256 bytes and caps individual input and output messages. The default streams are
+binary stdin and UTF-8 binary stdout. Only protocol messages are written to stdout.
+
 ## Data models
 
 All public models are frozen, slotted dataclasses.
 
 - `ToolSpec`: name, description, input/output schemas, timeout, version, tags,
-  and whether the callable is async.
+  async state, optional title, and read-only/destructive/idempotent/open-world hints.
 - `ToolCall`: name, arguments, and optional timeout override.
 - `ToolResult`: invocation ID, tool name, status, UTC start time, duration, output,
   and optional structured error. `success` is a convenience property.

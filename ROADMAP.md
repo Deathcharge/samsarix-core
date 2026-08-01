@@ -14,7 +14,11 @@ Current disposition: Merge the productization branch after exact-head verificati
 - Keep Samsarix LLC branding, package identity, license metadata, and compatibility aliases internally consistent.
 - Preserve the pre-productization default under a rollback ref before merging; do not delete legacy history.
 - The productization work is now committed, pushed, clean, and green in hosted checks.
-- Next: cap concurrency, input/output, batch, and registry resources; define close and timed-out-sync quiescence; prove one flagship adapter and retire its duplicate path.
+- MCP flagship adapter: implemented lifecycle negotiation, JSON Schema tool discovery,
+  structured invocation results, behavioral safety hints, and a bounded stdio
+  transport with an inventory example. Exact-head CI evidence remains required.
+- Next: cap runtime input/output, batch, and registry resources; define close and
+  timed-out-sync quiescence; then prove adoption from one external consumer.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.

@@ -9,6 +9,7 @@ New code should import from :mod:`samsarix_core`.
 from samsarix_core import (
     DuplicateToolError,
     HelixError,
+    MCPServer,
     RuntimeMetrics,
     SamsarixError,
     ToolCall,
@@ -23,11 +24,13 @@ from samsarix_core import (
     __version__,
     helix_tool,
     samsarix_tool,
+    serve_stdio,
 )
 
 __all__ = [
     "DuplicateToolError",
     "HelixError",
+    "MCPServer",
     "RuntimeMetrics",
     "SamsarixError",
     "ToolCall",
@@ -42,4 +45,5 @@ __all__ = [
     "__version__",
     "helix_tool",
     "samsarix_tool",
+    "serve_stdio",
 ]

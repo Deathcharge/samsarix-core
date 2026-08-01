@@ -49,6 +49,11 @@ class ToolRegistry:
             version=config.version,
             tags=config.tags,
             is_async=inspect.iscoroutinefunction(function),
+            title=config.title,
+            read_only=config.read_only,
+            destructive=config.destructive,
+            idempotent=config.idempotent,
+            open_world=config.open_world,
         )
         registered = RegisteredTool(function=function, signature=signature, hints=hints, spec=spec)
         with self._lock:
