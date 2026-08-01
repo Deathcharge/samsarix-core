@@ -110,7 +110,11 @@ hosting HTTP layer.
 - Read-only and idempotent annotations do not make a function safe by themselves.
 - `serve_stdio()` caps individual requests and responses at 1 MiB by default.
 - Runtime timeouts and concurrency controls continue to apply to MCP calls.
-- A timed-out synchronous function may continue in its bounded worker thread.
+- A timed-out synchronous function retains its bounded worker slot until it stops.
+- `serve_stdio()` closes without waiting indefinitely for surviving sync work. A
+  host that requires shutdown quiescence should set `close_runtime=False`, stop
+  MCP admission, and call
+  `runtime.aclose(wait_for_sync=True, timeout=<deadline>)` itself.
 - Tool arguments and results are not logged by the bridge.
 - Keep user confirmation in the MCP host for write, destructive, and open-world
   calls.

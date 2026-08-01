@@ -53,9 +53,12 @@ depth, and node limits bound validation work. These per-request controls do not
 replace host-level rate limits or aggregate admission control.
 
 Async cancellation is cooperative. Python cannot safely kill a running thread, so
-a timed-out sync function may outlive its result. The executor still bounds worker
-count, but blocking sync tools must set their own socket/database/subprocess
-deadlines. `aclose()` does not wait forever for timed-out threads.
+a timed-out sync function may outlive its result. Its semaphore slot and actual
+in-flight metric remain held until the thread finishes, preventing repeated
+timeouts from filling an unbounded executor queue. `pending_sync_calls` exposes
+this state. `wait_for_sync()` and the opt-in waiting form of `aclose()` provide
+bounded quiescence checks; the default close remains non-blocking. Blocking sync
+tools must still set their own socket/database/subprocess deadlines.
 
 ## Deliberate exclusions
 

@@ -9,7 +9,7 @@ import asyncio
 import inspect
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
 from datetime import datetime, timezone
 from functools import partial
@@ -75,6 +75,8 @@ class ToolRuntime:
             max_workers=max_concurrency, thread_name_prefix="samsarix-tool"
         )
         self._active: set[asyncio.Task[JSONValue]] = set()
+        self._sync_futures: set[Future[Any]] = set()
+        self._sync_futures_lock = Lock()
         self._closed = False
         self._metrics_lock = Lock()
         self._counters = {
@@ -262,18 +264,58 @@ class ToolRuntime:
         with self._metrics_lock:
             return RuntimeMetrics(**self._counters)
 
-    async def aclose(self) -> None:
-        """Reject new calls, cancel active async waits, and release executor resources."""
+    @property
+    def pending_sync_calls(self) -> int:
+        """Return the number of submitted sync calls that have not actually stopped."""
 
-        if self._closed:
-            return
-        self._closed = True
-        active = tuple(self._active)
-        for task in active:
-            task.cancel()
-        if active:
-            await asyncio.gather(*active, return_exceptions=True)
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        with self._sync_futures_lock:
+            return len(self._sync_futures)
+
+    async def wait_for_sync(self, *, timeout: float | None = None) -> bool:
+        """Wait for currently submitted sync calls and report whether they stopped."""
+
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout < 0
+        ):
+            raise ValueError("timeout must be a non-negative number or None")
+        with self._sync_futures_lock:
+            pending = tuple(self._sync_futures)
+        if not pending:
+            return True
+
+        waits = [self._wrap_sync_future(future) for future in pending]
+        done, _ = await asyncio.wait(waits, timeout=timeout)
+        return len(done) == len(waits)
+
+    async def aclose(
+        self,
+        *,
+        wait_for_sync: bool = False,
+        timeout: float | None = None,
+    ) -> bool:
+        """Close the runtime and report whether its sync work is quiescent."""
+
+        if not isinstance(wait_for_sync, bool):
+            raise TypeError("wait_for_sync must be a boolean")
+        if timeout is not None and not wait_for_sync:
+            raise ValueError("timeout requires wait_for_sync=True")
+        if (
+            wait_for_sync
+            and timeout is not None
+            and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout < 0)
+        ):
+            raise ValueError("timeout must be a non-negative number or None")
+        if not self._closed:
+            self._closed = True
+            active = tuple(self._active)
+            for task in active:
+                task.cancel()
+            if active:
+                await asyncio.gather(*active, return_exceptions=True)
+            self._executor.shutdown(wait=False, cancel_futures=True)
+        if wait_for_sync:
+            return await self.wait_for_sync(timeout=timeout)
+        return self.pending_sync_calls == 0
 
     async def __aenter__(self) -> ToolRuntime:
         return self
@@ -282,51 +324,93 @@ class ToolRuntime:
         await self.aclose()
 
     async def _execute(self, registered: RegisteredTool, arguments: dict[str, Any]) -> JSONValue:
-        async with self._semaphore:
-            self._begin_execution()
-            try:
-                if registered.spec.is_async:
+        if registered.spec.is_async:
+            async with self._semaphore:
+                self._begin_execution()
+                try:
                     awaitable = cast(Awaitable[Any], registered.function(**arguments))
                     raw_output = await awaitable
-                else:
-                    loop = asyncio.get_running_loop()
-                    raw_output = await loop.run_in_executor(
-                        self._executor, partial(registered.function, **arguments)
-                    )
-                if inspect.isawaitable(raw_output):
-                    raise ToolOutputError("A synchronous tool returned an awaitable")
-                try:
-                    enforce_value_limits(
-                        raw_output,
-                        max_bytes=self.max_output_bytes,
-                        max_depth=self.max_value_depth,
-                        max_nodes=self.max_value_nodes,
-                    )
-                    validated_output = validate_value(
-                        raw_output, registered.hints["return"], path="$"
-                    )
-                    normalized_output = to_json_value(validated_output)
-                    enforce_value_limits(
-                        normalized_output,
-                        max_bytes=self.max_output_bytes,
-                        max_depth=self.max_value_depth,
-                        max_nodes=self.max_value_nodes,
-                    )
-                    return normalized_output
-                except ToolArgumentError as exc:
-                    limit_codes = {"value_too_deep", "value_too_complex", "value_too_large"}
-                    exceeded_limit = any(issue.code in limit_codes for issue in exc.issues)
-                    raise ToolOutputError(
-                        "Tool output is not JSON-compatible",
-                        code="output_limit_exceeded" if exceeded_limit else "invalid_output",
-                        public_message=(
-                            "Tool output exceeded a configured resource limit"
-                            if exceeded_limit
-                            else "Tool returned a value that is not JSON-compatible"
-                        ),
-                    ) from exc
-            finally:
-                self._end_execution()
+                    return self._normalize_output(registered, raw_output)
+                finally:
+                    self._end_execution()
+
+        await self._semaphore.acquire()
+        loop = asyncio.get_running_loop()
+        try:
+            sync_future = self._executor.submit(self._run_sync, registered.function, arguments)
+        except BaseException:
+            self._semaphore.release()
+            raise
+        with self._sync_futures_lock:
+            self._sync_futures.add(sync_future)
+        sync_future.add_done_callback(partial(self._sync_finished, loop=loop))
+        raw_output = await self._wrap_sync_future(sync_future)
+        return self._normalize_output(registered, raw_output)
+
+    def _run_sync(self, function: Callable[..., Any], arguments: dict[str, Any]) -> Any:
+        """Run one sync callable while tracking its real thread lifetime."""
+
+        self._begin_execution()
+        try:
+            return function(**arguments)
+        finally:
+            self._end_execution()
+
+    def _sync_finished(self, future: Future[Any], *, loop: asyncio.AbstractEventLoop) -> None:
+        """Release one sync slot only after its underlying future is truly done."""
+
+        with self._sync_futures_lock:
+            self._sync_futures.discard(future)
+        with suppress(RuntimeError):
+            loop.call_soon_threadsafe(self._semaphore.release)
+
+    @staticmethod
+    def _wrap_sync_future(future: Future[Any]) -> asyncio.Future[Any]:
+        """Wrap a thread future and consume late failures after caller timeout."""
+
+        wrapped = asyncio.wrap_future(future)
+
+        def consume_failure(completed: asyncio.Future[Any]) -> None:
+            if not completed.cancelled():
+                with suppress(BaseException):
+                    completed.exception()
+
+        wrapped.add_done_callback(consume_failure)
+        return wrapped
+
+    def _normalize_output(self, registered: RegisteredTool, raw_output: Any) -> JSONValue:
+        """Validate and normalize one completed tool output."""
+
+        if inspect.isawaitable(raw_output):
+            raise ToolOutputError("A synchronous tool returned an awaitable")
+        try:
+            enforce_value_limits(
+                raw_output,
+                max_bytes=self.max_output_bytes,
+                max_depth=self.max_value_depth,
+                max_nodes=self.max_value_nodes,
+            )
+            validated_output = validate_value(raw_output, registered.hints["return"], path="$")
+            normalized_output = to_json_value(validated_output)
+            enforce_value_limits(
+                normalized_output,
+                max_bytes=self.max_output_bytes,
+                max_depth=self.max_value_depth,
+                max_nodes=self.max_value_nodes,
+            )
+            return normalized_output
+        except ToolArgumentError as exc:
+            limit_codes = {"value_too_deep", "value_too_complex", "value_too_large"}
+            exceeded_limit = any(issue.code in limit_codes for issue in exc.issues)
+            raise ToolOutputError(
+                "Tool output is not JSON-compatible",
+                code="output_limit_exceeded" if exceeded_limit else "invalid_output",
+                public_message=(
+                    "Tool output exceeded a configured resource limit"
+                    if exceeded_limit
+                    else "Tool returned a value that is not JSON-compatible"
+                ),
+            ) from exc
 
     def _begin_execution(self) -> None:
         with self._metrics_lock:

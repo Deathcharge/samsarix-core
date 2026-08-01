@@ -135,11 +135,14 @@ them to the host's actual workload.
   Registration is not a security sandbox.
 - Async timeouts cancel the running coroutine when it cooperates with cancellation.
 - A timed-out sync function may keep running in its worker thread. The pool stays
-  bounded, but the function itself must use its own I/O deadlines and terminate.
+  bounded and its concurrency slot stays occupied until it actually stops. Inspect
+  `pending_sync_calls`, or use `wait_for_sync()` / `aclose(wait_for_sync=True)` when
+  shutdown must prove quiescence. The function still needs its own I/O deadlines.
 - Tool outputs are returned to the caller. Do not return secrets to an untrusted
   model, client, or log sink.
 - Use one runtime within one event-loop lifecycle; close it with `async with` or
-  `await runtime.aclose()`.
+  `await runtime.aclose()`. The default close is non-blocking for surviving sync
+  threads and reports whether they are already quiescent.
 
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
 [architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),

@@ -66,7 +66,9 @@ ToolRuntime(
 - `await invoke(name, arguments=None, *, timeout=None) -> ToolResult`
 - `await invoke_many(calls) -> list[ToolResult]`
 - `metrics() -> RuntimeMetrics`
-- `await aclose() -> None`
+- `pending_sync_calls -> int`
+- `await wait_for_sync(*, timeout=None) -> bool`
+- `await aclose(*, wait_for_sync=False, timeout=None) -> bool`
 
 Timeout precedence is invocation override, decorator timeout, then runtime default.
 The timeout includes time waiting for a concurrency slot. Batch results preserve
@@ -79,6 +81,20 @@ while object keys are covered by the byte limit but do not count as nodes. Cycli
 oversized, over-depth, and over-node arguments return `invalid_arguments` without
 executing the tool. Output resource violations return `failed` with the safe error
 code `output_limit_exceeded`. All integer limits must be positive and reject booleans.
+
+A timed-out or caller-cancelled sync callable cannot be killed safely. It remains
+in `pending_sync_calls`, keeps its semaphore slot, and remains included in
+`metrics().in_flight` until the underlying thread actually stops. This prevents
+timeouts from feeding an unbounded executor queue. Late exceptions are consumed
+without being exposed through the event loop.
+
+`wait_for_sync()` snapshots currently submitted sync calls and returns `False` if
+its optional non-negative timeout expires. For a race-free shutdown sequence, stop
+external admission or close the runtime first. `aclose()` rejects new calls,
+cancels active async waits, cancels sync work that has not started, and returns
+whether submitted sync work is quiescent. Its default does not wait; pass
+`wait_for_sync=True` with a finite timeout when shutdown needs bounded quiescence.
+Calling it again is safe. The async context manager uses the non-waiting default.
 
 ## `MCPServer`
 

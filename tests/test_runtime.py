@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from threading import Event
 from typing import Literal
 
 import pytest
@@ -178,6 +179,153 @@ async def test_timeout_covers_async_and_sync_execution() -> None:
     assert async_result.status is ToolStatus.TIMED_OUT
     assert async_result.error is not None and async_result.error.retryable is False
     assert sync_result.status is ToolStatus.TIMED_OUT
+
+
+@pytest.mark.asyncio
+async def test_timed_out_sync_work_remains_observable_and_holds_its_slot() -> None:
+    started = Event()
+    release = Event()
+
+    @helix_tool
+    def gated() -> str:
+        """Wait for an external release signal."""
+
+        started.set()
+        release.wait(2)
+        return "done"
+
+    runtime = ToolRuntime(max_concurrency=1)
+    runtime.register(gated)
+    try:
+        first = await runtime.invoke("gated", timeout=0.02)
+        assert started.is_set()
+        assert first.status is ToolStatus.TIMED_OUT
+        assert runtime.pending_sync_calls == 1
+        assert runtime.metrics().in_flight == 1
+
+        second = await runtime.invoke("gated", timeout=0.02)
+        assert second.status is ToolStatus.TIMED_OUT
+        assert runtime.pending_sync_calls == 1
+        assert await runtime.wait_for_sync(timeout=0) is False
+
+        release.set()
+        assert await runtime.wait_for_sync(timeout=1) is True
+        assert runtime.pending_sync_calls == 0
+        assert runtime.metrics().in_flight == 0
+    finally:
+        release.set()
+        await runtime.aclose(wait_for_sync=True, timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_close_can_report_or_wait_for_sync_quiescence() -> None:
+    release = Event()
+
+    @helix_tool
+    def gated() -> str:
+        """Wait for an external release signal."""
+
+        release.wait(2)
+        return "done"
+
+    runtime = ToolRuntime()
+    runtime.register(gated)
+    try:
+        result = await runtime.invoke("gated", timeout=0.02)
+        assert result.status is ToolStatus.TIMED_OUT
+        assert await runtime.aclose() is False
+        assert await runtime.aclose(wait_for_sync=True, timeout=0.01) is False
+
+        rejected = await runtime.invoke("gated")
+        assert rejected.status is ToolStatus.RUNTIME_CLOSED
+        release.set()
+        assert await runtime.aclose(wait_for_sync=True, timeout=1) is True
+    finally:
+        release.set()
+        await runtime.aclose(wait_for_sync=True, timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_an_active_wait_but_can_still_track_its_sync_thread() -> None:
+    started = Event()
+    release = Event()
+
+    @helix_tool
+    def gated() -> str:
+        """Wait for an external release signal."""
+
+        started.set()
+        release.wait(2)
+        return "done"
+
+    runtime = ToolRuntime()
+    runtime.register(gated)
+    invocation = asyncio.create_task(runtime.invoke("gated", timeout=1))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        assert await runtime.aclose(wait_for_sync=True, timeout=0.01) is False
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+        assert runtime.pending_sync_calls == 1
+
+        release.set()
+        assert await runtime.wait_for_sync(timeout=1) is True
+    finally:
+        release.set()
+        invocation.cancel()
+        await asyncio.gather(invocation, return_exceptions=True)
+        await runtime.aclose(wait_for_sync=True, timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_sync_wait_and_close_options_are_validated_without_closing() -> None:
+    runtime = ToolRuntime()
+    try:
+        with pytest.raises(ValueError, match="non-negative"):
+            await runtime.wait_for_sync(timeout=-1)
+        with pytest.raises(TypeError, match="boolean"):
+            await runtime.aclose(wait_for_sync=1)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="requires"):
+            await runtime.aclose(timeout=1)
+        with pytest.raises(ValueError, match="non-negative"):
+            await runtime.aclose(wait_for_sync=True, timeout=True)
+
+        runtime.register(add)
+        assert (await runtime.invoke("add", {"left": 1})).success
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_late_sync_failure_after_timeout_is_safely_consumed() -> None:
+    release = Event()
+    loop = asyncio.get_running_loop()
+    loop_errors: list[dict[str, object]] = []
+    previous_handler = loop.get_exception_handler()
+
+    @helix_tool
+    def late_failure() -> str:
+        """Fail only after the caller has timed out."""
+
+        release.wait(2)
+        raise RuntimeError("late secret")
+
+    runtime = ToolRuntime()
+    runtime.register(late_failure)
+    loop.set_exception_handler(lambda _, context: loop_errors.append(context))
+    try:
+        result = await runtime.invoke("late_failure", timeout=0.02)
+        assert result.status is ToolStatus.TIMED_OUT
+        release.set()
+        assert await runtime.wait_for_sync(timeout=1) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    finally:
+        release.set()
+        await runtime.aclose(wait_for_sync=True, timeout=1)
+        loop.set_exception_handler(previous_handler)
+
+    assert loop_errors == []
 
 
 @pytest.mark.asyncio

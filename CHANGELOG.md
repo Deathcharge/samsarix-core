@@ -15,6 +15,8 @@ This is a replacement alpha rather than a compatibility release.
 - content-free runtime metrics;
 - configurable registry, batch, argument/output byte, nesting-depth, and value-node
   limits with safe structured failures;
+- observable timed-out sync work, retained concurrency slots, late-failure draining,
+  and optional bounded shutdown quiescence;
 - dependency-free MCP `2025-11-25`/`2025-06-18` lifecycle, tool discovery,
   invocation, structured results, behavioral annotations, and bounded stdio;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;

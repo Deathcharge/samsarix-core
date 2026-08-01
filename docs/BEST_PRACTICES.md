@@ -50,7 +50,10 @@ and cause its side effect. Apply a retry policy only when the tool's semantics m
 that safe.
 
 Let caller cancellation propagate. Use `async with ToolRuntime(...)` so resources
-close on success and failure.
+close on success and failure. Context-manager close does not wait for a timed-out
+sync thread. During controlled shutdown, stop upstream admission and call
+`await runtime.aclose(wait_for_sync=True, timeout=<deadline>)`; treat a `False`
+result as a failed quiescence check rather than assuming the side effect stopped.
 
 ## Test contracts, not mocks
 
