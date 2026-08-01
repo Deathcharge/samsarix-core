@@ -24,6 +24,13 @@ async def increment(value: int) -> int:
     return value + 1
 
 
+@samsarix_tool(name="increment_sync", read_only=True)
+def increment_sync(value: int) -> int:
+    """Increment an integer synchronously."""
+
+    return value + 1
+
+
 def percentile(values: list[float], fraction: float) -> float:
     """Return a nearest-rank percentile for non-empty values."""
 
@@ -37,26 +44,16 @@ async def benchmark(iterations: int, batch_size: int) -> dict[str, Any]:
 
     runtime = ToolRuntime(max_batch_size=batch_size)
     runtime.register(increment)
+    runtime.register(increment_sync)
     try:
         for value in range(min(iterations, 100)):
             await runtime.invoke("increment", {"value": value})
+            await runtime.invoke("increment_sync", {"value": value})
 
-        latencies: list[float] = []
-        sequential_started = time.perf_counter()
-        for value in range(iterations):
-            call_started = time.perf_counter()
-            result = await runtime.invoke("increment", {"value": value})
-            if not result.success:
-                raise RuntimeError(f"benchmark invocation failed: {result.to_dict()}")
-            latencies.append((time.perf_counter() - call_started) * 1_000)
-        sequential_seconds = time.perf_counter() - sequential_started
-
-        calls = [ToolCall("increment", {"value": value}) for value in range(batch_size)]
-        batch_started = time.perf_counter()
-        batch_results = await runtime.invoke_many(calls)
-        batch_seconds = time.perf_counter() - batch_started
-        if not all(result.success for result in batch_results):
-            raise RuntimeError("benchmark batch invocation failed")
+        async_sequential = await measure_sequential(runtime, "increment", iterations)
+        sync_sequential = await measure_sequential(runtime, "increment_sync", iterations)
+        async_batch = await measure_batch(runtime, "increment", batch_size)
+        sync_batch = await measure_batch(runtime, "increment_sync", batch_size)
     finally:
         await runtime.aclose()
 
@@ -68,16 +65,47 @@ async def benchmark(iterations: int, batch_size: int) -> dict[str, Any]:
             "samsarix_core": __version__,
         },
         "settings": {"batch_size": batch_size, "iterations": iterations},
-        "sequential": {
-            "calls_per_second": round(iterations / sequential_seconds, 2),
-            "latency_ms_mean": round(statistics.fmean(latencies), 4),
-            "latency_ms_p50": round(percentile(latencies, 0.50), 4),
-            "latency_ms_p95": round(percentile(latencies, 0.95), 4),
-        },
-        "single_batch": {
-            "calls_per_second": round(batch_size / batch_seconds, 2),
-            "duration_ms": round(batch_seconds * 1_000, 4),
-        },
+        "async_sequential": async_sequential,
+        "sync_sequential": sync_sequential,
+        "async_single_batch": async_batch,
+        "sync_single_batch": sync_batch,
+    }
+
+
+async def measure_sequential(
+    runtime: ToolRuntime, tool_name: str, iterations: int
+) -> dict[str, float]:
+    """Measure one tool's sequential validated invocation path."""
+
+    latencies: list[float] = []
+    started = time.perf_counter()
+    for value in range(iterations):
+        call_started = time.perf_counter()
+        result = await runtime.invoke(tool_name, {"value": value})
+        if not result.success:
+            raise RuntimeError(f"benchmark invocation failed: {result.to_dict()}")
+        latencies.append((time.perf_counter() - call_started) * 1_000)
+    elapsed = time.perf_counter() - started
+    return {
+        "calls_per_second": round(iterations / elapsed, 2),
+        "latency_ms_mean": round(statistics.fmean(latencies), 4),
+        "latency_ms_p50": round(percentile(latencies, 0.50), 4),
+        "latency_ms_p95": round(percentile(latencies, 0.95), 4),
+    }
+
+
+async def measure_batch(runtime: ToolRuntime, tool_name: str, batch_size: int) -> dict[str, float]:
+    """Measure one ordered batch for a tool."""
+
+    calls = [ToolCall(tool_name, {"value": value}) for value in range(batch_size)]
+    started = time.perf_counter()
+    results = await runtime.invoke_many(calls)
+    elapsed = time.perf_counter() - started
+    if not all(result.success for result in results):
+        raise RuntimeError("benchmark batch invocation failed")
+    return {
+        "calls_per_second": round(batch_size / elapsed, 2),
+        "duration_ms": round(elapsed * 1_000, 4),
     }
 
 

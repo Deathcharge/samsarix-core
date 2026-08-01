@@ -19,13 +19,15 @@ Current disposition: Merge the productization branch after exact-head verificati
   transport with an inventory example. Exact-head CI evidence remains required.
 - Runtime input/output, batch, and registry resources are now capped and covered
   by adversarial tests.
-- Next: define close and timed-out-sync quiescence; then prove adoption from one
-  external consumer.
+- Timed-out sync work now retains its real concurrency slot and in-flight gauge;
+  callers can inspect, wait for, and require bounded shutdown quiescence.
+- Next: prove adoption from one external consumer, then prioritize richer nested
+  schema types from that integration evidence.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.
 - Review priority: keep resource defaults aligned with adopter evidence.
-- Review priority: define sync-timeout/close behavior.
+- Review priority: validate shutdown deadlines with an external consumer.
 
 ## Release candidate
 

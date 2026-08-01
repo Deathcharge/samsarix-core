@@ -155,6 +155,8 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - [x] Bound parallel execution and retain input/result correlation.
 - [x] Bound registry, batch, argument/output byte, nesting-depth, and value-node
   resources before executing untrusted calls.
+- [x] Keep timed-out sync work observable and concurrency-bounded, and provide a
+  finite-wait shutdown quiescence contract.
 - [x] Remove the false "sandboxed execution" claim.
 - [x] Eliminate unsafe `eval` examples from the active product documentation.
 - [x] Isolate or remove obsolete provider, billing, pseudo-reasoning, and duplicate
@@ -250,7 +252,8 @@ will provide the remaining platform evidence.
 ## Known risks
 
 - Python thread cancellation is cooperative; a timed-out synchronous function can
-  continue in its worker thread.
+  continue in its worker thread. Its lifetime is now observable and waitable, but
+  the function still needs its own deadline to guarantee eventual termination.
 - In-process tools have the host process's permissions. This runtime is not suitable
   for arbitrary untrusted code without a separate isolation boundary.
 - Type hints are not a complete runtime validation language. This alpha supports a

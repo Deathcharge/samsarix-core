@@ -1,9 +1,9 @@
 # Benchmarks
 
 `benchmarks/runtime_benchmark.py` is a dependency-free microbenchmark for the
-validated local invocation path. It measures:
+validated local invocation path. It measures sync and async variants of:
 
-- sequential async-tool calls per second;
+- sequential calls per second;
 - mean, p50, and p95 end-to-end invocation latency; and
 - one ordered batch's duration and calls per second.
 
