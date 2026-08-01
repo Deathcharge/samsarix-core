@@ -33,7 +33,14 @@ make cancellation-friendly async calls, and make side effects idempotent when th
 caller might retry after a timeout.
 
 Choose `max_concurrency` from downstream capacity, not CPU count alone. Apply
-application-level admission control before accepting an unbounded number of calls.
+application-level admission control before accepting calls. Tune `max_batch_size`,
+`max_argument_bytes`, `max_output_bytes`, `max_value_depth`, and `max_value_nodes`
+below upstream transport limits, with enough headroom for legitimate contracts.
+Keep `ToolRegistry.max_tools` close to the catalog size you actually expose.
+
+These limits bound one runtime request; they are not tenant quotas or request-rate
+limits. A network host still needs authentication, admission control, rate limits,
+and aggregate memory/connection limits.
 
 ## Handle results deliberately
 

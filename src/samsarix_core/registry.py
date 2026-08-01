@@ -13,7 +13,7 @@ from threading import RLock
 from typing import Any
 
 from .decorators import get_tool_config
-from .errors import DuplicateToolError, ToolNotFoundError
+from .errors import DuplicateToolError, RegistryCapacityError, ToolNotFoundError
 from .models import JSONValue, ToolSpec
 from .schema import compile_tool_contract
 
@@ -31,7 +31,12 @@ class RegisteredTool:
 class ToolRegistry:
     """A small explicit registry with deterministic schema export."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_tools: int = 256) -> None:
+        if isinstance(max_tools, bool) or not isinstance(max_tools, int):
+            raise TypeError("max_tools must be an integer")
+        if max_tools <= 0:
+            raise ValueError("max_tools must be positive")
+        self.max_tools = max_tools
         self._tools: dict[str, RegisteredTool] = {}
         self._lock = RLock()
 
@@ -39,6 +44,14 @@ class ToolRegistry:
         """Register a decorated callable and return its compiled contract."""
 
         config = get_tool_config(function)
+        with self._lock:
+            if config.name in self._tools and not replace:
+                raise DuplicateToolError(f"Tool '{config.name}' is already registered")
+            if config.name not in self._tools and len(self._tools) >= self.max_tools:
+                raise RegistryCapacityError(
+                    f"Registry capacity of {self.max_tools} tools has been reached"
+                )
+
         signature, hints, input_schema, output_schema = compile_tool_contract(function)
         spec = ToolSpec(
             name=config.name,
@@ -57,8 +70,13 @@ class ToolRegistry:
         )
         registered = RegisteredTool(function=function, signature=signature, hints=hints, spec=spec)
         with self._lock:
+            # Recheck after compilation in case another thread filled the registry.
             if config.name in self._tools and not replace:
                 raise DuplicateToolError(f"Tool '{config.name}' is already registered")
+            if config.name not in self._tools and len(self._tools) >= self.max_tools:
+                raise RegistryCapacityError(
+                    f"Registry capacity of {self.max_tools} tools has been reached"
+                )
             self._tools[config.name] = registered
         return deepcopy(spec)
 

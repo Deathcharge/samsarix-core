@@ -17,12 +17,14 @@ Current disposition: Merge the productization branch after exact-head verificati
 - MCP flagship adapter: implemented lifecycle negotiation, JSON Schema tool discovery,
   structured invocation results, behavioral safety hints, and a bounded stdio
   transport with an inventory example. Exact-head CI evidence remains required.
-- Next: cap runtime input/output, batch, and registry resources; define close and
-  timed-out-sync quiescence; then prove adoption from one external consumer.
+- Runtime input/output, batch, and registry resources are now capped and covered
+  by adversarial tests.
+- Next: define close and timed-out-sync quiescence; then prove adoption from one
+  external consumer.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.
-- Review priority: cap resources.
+- Review priority: keep resource defaults aligned with adopter evidence.
 - Review priority: define sync-timeout/close behavior.
 
 ## Release candidate

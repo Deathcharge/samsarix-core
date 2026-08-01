@@ -30,6 +30,10 @@ conservative destructive/non-idempotent defaults unless explicitly annotated.
 
 ## `ToolRegistry`
 
+```python
+ToolRegistry(*, max_tools: int = 256)
+```
+
 - `register(function, *, replace=False) -> ToolSpec`
 - `unregister(name) -> ToolSpec`
 - `get(name) -> ToolSpec`
@@ -37,8 +41,9 @@ conservative destructive/non-idempotent defaults unless explicitly annotated.
 - `schema_catalog() -> dict`
 
 Duplicate registration raises `DuplicateToolError` unless replacement is explicit.
-Unknown direct lookups/removals raise `ToolNotFoundError`. Runtime lookup failures
-become structured results instead.
+Adding a new tool at capacity raises `RegistryCapacityError`; replacing an existing
+tool remains allowed. Unknown direct lookups/removals raise `ToolNotFoundError`.
+Runtime lookup failures become structured results instead.
 
 ## `ToolRuntime`
 
@@ -47,6 +52,11 @@ ToolRuntime(
     registry: ToolRegistry | None = None,
     *,
     max_concurrency: int = 8,
+    max_batch_size: int = 256,
+    max_argument_bytes: int = 1_048_576,
+    max_output_bytes: int = 1_048_576,
+    max_value_depth: int = 32,
+    max_value_nodes: int = 10_000,
     default_timeout: float = 30.0,
     expose_exceptions: bool = False,
 )
@@ -60,7 +70,15 @@ ToolRuntime(
 
 Timeout precedence is invocation override, decorator timeout, then runtime default.
 The timeout includes time waiting for a concurrency slot. Batch results preserve
-order. `aclose()` is idempotent.
+order. A batch larger than `max_batch_size` raises `ValueError` before any call is
+started. `aclose()` is idempotent.
+
+Argument and output sizes are the UTF-8 byte length of compact JSON. The root is
+depth zero; every child increments depth. Each container and scalar is one node,
+while object keys are covered by the byte limit but do not count as nodes. Cyclic,
+oversized, over-depth, and over-node arguments return `invalid_arguments` without
+executing the tool. Output resource violations return `failed` with the safe error
+code `output_limit_exceeded`. All integer limits must be positive and reject booleans.
 
 ## `MCPServer`
 
@@ -133,8 +151,9 @@ accept booleans. Floats must be finite. Defaults and outputs are checked too.
 ## Exceptions
 
 Public definition/registry exceptions are `SamsarixError`, `ToolDefinitionError`,
-`DuplicateToolError`, and `ToolNotFoundError`. Ordinary invocation failures are
-returned as `ToolResult`. `asyncio.CancelledError` propagates.
+`DuplicateToolError`, `RegistryCapacityError`, and `ToolNotFoundError`. Ordinary
+invocation failures are returned as `ToolResult`. `asyncio.CancelledError`
+propagates.
 
 `helix_core`, `helix_tool`, and `HelixError` are compatibility aliases for the
 pre-rebrand alpha surface. They are not the preferred names for new code.

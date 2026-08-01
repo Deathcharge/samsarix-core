@@ -6,16 +6,22 @@
 from __future__ import annotations
 
 import inspect
+import json
 import math
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from copy import deepcopy
-from typing import Annotated, Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from .errors import ToolArgumentError, ToolDefinitionError, ValidationIssue
 from .models import JSONValue
 
 _EMPTY = inspect.Signature.empty
+_COMPACT_JSON_ENCODER = json.JSONEncoder(
+    ensure_ascii=False,
+    allow_nan=False,
+    separators=(",", ":"),
+)
 
 
 def compile_tool_contract(
@@ -188,6 +194,78 @@ def validate_arguments(
     if issues:
         raise ToolArgumentError(tuple(issues))
     return validated
+
+
+def enforce_value_limits(
+    value: Any,
+    *,
+    max_bytes: int,
+    max_depth: int,
+    max_nodes: int,
+) -> None:
+    """Reject cyclic, deeply nested, complex, or oversized JSON-like values.
+
+    The traversal is iterative so hostile nesting cannot exhaust Python's call
+    stack before the ordinary annotation validator runs. The root is depth zero;
+    each container and scalar counts as one node, while object keys do not.
+    """
+
+    nodes = 0
+    active_containers: set[int] = set()
+    stack: list[tuple[str, Any, int]] = [("value", value, 0)]
+
+    while stack:
+        operation, current, depth = stack.pop()
+        if operation == "exit":
+            active_containers.remove(current)
+            continue
+        if operation == "children":
+            children = cast(Iterator[Any], current)
+            try:
+                child = next(children)
+            except StopIteration:
+                continue
+            stack.append(("children", children, depth))
+            stack.append(("value", child, depth))
+            continue
+
+        nodes += 1
+        if nodes > max_nodes:
+            raise _value_error(
+                "$",
+                "value_too_complex",
+                f"Value exceeds the configured limit of {max_nodes} nodes",
+            )
+        if depth > max_depth:
+            raise _value_error(
+                "$",
+                "value_too_deep",
+                f"Value exceeds the configured nesting depth of {max_depth}",
+            )
+
+        if isinstance(current, (list, tuple, dict)):
+            identity = id(current)
+            if identity in active_containers:
+                raise _value_error("$", "cyclic_value", "Values must not contain cycles")
+            active_containers.add(identity)
+            stack.append(("exit", identity, depth))
+            children = iter(current.values()) if isinstance(current, dict) else iter(current)
+            stack.append(("children", children, depth + 1))
+
+    encoded_bytes = 0
+    try:
+        for chunk in _COMPACT_JSON_ENCODER.iterencode(value):
+            encoded_bytes += len(chunk.encode("utf-8"))
+            if encoded_bytes > max_bytes:
+                raise _value_error(
+                    "$",
+                    "value_too_large",
+                    f"Value exceeds the configured JSON size of {max_bytes} bytes",
+                )
+    except ToolArgumentError:
+        raise
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise _value_error("$", "not_json_compatible", "Value must be JSON-compatible") from exc
 
 
 def validate_value(value: Any, annotation: Any, *, path: str) -> Any:

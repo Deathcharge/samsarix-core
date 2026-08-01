@@ -19,9 +19,10 @@ persistence, or an untrusted-code sandbox.
 - emits JSON Schema Draft 2020-12 input and output schemas;
 - validates arguments and outputs without surprising scalar coercion;
 - returns structured success, validation, timeout, missing-tool, and failure results;
-- bounds concurrent work and thread-pool use;
+- bounds registry growth, batches, value size/complexity, concurrent work, and
+  thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
-- keeps metrics content-free and redacts exception messages by default.
+- keeps metrics content-free and redacts exception messages by default;
 - exposes the same contracts through a dependency-free MCP stdio bridge.
 
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
@@ -123,6 +124,11 @@ structured-concurrency semantics keep working.
 class but not its message or traceback. Enable exception messages only in a
 trusted local debugging context.
 
+The runtime also rejects oversized, cyclic, deeply nested, or overly complex
+arguments before a tool runs. Output-limit failures are redacted structured
+results. See the [API reference](docs/API_REFERENCE.md) for the defaults and tune
+them to the host's actual workload.
+
 ## Important boundaries
 
 - Registered functions are trusted application code and run in the current process.
@@ -137,7 +143,8 @@ trusted local debugging context.
 
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
 [architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),
-[best practices](docs/BEST_PRACTICES.md), and the [productization
+[best practices](docs/BEST_PRACTICES.md), [benchmark guide](docs/BENCHMARKS.md),
+and the [productization
 record](docs/PRODUCTIZATION.md).
 
 ## Quality status
@@ -145,6 +152,10 @@ record](docs/PRODUCTIZATION.md).
 The release gate runs Black, Ruff, strict mypy, the test suite with at least 90%
 branch-aware coverage, a source/wheel build, and an isolated wheel import smoke
 test across supported Python versions where applicable.
+
+Run `python benchmarks/runtime_benchmark.py` for a machine-readable local
+microbenchmark. It is a comparison aid, not a universal performance claim or CI
+speed threshold.
 
 ## Support and contact
 

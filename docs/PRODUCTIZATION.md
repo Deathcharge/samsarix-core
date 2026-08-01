@@ -1,6 +1,6 @@
 # Samsarix Core Productization Record
 
-Last updated: 2026-07-28
+Last updated: 2026-08-01
 
 ## Current repository assessment
 
@@ -153,6 +153,8 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - [x] Support both sync and async tools with documented timeout and cancellation
   behavior.
 - [x] Bound parallel execution and retain input/result correlation.
+- [x] Bound registry, batch, argument/output byte, nesting-depth, and value-node
+  resources before executing untrusted calls.
 - [x] Remove the false "sandboxed execution" claim.
 - [x] Eliminate unsafe `eval` examples from the active product documentation.
 - [x] Isolate or remove obsolete provider, billing, pseudo-reasoning, and duplicate
@@ -255,8 +257,9 @@ will provide the remaining platform evidence.
   documented JSON-compatible subset and rejects ambiguous usage.
 - Exception redaction protects ordinary failures, but successful outputs and
   validation details still cross to the host by design.
-- The library has no transport-level byte or request-rate limit; any remote host
-  must apply admission and payload controls before invocation.
+- The MCP stdio adapter and runtime have per-message and per-invocation byte limits,
+  but no request-rate, tenant-quota, connection, or aggregate-memory limit. Any
+  remote host must apply those controls before invocation.
 - Public package-index publication still requires owner-controlled credentials and
   an explicit release decision.
 

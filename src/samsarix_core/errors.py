@@ -24,6 +24,10 @@ class DuplicateToolError(SamsarixError, ValueError):
     """Raised when a registry already contains a tool name."""
 
 
+class RegistryCapacityError(SamsarixError, ValueError):
+    """Raised when a registry has reached its configured tool limit."""
+
+
 class ToolNotFoundError(SamsarixError, KeyError):
     """Raised by direct registry lookups for an unknown tool."""
 
@@ -52,3 +56,14 @@ class ToolArgumentError(SamsarixError, ValueError):
 
 class ToolOutputError(SamsarixError, TypeError):
     """Raised internally when a tool returns a non-JSON-compatible value."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "invalid_output",
+        public_message: str = "Tool returned a value that is not JSON-compatible",
+    ) -> None:
+        self.code = code
+        self.public_message = public_message
+        super().__init__(message)
