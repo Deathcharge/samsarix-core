@@ -10,6 +10,7 @@ import pytest
 
 from samsarix_core import (
     DuplicateToolError,
+    RegistryCapacityError,
     ToolDefinitionError,
     ToolNotFoundError,
     ToolRegistry,
@@ -96,6 +97,35 @@ def test_registry_rejects_duplicates_and_supports_explicit_replace_and_remove() 
         registry.get("summarize_items")
     with pytest.raises(ToolNotFoundError):
         registry.unregister("summarize_items")
+
+
+def test_registry_capacity_is_bounded_but_replacement_and_reuse_are_allowed() -> None:
+    @helix_tool(name="other")
+    def other(value: int) -> int:
+        """Return another value."""
+
+        return value
+
+    registry = ToolRegistry(max_tools=1)
+    registry.register(summarize)
+
+    with pytest.raises(RegistryCapacityError, match="capacity of 1"):
+        registry.register(other)
+
+    registry.register(summarize, replace=True)
+    registry.unregister("summarize_items")
+    assert registry.register(other).name == "other"
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [(0, ValueError), (-1, ValueError), (True, TypeError), (1.5, TypeError)],
+)
+def test_registry_capacity_configuration_is_validated(
+    value: object, error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        ToolRegistry(max_tools=value)  # type: ignore[arg-type]
 
 
 def test_bare_decorator_uses_function_name_and_first_docstring_line() -> None:

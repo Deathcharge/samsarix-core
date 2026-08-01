@@ -8,6 +8,7 @@ from .decorators import helix_tool, samsarix_tool
 from .errors import (
     DuplicateToolError,
     HelixError,
+    RegistryCapacityError,
     SamsarixError,
     ToolDefinitionError,
     ToolNotFoundError,
@@ -21,6 +22,7 @@ __all__ = [
     "DuplicateToolError",
     "HelixError",
     "MCPServer",
+    "RegistryCapacityError",
     "RuntimeMetrics",
     "SamsarixError",
     "ToolCall",

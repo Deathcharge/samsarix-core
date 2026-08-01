@@ -20,7 +20,7 @@ from uuid import uuid4
 from .errors import ToolArgumentError, ToolNotFoundError, ToolOutputError
 from .models import JSONValue, RuntimeMetrics, ToolCall, ToolError, ToolResult, ToolSpec, ToolStatus
 from .registry import RegisteredTool, ToolRegistry
-from .schema import to_json_value, validate_arguments, validate_value
+from .schema import enforce_value_limits, to_json_value, validate_arguments, validate_value
 
 
 class ToolRuntime:
@@ -31,6 +31,11 @@ class ToolRuntime:
         registry: ToolRegistry | None = None,
         *,
         max_concurrency: int = 8,
+        max_batch_size: int = 256,
+        max_argument_bytes: int = 1_048_576,
+        max_output_bytes: int = 1_048_576,
+        max_value_depth: int = 32,
+        max_value_nodes: int = 10_000,
         default_timeout: float = 30.0,
         expose_exceptions: bool = False,
     ) -> None:
@@ -38,6 +43,17 @@ class ToolRuntime:
             raise TypeError("max_concurrency must be an integer")
         if max_concurrency <= 0:
             raise ValueError("max_concurrency must be positive")
+        for name, value in (
+            ("max_batch_size", max_batch_size),
+            ("max_argument_bytes", max_argument_bytes),
+            ("max_output_bytes", max_output_bytes),
+            ("max_value_depth", max_value_depth),
+            ("max_value_nodes", max_value_nodes),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
         if (
             isinstance(default_timeout, bool)
             or not isinstance(default_timeout, (int, float))
@@ -47,6 +63,11 @@ class ToolRuntime:
 
         self.registry = registry if registry is not None else ToolRegistry()
         self.max_concurrency = max_concurrency
+        self.max_batch_size = max_batch_size
+        self.max_argument_bytes = max_argument_bytes
+        self.max_output_bytes = max_output_bytes
+        self.max_value_depth = max_value_depth
+        self.max_value_nodes = max_value_nodes
         self.default_timeout = float(default_timeout)
         self.expose_exceptions = expose_exceptions
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -127,6 +148,12 @@ class ToolRuntime:
 
         try:
             supplied_arguments = arguments if arguments is not None else {}
+            enforce_value_limits(
+                supplied_arguments,
+                max_bytes=self.max_argument_bytes,
+                max_depth=self.max_value_depth,
+                max_nodes=self.max_value_nodes,
+            )
             validated = validate_arguments(
                 registered.signature, registered.hints, supplied_arguments
             )
@@ -178,8 +205,8 @@ class ToolRuntime:
                 started_at,
                 started,
                 error=ToolError(
-                    "invalid_output",
-                    "Tool returned a value that is not JSON-compatible",
+                    exc.code,
+                    exc.public_message,
                     type=type(exc).__name__,
                 ),
             )
@@ -212,6 +239,8 @@ class ToolRuntime:
 
         if not calls:
             return []
+        if len(calls) > self.max_batch_size:
+            raise ValueError(f"Batch contains {len(calls)} calls; maximum is {self.max_batch_size}")
         results: list[ToolResult | None] = [None] * len(calls)
         pending = iter(enumerate(calls))
 
@@ -267,12 +296,35 @@ class ToolRuntime:
                 if inspect.isawaitable(raw_output):
                     raise ToolOutputError("A synchronous tool returned an awaitable")
                 try:
+                    enforce_value_limits(
+                        raw_output,
+                        max_bytes=self.max_output_bytes,
+                        max_depth=self.max_value_depth,
+                        max_nodes=self.max_value_nodes,
+                    )
                     validated_output = validate_value(
                         raw_output, registered.hints["return"], path="$"
                     )
-                    return to_json_value(validated_output)
+                    normalized_output = to_json_value(validated_output)
+                    enforce_value_limits(
+                        normalized_output,
+                        max_bytes=self.max_output_bytes,
+                        max_depth=self.max_value_depth,
+                        max_nodes=self.max_value_nodes,
+                    )
+                    return normalized_output
                 except ToolArgumentError as exc:
-                    raise ToolOutputError("Tool output is not JSON-compatible") from exc
+                    limit_codes = {"value_too_deep", "value_too_complex", "value_too_large"}
+                    exceeded_limit = any(issue.code in limit_codes for issue in exc.issues)
+                    raise ToolOutputError(
+                        "Tool output is not JSON-compatible",
+                        code="output_limit_exceeded" if exceeded_limit else "invalid_output",
+                        public_message=(
+                            "Tool output exceeded a configured resource limit"
+                            if exceeded_limit
+                            else "Tool returned a value that is not JSON-compatible"
+                        ),
+                    ) from exc
             finally:
                 self._end_execution()
 

@@ -252,6 +252,120 @@ async def test_batch_preserves_order_and_bounds_execution() -> None:
 
 
 @pytest.mark.asyncio
+async def test_batch_size_is_bounded_before_workers_are_created() -> None:
+    runtime = populated_runtime(max_batch_size=2)
+    try:
+        with pytest.raises(ValueError, match="maximum is 2"):
+            await runtime.invoke_many([ToolCall("add", {"left": 1})] * 3)
+    finally:
+        await runtime.aclose()
+
+    assert runtime.metrics().calls_total == 0
+
+
+@pytest.mark.asyncio
+async def test_argument_resource_limits_reject_size_depth_nodes_and_cycles() -> None:
+    executed = False
+
+    @helix_tool
+    def nested(values: list[list[int]]) -> int:
+        """Count nested values."""
+
+        nonlocal executed
+        executed = True
+        return sum(len(value) for value in values)
+
+    cases: list[tuple[ToolRuntime, dict[str, object], str]] = [
+        (ToolRuntime(max_argument_bytes=16), {"values": [[123456789]]}, "value_too_large"),
+        (ToolRuntime(max_value_depth=2), {"values": [[1]]}, "value_too_deep"),
+        (ToolRuntime(max_value_nodes=3), {"values": [[1]]}, "value_too_complex"),
+    ]
+    cyclic: list[object] = []
+    cyclic.append(cyclic)
+    cases.append((ToolRuntime(), {"values": cyclic}, "cyclic_value"))
+
+    try:
+        for runtime, arguments, expected_code in cases:
+            runtime.register(nested)
+            result = await runtime.invoke("nested", arguments)
+            assert result.status is ToolStatus.INVALID_ARGUMENTS
+            assert result.error is not None
+            issues = result.error.details["issues"]  # type: ignore[index]
+            assert issues[0]["code"] == expected_code  # type: ignore[index]
+    finally:
+        await asyncio.gather(*(runtime.aclose() for runtime, _, _ in cases))
+
+    assert executed is False
+
+
+@pytest.mark.asyncio
+async def test_resource_walker_is_lazy_and_allows_shared_noncyclic_values() -> None:
+    class CountingList(list[int]):
+        yielded = 0
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            for item in super().__iter__():
+                self.yielded += 1
+                yield item
+
+    @helix_tool
+    def total(values: list[list[int]]) -> int:
+        """Sum nested values."""
+
+        return sum(sum(value) for value in values)
+
+    huge = CountingList(range(100_000))
+    limited_runtime = ToolRuntime(max_value_nodes=3)
+    shared_runtime = ToolRuntime()
+    limited_runtime.register(total)
+    shared_runtime.register(total)
+    shared = [1]
+    try:
+        limited = await limited_runtime.invoke("total", {"values": [huge]})
+        accepted = await shared_runtime.invoke("total", {"values": [shared, shared]})
+    finally:
+        await limited_runtime.aclose()
+        await shared_runtime.aclose()
+
+    assert limited.status is ToolStatus.INVALID_ARGUMENTS
+    assert huge.yielded <= 2
+    assert accepted.output == 2
+
+
+@pytest.mark.asyncio
+async def test_output_resource_limits_are_safe_structured_failures() -> None:
+    @helix_tool
+    def oversized() -> str:
+        """Return a large string."""
+
+        return "secret-value"
+
+    @helix_tool
+    def too_deep() -> list[list[int]]:
+        """Return nested values."""
+
+        return [[1]]
+
+    size_runtime = ToolRuntime(max_output_bytes=8)
+    depth_runtime = ToolRuntime(max_value_depth=1)
+    size_runtime.register(oversized)
+    depth_runtime.register(too_deep)
+    try:
+        size_result = await size_runtime.invoke("oversized")
+        depth_result = await depth_runtime.invoke("too_deep")
+    finally:
+        await size_runtime.aclose()
+        await depth_runtime.aclose()
+
+    for result in (size_result, depth_result):
+        assert result.status is ToolStatus.FAILED
+        assert result.error is not None
+        assert result.error.code == "output_limit_exceeded"
+        assert result.error.message == "Tool output exceeded a configured resource limit"
+        assert "secret-value" not in str(result.to_dict())
+
+
+@pytest.mark.asyncio
 async def test_cancellation_propagates_and_updates_content_free_metrics() -> None:
     runtime = populated_runtime()
     invocation = asyncio.create_task(runtime.invoke("slow", {"delay": 1}, timeout=2))
@@ -295,6 +409,12 @@ async def test_async_context_manager_closes_the_runtime() -> None:
         ({"max_concurrency": True}, TypeError),
         ({"default_timeout": 0}, ValueError),
         ({"default_timeout": True}, ValueError),
+        ({"max_batch_size": 0}, ValueError),
+        ({"max_batch_size": True}, TypeError),
+        ({"max_argument_bytes": 0}, ValueError),
+        ({"max_output_bytes": 1.5}, TypeError),
+        ({"max_value_depth": 0}, ValueError),
+        ({"max_value_nodes": True}, TypeError),
     ],
 )
 def test_runtime_configuration_is_validated(
