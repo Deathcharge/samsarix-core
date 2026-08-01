@@ -296,7 +296,7 @@ async def test_stdio_transport_is_bounded_and_emits_only_protocol_messages() -> 
 
 @pytest.mark.asyncio
 async def test_stdio_transport_handles_parse_errors_and_oversized_lines() -> None:
-    runtime = ToolRuntime()
+    runtime = mcp_runtime()
     parse_writer = io.StringIO()
     await serve_stdio(
         MCPServer(runtime),
@@ -317,6 +317,26 @@ async def test_stdio_transport_handles_parse_errors_and_oversized_lines() -> Non
     )
     oversized = json.loads(oversized_writer.getvalue())
     assert oversized["error"]["message"] == "MCP message exceeds limit"
+
+    catalog_server = MCPServer(runtime)
+    await initialize(catalog_server)
+    response_writer = io.StringIO()
+    catalog_request = json.dumps(
+        {"jsonrpc": "2.0", "id": "catalog-99", "method": "tools/list", "params": {}}
+    ).encode()
+    await serve_stdio(
+        catalog_server,
+        input_stream=io.BytesIO(catalog_request + b"\n"),
+        output_stream=response_writer,
+        max_message_bytes=256,
+        close_runtime=False,
+    )
+    limited = json.loads(response_writer.getvalue())
+    assert limited == {
+        "error": {"code": -32603, "message": "MCP response exceeds limit"},
+        "id": "catalog-99",
+        "jsonrpc": "2.0",
+    }
     await runtime.aclose()
 
 

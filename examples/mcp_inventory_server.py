@@ -28,16 +28,15 @@ def check_inventory(sku: str) -> dict[str, int | str]:
 
 
 @samsarix_tool(
-    title="Reserve inventory",
-    tags=("inventory", "write"),
-    destructive=False,
-    idempotent=True,
+    title="Preview inventory reservation",
+    tags=("inventory", "preview"),
+    read_only=True,
     open_world=False,
 )
 def reserve_inventory(sku: str, quantity: int, request_id: str) -> dict[str, int | str]:
-    """Demonstrate an idempotency-keyed inventory reservation."""
+    """Return a deterministic reservation-shaped response for protocol demos."""
 
-    return {"sku": sku, "quantity": quantity, "request_id": request_id, "status": "reserved"}
+    return {"sku": sku, "quantity": quantity, "request_id": request_id, "status": "preview"}
 
 
 async def main() -> None:

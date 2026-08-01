@@ -266,8 +266,9 @@ async def serve_stdio(
             if response is not None:
                 encoded = _json_text(response)
                 if len(encoded.encode("utf-8")) > max_message_bytes:
+                    fallback_id = response.get("id")
                     encoded = _json_text(
-                        MCPServer._error(None, _INTERNAL_ERROR, "MCP response exceeds limit")
+                        MCPServer._error(fallback_id, _INTERNAL_ERROR, "MCP response exceeds limit")
                     )
                 if writer is None:
                     sys.stdout.buffer.write((encoded + "\n").encode("utf-8"))
