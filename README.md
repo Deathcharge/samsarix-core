@@ -102,14 +102,15 @@ progress and logging, admission limits, and security boundaries.
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.3 pins Core commit `beda0affe0dcc54c1a4e224bed26fbcd85e9184c`
+version 0.2.5 pins Core commit `04cf5ba7ca7eb2defcb946f538d62291762db109`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
 structured results, privacy boundaries, path traversal and linked-file refusal,
 artifact conflict handling, exact `TypedDict` output discovery, client
 cancellation without an output artifact or response, continued protocol service,
-token-correlated content-free progress, package installation, and CLI entry points.
+token-correlated content-free progress, client-filtered operational logging,
+synchronous timeout/quiescence accounting, package installation, and CLI entry points.
 
 This is compatibility evidence, not a claim of third-party production adoption.
 See the [adoption record](docs/ADOPTION.md) for exact commits, commands, artifact
