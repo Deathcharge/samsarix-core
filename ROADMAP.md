@@ -6,7 +6,10 @@ This roadmap separates four gates: merge, release, publication, and flagship ado
 
 Portfolio role: **reusable library or sdk**. Keep this as a small, independently versioned package. Samsarix Unified should consume it only through a public API adapter; private monorepo imports and copied implementations are out of scope.
 
-Current disposition: Merge the productization branch after exact-head verification and rollback-ref creation; release and adoption remain separate decisions.
+Current disposition: The productized runtime, MCP bridge, resource bounds, and
+sync-quiescence work are merged. An independent repository now provides exact-pin
+compatibility evidence; release, publication, and third-party production adoption
+remain separate decisions.
 
 ## Stabilize the productized default
 
@@ -21,8 +24,12 @@ Current disposition: Merge the productization branch after exact-head verificati
   by adversarial tests.
 - Timed-out sync work now retains its real concurrency slot and in-flight gauge;
   callers can inspect, wait for, and require bounded shutdown quiescence.
-- Next: prove adoption from one external consumer, then prioritize richer nested
-  schema types from that integration evidence.
+- External consumer: `samsarix-integration-examples` version 0.2.0 pins Core
+  commit `6f54bcdf428359f1eee654944b6abc8788575eab` and proves a confined,
+  privacy-first redaction workflow through the public MCP API.
+- Next: rerun the consumer matrix after GitHub Actions billing is restored. Use
+  observed consumer demand and confirmed contract gaps—not framework parity—to
+  prioritize richer nested schema types.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.
@@ -32,13 +39,18 @@ Current disposition: Merge the productization branch after exact-head verificati
 ## Release candidate
 
 - Build and install the wheel in a clean environment.
-- Prove one real consumer and a versioned compatibility fixture.
+- [x] Prove one real repository consumer and a versioned compatibility fixture.
 - Publish only after package-name ownership, licensing, provenance, and rollback are recorded.
 
 ## Samsarix adoption
 
 - Define a public API, event, schema, artifact, or deployment contract before connecting to Samsarix Unified.
-- Add a consumer-owned contract fixture covering authentication, privacy, limits, errors, and version compatibility.
+- [x] Add a consumer-owned local-process contract fixture covering privacy,
+  1 MiB source ingestion, safe errors, filesystem confinement, and version
+  compatibility. Consumer-owned timeout and bounded-quiescence evidence remains
+  pending.
+- Add authentication evidence only when an authenticated network transport is in
+  scope; the supported stdio bridge delegates trust to the process launcher.
 - Make one implementation canonical; remove or freeze duplicate behavior only after parity and rollback are proven.
 - Record an owner, support level, compatibility window, and measurable adoption signal.
 

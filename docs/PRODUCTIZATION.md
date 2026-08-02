@@ -170,8 +170,10 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 
 ### P2
 
-- [ ] Add optional adapters for OpenAI-compatible, Anthropic, MCP, or agent-framework
-  tool schemas only after the core contract stabilizes.
+- [x] Add a dependency-free MCP adapter after stabilizing the core tool contract;
+  prove it from an exact-pinned independent repository consumer.
+- [ ] Add optional OpenAI-compatible, Anthropic, or agent-framework adapters only
+  after consumer demand establishes a concrete contract.
 - [ ] Add opt-in persistence for registry metadata and invocation summaries.
 - [ ] Add process isolation for untrusted tools as a separate package or explicit
   execution backend.
@@ -231,15 +233,25 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   isolated wheel installation.
 - Completed the repository threat model and closed five conservative security
   candidates with no reportable or deferred finding in the final worktree.
+- Added the stable MCP 2025-11-25 tool lifecycle, structured output, behavioral
+  annotations, and bounded local stdio transport without a runtime dependency.
+- Added registry, batch, value-complexity, argument, and output resource budgets,
+  plus observable bounded shutdown quiescence for timed-out synchronous work.
+- Proved the public MCP API from `samsarix-integration-examples` 0.2.0 at merge
+  commit `7bd7fe4bf75de2c88db723be67e17f9ca7f5fc87`; the consumer pins Core
+  commit `6f54bcdf428359f1eee654944b6abc8788575eab`.
 
 ## Deferred work and rationale
 
 P2 framework/provider adapters, registry persistence, process isolation, and richer
-schema types are deliberately deferred. They are not required for the first useful
-release and would add surface area before real adopter evidence establishes the
-right contracts. Python-version CI is configured, but only Python 3.11 and an
-additional Python 3.13 wheel smoke test were available locally; hosted matrix runs
-will provide the remaining platform evidence.
+schema types remain deliberately deferred. They are not required for the first useful
+release. One independent repository now proves the MCP boundary without needing those
+features; subsequent surface area should follow concrete consumer demand. Core's own
+[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30724220457)
+is green; Core's local suite has 59 tests and 94.08% branch coverage. The consumer's
+separate Python 3.11-3.13 jobs could not start because GitHub reported an account
+billing/spending-limit problem, so its local 28-test and installed-wheel evidence is
+recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
