@@ -4,10 +4,14 @@ Samsarix Core has one narrow responsibility: turn trusted typed Python callables
 inspectable contracts and invoke them predictably inside an async application.
 
 ```text
-typed function
+definition: typed function
     -> @samsarix_tool definition check
     -> ToolRegistry contract compilation
     -> JSON Schema catalog
+
+invocation: incoming call
+    -> fail-fast bounded runtime admission
+    -> registered tool resolution
     -> iterative argument resource preflight
     -> ToolRuntime argument validation
     -> optional bounded host policy decision
@@ -66,6 +70,13 @@ network adapter must bind that access to an authenticated requestor.
 
 ## Concurrency and timeout semantics
 
+The runtime admits at most `max_pending_invocations` non-terminal calls, including
+calls resolving, validating, awaiting policy, awaiting execution, or executing. A
+call beyond that cap returns the safe, retryable `runtime_busy` result immediately;
+it does not enter a semaphore queue or retain its arguments. Content-free current,
+peak, and rejection counters make saturation observable. `invoke_many` also limits
+its worker set to this cap so a batch does not shed its own queued items.
+
 One semaphore bounds executing work. Async functions run on the event loop. Sync
 functions run in a private `ThreadPoolExecutor` whose worker count equals
 `max_concurrency`. `invoke_many` uses a bounded worker set rather than one task per
@@ -73,8 +84,8 @@ call. Registry and batch caps bound catalog and fan-out growth; per-value byte,
 depth, and node limits bound validation work. The stdio adapter separately caps
 admitted tool-call and blocking task-result coroutines so cancellation can remain
 responsive without creating an unbounded wait queue. The task store independently
-caps retained entries and TTL. These controls do not replace host-level rate
-limits or tenant quotas.
+caps retained entries and TTL. These controls do not replace host-level request-rate
+limits, per-principal admission, or tenant quotas.
 
 A second semaphore bounds async policy evaluations to `max_concurrency`. The caller's
 invocation timeout covers the policy wait, decision, execution-slot wait, and tool work.

@@ -41,8 +41,10 @@ cannot be force-stopped. Set connect/read/query/process timeouts in the tool its
 make cancellation-friendly async calls, and make side effects idempotent when the
 caller might retry after a timeout.
 
-Choose `max_concurrency` from downstream capacity, not CPU count alone. Apply
-application-level admission control before accepting calls. Tune `max_batch_size`,
+Choose `max_concurrency` from downstream capacity, not CPU count alone. Set
+`max_pending_invocations` to the total policy/execution work one process can safely
+hold; monitor `busy` and `peak_pending_invocations` to find sustained saturation.
+Tune `max_batch_size`,
 `max_argument_bytes`, `max_output_bytes`, `max_value_depth`, and `max_value_nodes`
 below upstream transport limits, with enough headroom for legitimate contracts.
 Keep `ToolRegistry.max_tools` close to the catalog size you actually expose.
@@ -63,8 +65,8 @@ TTL, and remember that the final result remains in memory until expiry. Local
 stdio does not expose `tasks.list`; a network adapter must bind get/result/cancel
 to authenticated requestor identity and add per-requestor quotas and rate limits.
 
-These limits bound one runtime request; they are not tenant quotas or request-rate
-limits. A network host still needs authentication, admission control, rate limits,
+These limits are process-local; they are not tenant quotas or request-rate limits.
+A network host still needs authentication, per-principal admission, rate limits,
 and aggregate memory/connection limits.
 
 MCP recommends a client-side human confirmation surface for tool calls. Preserve that
@@ -74,10 +76,11 @@ server policy cannot prove that a person reviewed a call. See the official
 
 ## Handle results deliberately
 
-Branch on `ToolStatus`; do not infer success from a truthy output. The runtime does
-not mark any failure retryable because a timed-out sync function may still finish
-and cause its side effect. Apply a retry policy only when the tool's semantics make
-that safe.
+Branch on `ToolStatus`; do not infer success from a truthy output. A `busy` result is
+retryable because no tool or policy code ran, but use capped exponential backoff with
+jitter rather than retrying immediately. Other failures remain non-retryable because
+a timed-out sync function may still finish and cause its side effect. Apply any
+broader retry policy only when the tool's semantics make that safe.
 
 Let caller cancellation propagate. Use `async with ToolRuntime(...)` so resources
 close on success and failure. Context-manager close does not wait for a timed-out

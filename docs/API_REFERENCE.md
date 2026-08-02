@@ -1,6 +1,6 @@
 # API reference
 
-This page describes the complete supported API for `2.0.0a1`. Imports not exposed
+This page describes the complete supported API for `2.0.0a2`. Imports not exposed
 from `samsarix_core.__all__` are internal.
 
 ## `samsarix_tool`
@@ -57,6 +57,7 @@ ToolRuntime(
     registry: ToolRegistry | None = None,
     *,
     max_concurrency: int = 8,
+    max_pending_invocations: int = 256,
     max_batch_size: int = 256,
     max_argument_bytes: int = 1_048_576,
     max_output_bytes: int = 1_048_576,
@@ -82,6 +83,15 @@ Timeout precedence is invocation override, decorator timeout, then runtime defau
 The timeout includes policy evaluation and time waiting for a concurrency slot. Batch results preserve
 order. A batch larger than `max_batch_size` raises `ValueError` before any call is
 started. `aclose()` is idempotent.
+
+`max_pending_invocations` bounds all admitted calls that have not reached a terminal
+result, including validation, policy, execution-slot waiting, and execution. Calls
+beyond the cap fail fast with status `busy`, safe code `runtime_busy`, and
+`retryable=True`; their arguments are not retained in runtime metrics or errors.
+`RuntimeMetrics.busy`, `pending_invocations`, and `peak_pending_invocations` expose
+content-free saturation signals. Batch workers are capped by both concurrency and
+pending capacity so an isolated batch processes every accepted item rather than
+self-shedding. This process-local limit is not a request-rate or per-tenant quota.
 
 Argument and output sizes are the UTF-8 byte length of compact JSON. The root is
 depth zero; every child increments depth. Each container and scalar is one node,
@@ -211,9 +221,10 @@ All public models are frozen, slotted dataclasses.
   and optional structured error. `success` is a convenience property.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
 - `ToolProgress`: numeric progress, optional total, and optional human-readable message.
-- `RuntimeMetrics`: content-free counters only, including policy denials.
-- `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `denied`, `timed_out`,
-  `failed`, and `runtime_closed`.
+- `RuntimeMetrics`: content-free counters only, including policy denials and runtime
+  saturation.
+- `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `denied`, `busy`,
+  `timed_out`, `failed`, and `runtime_closed`.
 - `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.
 
 `ToolSpec`, `ToolResult`, `ToolError`, and `RuntimeMetrics` provide `to_dict()`.
