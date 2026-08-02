@@ -30,18 +30,19 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.6 pins Core
-  commit `04cf5ba7ca7eb2defcb946f538d62291762db109` and proves a confined,
+- External consumer: `samsarix-integration-examples` version 0.2.7 pins Core
+  commit `1558624ba294f47d59ea1713ac5609ef3122239e` and proves a confined,
   privacy-first redaction workflow, exact typed result discovery, and
   response-free asynchronous cancellation through the public MCP API. It also
   proves progress-token correlation, monotonic content-free updates, notification
   ordering, cancellation cutoff, artifact privacy, client-selected operational-log
   filtering, content-free terminal events, retained sync-worker capacity after timeout,
   and bounded shutdown quiescence. Its portable Visual Studio Code workspace is
-  configuration-discovered by VS Code 1.131.0, while official MCP Inspector 0.21.2
-  independently proves installed-wheel discovery and invocation.
-- Next: prove the task lifecycle from the independently packaged redaction consumer,
-  complete the signed-in Visual Studio Code trust/tool-approval journey, and rerun
+  configuration-discovered by VS Code 1.131.0; the preceding v0.2.6 contract was also
+  independently discovered and invoked through official MCP Inspector 0.21.2. The
+  consumer now proves real redaction through task creation, status, blocking result
+  retrieval, related-task progress, bounded private retention, and safe task cancellation.
+- Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
   the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
@@ -64,7 +65,8 @@ remain separate decisions.
   1 MiB source ingestion, safe errors, filesystem confinement, and version
   compatibility. Consumer-owned asynchronous MCP cancellation, bounded progress,
   cancellation cutoff, content-free operational logging, synchronous timeout
-  accounting, and bounded shutdown quiescence are now proven.
+  accounting, bounded shutdown quiescence, and the experimental MCP task lifecycle are
+  now proven.
 - Add authentication evidence only when an authenticated network transport is in
   scope; the supported stdio bridge delegates trust to the process launcher.
 - Make one implementation canonical; remove or freeze duplicate behavior only after parity and rollback are proven.

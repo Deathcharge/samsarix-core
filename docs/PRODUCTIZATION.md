@@ -1,6 +1,6 @@
 # Samsarix Core Productization Record
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 
 ## Current repository assessment
 
@@ -259,9 +259,10 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded
   shutdown quiescence, official MCP Inspector invocation, and Visual Studio Code
-  configuration discovery from `samsarix-integration-examples` 0.2.6 at merge commit
-  `6fd45f7f36ad57ad5a9ceb372af5b73193739624`; the consumer pins Core commit
-  `04cf5ba7ca7eb2defcb946f538d62291762db109`.
+  configuration discovery from `samsarix-integration-examples`; version 0.2.7 at merge
+  commit `51cc3fb3f1fb4bd484ebef58d2c9ab22acc24623` pins Core commit
+  `1558624ba294f47d59ea1713ac5609ef3122239e` and additionally proves the bounded
+  experimental task lifecycle on the real redaction workflow.
 
 ## Deferred work and rationale
 
@@ -269,15 +270,14 @@ P2 framework/provider adapters, durable registry/invocation persistence, process
 isolation, and richer schema types remain deliberately deferred. Experimental MCP
 tasks retain bounded results only inside one server process and do not satisfy durable
 persistence or restart recovery. Those features are not required for the first useful
-release. One independent repository now proves the stable MCP boundary; task lifecycle
-evidence is the next consumer increment. Subsequent surface area should follow concrete
-consumer demand. Core's own
-[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30731486471)
-is green; the task-execution branch's local Python 3.11 suite has 98 tests and
-94.28% branch coverage. Exact hosted evidence remains required before merge.
-The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
-reported an account billing/spending-limit problem, so its local 31-test and
-installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.
+release. One independent repository now proves both the stable MCP boundary and the
+experimental task lifecycle. Subsequent surface area should follow concrete consumer
+demand. Core's own post-merge
+[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30735632274)
+is green with 98 tests and 94.28% branch coverage. The consumer's separate Python
+3.11-3.13 jobs could not start because GitHub reported an account
+billing/spending-limit problem, so its local 33-test installed-wheel evidence is
+recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 

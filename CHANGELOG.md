@@ -41,6 +41,9 @@ This is a replacement alpha rather than a compatibility release.
   after timeout and bounded shutdown quiescence;
 - official MCP Inspector installed-wheel invocation and Visual Studio Code workspace
   configuration-discovery evidence from the independent consumer;
+- independently packaged redaction evidence for experimental task creation, status,
+  blocking result retrieval, related-task progress, bounded retention, cancellation,
+  and private task state;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
