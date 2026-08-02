@@ -28,10 +28,10 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.1 pins Core
-  commit `0437f84799a124ef8407597591e5eb4a147495af` and proves a confined,
-  privacy-first redaction workflow plus exact typed result discovery through the
-  public MCP API.
+- External consumer: `samsarix-integration-examples` version 0.2.2 pins Core
+  commit `37a996bf0af4b5277990f3db6a7607ea70e14349` and proves a confined,
+  privacy-first redaction workflow, exact typed result discovery, and
+  response-free asynchronous cancellation through the public MCP API.
 - Next: rerun the consumer matrix after GitHub Actions billing is restored. Use
   observed consumer demand and confirmed contract gaps—not framework parity—to
   prioritize dataclass, enum, or constrained-value schema support.
@@ -52,8 +52,8 @@ remain separate decisions.
 - Define a public API, event, schema, artifact, or deployment contract before connecting to Samsarix Unified.
 - [x] Add a consumer-owned local-process contract fixture covering privacy,
   1 MiB source ingestion, safe errors, filesystem confinement, and version
-  compatibility. Consumer-owned timeout and bounded-quiescence evidence remains
-  pending.
+  compatibility. Consumer-owned asynchronous MCP cancellation is now proven;
+  synchronous timeout and bounded-quiescence evidence remains pending.
 - Add authentication evidence only when an authenticated network transport is in
   scope; the supported stdio bridge delegates trust to the process launcher.
 - Make one implementation canonical; remove or freeze duplicate behavior only after parity and rollback are proven.
