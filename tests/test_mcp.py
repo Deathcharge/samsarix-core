@@ -481,6 +481,12 @@ async def test_stdio_cancels_active_calls_and_rejects_excess_admission() -> None
         },
         {
             "jsonrpc": "2.0",
+            "id": True,
+            "method": "tools/call",
+            "params": {"name": "slow_operation", "arguments": {}},
+        },
+        {
+            "jsonrpc": "2.0",
             "id": "excess",
             "method": "tools/call",
             "params": {"name": "slow_operation", "arguments": {}},
@@ -494,29 +500,38 @@ async def test_stdio_cancels_active_calls_and_rejects_excess_admission() -> None
     ]
 
     class GatedReader(io.BytesIO):
+        def __init__(self, value: bytes) -> None:
+            super().__init__(value)
+            self.gated = False
+
         def readline(self, size: int = -1) -> bytes:
             line = super().readline(size)
-            if b'"id": "excess"' in line:
+            message = json.loads(line) if line else {}
+            if message.get("id") == "excess":
+                self.gated = True
                 assert started.wait(timeout=1.0)
             return line
 
     payload = ("\n".join(json.dumps(message) for message in messages) + "\n").encode()
     writer = io.StringIO()
+    reader = GatedReader(payload)
     await serve_stdio(
         MCPServer(runtime),
-        input_stream=GatedReader(payload),
+        input_stream=reader,
         output_stream=writer,
         max_in_flight_requests=1,
         close_runtime=False,
     )
 
     responses = [json.loads(line) for line in writer.getvalue().splitlines()]
-    assert [response["id"] for response in responses] == [1, "excess", "catalog"]
-    assert responses[1]["error"] == {
+    assert reader.gated
+    assert [response["id"] for response in responses] == [1, None, "excess", "catalog"]
+    assert responses[1]["error"]["code"] == -32600
+    assert responses[2]["error"] == {
         "code": -32000,
         "message": "Too many in-flight MCP requests",
     }
-    assert responses[2]["result"]["tools"][0]["name"] == "slow_operation"
+    assert responses[3]["result"]["tools"][0]["name"] == "slow_operation"
     await asyncio.wait_for(stopped.wait(), timeout=1.0)
     assert runtime.metrics().cancelled == 1
     await runtime.aclose()
@@ -561,6 +576,82 @@ async def test_stdio_drains_an_admitted_call_at_normal_eof() -> None:
     responses = [json.loads(line) for line in writer.getvalue().splitlines()]
     assert [response["id"] for response in responses] == [1, 2]
     assert responses[1]["result"]["structuredContent"] == {"result": "done"}
+
+
+@pytest.mark.asyncio
+async def test_stdio_cancels_and_joins_siblings_after_background_write_failure() -> None:
+    started = Event()
+    stopped = asyncio.Event()
+    never_release = asyncio.Event()
+
+    @samsarix_tool(timeout=5.0)
+    async def slow_operation() -> str:
+        """Remain active while a sibling transport task fails."""
+
+        started.set()
+        try:
+            await never_release.wait()
+        finally:
+            stopped.set()
+        return "unexpected"
+
+    @samsarix_tool
+    async def fast_operation() -> str:
+        """Complete so its response exercises a broken writer."""
+
+        return "done"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(slow_operation)
+    runtime.register(fast_operation)
+    server = MCPServer(runtime)
+    await initialize(server)
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": "slow",
+            "method": "tools/call",
+            "params": {"name": "slow_operation", "arguments": {}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": "fast",
+            "method": "tools/call",
+            "params": {"name": "fast_operation", "arguments": {}},
+        },
+    ]
+
+    class GatedReader(io.BytesIO):
+        gated = False
+
+        def readline(self, size: int = -1) -> bytes:
+            line = super().readline(size)
+            message = json.loads(line) if line else {}
+            if message.get("id") == "fast":
+                self.gated = True
+                assert started.wait(timeout=1.0)
+            return line
+
+    class FailingWriter(io.StringIO):
+        def write(self, value: str) -> int:
+            raise OSError("writer failed")
+
+    payload = ("\n".join(json.dumps(message) for message in messages) + "\n").encode()
+    reader = GatedReader(payload)
+    try:
+        with pytest.raises(OSError, match="writer failed"):
+            await serve_stdio(
+                server,
+                input_stream=reader,
+                output_stream=FailingWriter(),
+                close_runtime=False,
+            )
+        assert reader.gated
+        await asyncio.wait_for(stopped.wait(), timeout=1.0)
+        assert runtime.metrics().cancelled == 1
+        assert runtime.metrics().in_flight == 0
+    finally:
+        await runtime.aclose()
 
 
 @pytest.mark.asyncio

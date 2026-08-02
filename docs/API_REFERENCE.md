@@ -133,12 +133,13 @@ await serve_stdio(
 )
 ```
 
-Runs the server using newline-delimited MCP messages. The limit must be at least
-256 bytes and caps individual input and output messages. Tool calls are dispatched
-concurrently so cancellation notifications remain responsive, with pending calls
-bounded separately by the positive `max_in_flight_requests` cap. Excess calls
-receive JSON-RPC server error `-32000`. The default streams are binary stdin and
-UTF-8 binary stdout. Only protocol messages are written to stdout.
+Runs the server using newline-delimited MCP messages. `max_message_bytes` must be
+at least 256 and caps individual input and output messages. Tool calls are
+dispatched concurrently so cancellation notifications remain responsive, with
+pending calls bounded separately by the positive `max_in_flight_requests` cap.
+Excess calls receive JSON-RPC server error `-32000`. The default streams are
+binary stdin and UTF-8 binary stdout. Only protocol messages are written to
+stdout.
 
 ## Data models
 

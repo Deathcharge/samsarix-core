@@ -136,6 +136,8 @@ class MCPServer:
             return self._error(request_id, _INTERNAL_ERROR, "Internal server error")
 
     def _cancel_request(self, params: Mapping[str, Any]) -> None:
+        """Cancel one active call named by a valid client request id."""
+
         request_id = params.get("requestId")
         if not _valid_request_id(request_id):
             return
@@ -298,9 +300,22 @@ async def serve_stdio(
     task_errors: list[BaseException] = []
 
     def request_finished(task: asyncio.Task[None]) -> None:
+        """Remove one transport task and retain any unhandled failure."""
+
         in_flight.discard(task)
         if not task.cancelled() and (error := task.exception()) is not None:
             task_errors.append(error)
+            for sibling in tuple(in_flight):
+                sibling.cancel()
+
+    async def cancel_in_flight() -> None:
+        """Cancel and join every transport task admitted at this instant."""
+
+        pending = tuple(in_flight)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     try:
         while True:
@@ -377,29 +392,19 @@ async def serve_stdio(
             await asyncio.gather(*tuple(in_flight))
         if task_errors:
             raise task_errors.pop(0)
-    except asyncio.CancelledError:
-        for task in tuple(in_flight):
-            task.cancel()
-        if in_flight:
-            await asyncio.gather(*tuple(in_flight), return_exceptions=True)
+    except BaseException:
+        await cancel_in_flight()
         raise
     finally:
         if close_runtime:
             await server.runtime.aclose()
 
 
-async def _handle_json_line(server: MCPServer, line: bytes) -> dict[str, JSONValue] | None:
-    message, error = _parse_json_line(line)
-    if error is not None:
-        return error
-    if message is None:
-        return MCPServer._error(None, _INTERNAL_ERROR, "Internal server error")
-    return await server.handle(message)
-
-
 def _parse_json_line(
     line: bytes,
 ) -> tuple[dict[str, Any] | None, dict[str, JSONValue] | None]:
+    """Parse one bounded input line into either a message or safe error."""
+
     try:
         decoded = line.decode("utf-8")
         message = json.loads(decoded)
@@ -411,7 +416,13 @@ def _parse_json_line(
 
 
 def _is_tool_call_request(message: Mapping[str, Any]) -> bool:
-    return "id" in message and message.get("method") == "tools/call"
+    """Return whether a message is a schedulable tool call with a valid id."""
+
+    return (
+        "id" in message
+        and _valid_request_id(message.get("id"))
+        and message.get("method") == "tools/call"
+    )
 
 
 async def _handle_and_write(
@@ -422,6 +433,8 @@ async def _handle_and_write(
     max_message_bytes: int,
     lock: asyncio.Lock,
 ) -> None:
+    """Handle one parsed message and write its optional response."""
+
     response = await server.handle(message)
     if response is not None:
         await _write_response(
@@ -439,6 +452,8 @@ async def _write_response(
     max_message_bytes: int,
     lock: asyncio.Lock,
 ) -> None:
+    """Serialize and emit one size-bounded response under the writer lock."""
+
     encoded = _json_text(response)
     if len(encoded.encode("utf-8")) > max_message_bytes:
         fallback_id = response.get("id")
