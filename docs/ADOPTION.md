@@ -12,11 +12,11 @@ Repository:
 
 | Evidence | Value |
 | --- | --- |
-| Core contract commit | `6f54bcdf428359f1eee654944b6abc8788575eab` |
+| Core contract commit | `0437f84799a124ef8407597591e5eb4a147495af` |
 | Core package version | `2.0.0a1` |
-| Consumer merge commit | `7bd7fe4bf75de2c88db723be67e17f9ca7f5fc87` |
-| Consumer pull request | [samsarix-integration-examples#3](https://github.com/Deathcharge/samsarix-integration-examples/pull/3) |
-| Consumer package version | `0.2.0` |
+| Consumer merge commit | `bfb8c001fcaad7464e6b745c1e332ee8a52a3cd9` |
+| Consumer pull request | [samsarix-integration-examples#4](https://github.com/Deathcharge/samsarix-integration-examples/pull/4) |
+| Consumer package version | `0.2.1` |
 | Integration Guard provenance | [`samsarix-integration-guard`](https://github.com/Deathcharge/samsarix-integration-guard) `0.2.0` at `1aa711d89eaedcc396f0cd6eb416fb4253da3f5e` |
 | Orchestration provenance | [`samsarix-agent-orchestration`](https://github.com/Deathcharge/samsarix-agent-orchestration) `0.1.0` at `0dfc050cf9a4582c9fa8d34d74b1ca97d43c9005` |
 | Supported consumer Python | 3.11-3.13 |
@@ -29,12 +29,14 @@ and Orchestration provides checkpointed recovery and idempotency. A client may
 name one JSON file in a configured inbox and one artifact filename. It cannot
 supply an absolute path or path separator, linked files are rejected, conflicting
 artifacts are not replaced, and successful MCP results contain metadata rather
-than document content or local paths.
+than document content or local paths. Its public `RedactionResult` `TypedDict`
+also proves Core's exact, closed output schemas and result validation from an
+independently packaged consumer.
 
 The consumer's merged
-[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/7bd7fe4bf75de2c88db723be67e17f9ca7f5fc87/pyproject.toml)
+[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/bfb8c001fcaad7464e6b745c1e332ee8a52a3cd9/pyproject.toml)
 is the dependency manifest. It declares
-`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@6f54bcdf428359f1eee654944b6abc8788575eab`;
+`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@0437f84799a124ef8407597591e5eb4a147495af`;
 the installed public package reports Core version `2.0.0a1`. The same manifest
 records the Guard and Orchestration commits above, and the compatibility test
 asserts all three installed package versions.
@@ -46,7 +48,7 @@ The consumer suite completed locally on Windows with Python 3.11.9:
 ```text
 python -m ruff check .       -> passed
 python -m mypy               -> passed, strict mode
-python -m pytest -q          -> 28 passed, 90.91% branch coverage
+python -m pytest -q          -> 28 passed, 91.17% branch coverage
 python -m bandit -q -r src   -> passed
 python -m build --no-isolation
 python -m twine check dist/* -> wheel and sdist passed
@@ -54,17 +56,19 @@ python -m twine check dist/* -> wheel and sdist passed
 
 A fresh virtual environment installed the consumer wheel with dependencies
 provided from their exact local commit worktrees. Import metadata resolved to
-`0.2.0`, and both `samsarix-redaction-mcp --help` and
+`0.2.1`, the public `RedactionResult` exposed its six required keys, and both
+`samsarix-redaction-mcp --help` and
 `samsarix-redaction-pipeline --help` completed successfully.
 
 Final local artifacts were:
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `samsarix_integration_examples-0.2.0-py3-none-any.whl` | 16,807 | `c8d36157a3f6eb28f812c7846926954d6f4ac937df047934bdbfd5f7335fce20` |
-| `samsarix_integration_examples-0.2.0.tar.gz` | 25,729 | `39dd40955165b4e8632e6a9f2ca1d39e0df44e917769b277d7a07e13cca8be5a` |
+| `samsarix_integration_examples-0.2.1-py3-none-any.whl` | 16,979 | `dcf850c5cd18380126e663dfeba01ae584d3bfb22cb65c6f941fabe6c4ef2290` |
+| `samsarix_integration_examples-0.2.1.tar.gz` | 26,223 | `78933312ee5f301f3b332181162ddef3595a49c99ab78277508f6e974b1eb50d` |
 
-The consumer's GitHub Actions jobs did not start: GitHub attached an account
+The consumer's [GitHub Actions run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30725650841)
+did not start its jobs: GitHub attached an account
 billing/spending-limit failure before checkout, leaving zero executed steps and
 no job logs. That infrastructure failure is not represented as hosted test
 evidence. The workflow should be rerun after the account's Billing & plans issue
@@ -91,5 +95,4 @@ remove the consumer workspace's generated artifacts and sanitized checkpoints.
 - Record an independently operated deployment or downstream repository before
   claiming production adoption.
 - Use consumer demand, not framework parity, to decide whether dataclass, enum,
-  or constrained-value schemas belong in Core after the named-field `TypedDict`
-  gap is closed.
+  or constrained-value schemas belong in Core.

@@ -27,9 +27,10 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.0 pins Core
-  commit `6f54bcdf428359f1eee654944b6abc8788575eab` and proves a confined,
-  privacy-first redaction workflow through the public MCP API.
+- External consumer: `samsarix-integration-examples` version 0.2.1 pins Core
+  commit `0437f84799a124ef8407597591e5eb4a147495af` and proves a confined,
+  privacy-first redaction workflow plus exact typed result discovery through the
+  public MCP API.
 - Next: rerun the consumer matrix after GitHub Actions billing is restored. Use
   observed consumer demand and confirmed contract gaps—not framework parity—to
   prioritize dataclass, enum, or constrained-value schema support.
