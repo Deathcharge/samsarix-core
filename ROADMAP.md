@@ -36,8 +36,8 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.9 pins Core
-  commit `8e3d9460709a21b84934bc64e975824ca1882046` and proves a confined,
+- External consumer: `samsarix-integration-examples` version 0.2.10 pins Core
+  commit `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90` and proves a confined,
   privacy-first redaction workflow, exact typed result discovery, and
   response-free asynchronous cancellation through the public MCP API. It also
   proves progress-token correlation, monotonic content-free updates, notification
@@ -52,6 +52,8 @@ remain separate decisions.
   independently registered out-of-contract tool without private-input disclosure.
   Runtime saturation additionally proves fail-fast retryable overload signaling,
   policy bypass, private-argument redaction, and capacity cleanup after cancellation.
+  A host-owned Core lifecycle handler also proves paired, correlated start/success
+  events without secrets, filenames, run IDs, output names, or workspace paths.
 - Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
   the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader

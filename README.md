@@ -132,7 +132,7 @@ progress and logging, bounded task retention, admission limits, and security bou
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.9 pins Core commit `8e3d9460709a21b84934bc64e975824ca1882046`
+version 0.2.10 pins Core commit `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
@@ -150,6 +150,10 @@ reflecting that tool's private argument.
 It separately saturates Core's direct-runtime admission cap and proves MCP returns a
 retryable, content-free overload result without another policy evaluation, tool
 execution, retained private arguments, or an output artifact.
+Its host-owned lifecycle handler also receives correlated `started` and `success`
+events for the real policy-gated redaction call while consumer tests prove that source
+secrets, filenames, output names, run IDs, and workspace paths never enter the event
+stream.
 The preceding v0.2.6 contract was also discovered and invoked through official MCP
 Inspector 0.21.2; a portable VS Code workspace is configuration-discovered, with
 signed-in trust and tool approval still awaiting operator acceptance.

@@ -5,9 +5,11 @@ claims. Samsarix Core has a merged independent repository consumer; it does not
 yet have a documented third-party production deployment, paid customer, usage
 volume, or service-level commitment.
 
-The latest `2.0.0a4` prerelease has independently verified artifacts and installed-wheel
-bulkhead behavior, but the repository consumer below intentionally remains pinned to
-`2.0.0a3`. Release verification is not presented as consumer-adoption evidence.
+The latest published `2.0.0a4` prerelease has independently verified artifacts and
+installed-wheel bulkhead behavior. The repository consumer below pins the merged
+lifecycle-observability commit that follows that release; it reports package metadata
+`2.0.0a4` until the immutable `2.0.0a5` tag is published. Release verification is not
+presented as consumer-adoption evidence.
 
 ## Privacy-first redaction MCP consumer
 
@@ -16,15 +18,15 @@ Repository:
 
 | Evidence | Value |
 | --- | --- |
-| Core contract commit | `8e3d9460709a21b84934bc64e975824ca1882046` |
-| Core package version | `2.0.0a3` |
-| Consumer merge commit | `688c629b25829df88adb21367f9d8e7a15243f16` |
-| Consumer pull request | [samsarix-integration-examples#12](https://github.com/Deathcharge/samsarix-integration-examples/pull/12) |
-| Consumer package version | `0.2.9` |
+| Core contract commit | `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90` |
+| Core package metadata at pinned commit | `2.0.0a4` |
+| Consumer merge commit | `0455b7a16e0309ba295c0ddd8ad3776d709ea782` |
+| Consumer pull request | [samsarix-integration-examples#13](https://github.com/Deathcharge/samsarix-integration-examples/pull/13) |
+| Consumer package version | `0.2.10` |
 | Integration Guard provenance | [`samsarix-integration-guard`](https://github.com/Deathcharge/samsarix-integration-guard) `0.2.0` at `1aa711d89eaedcc396f0cd6eb416fb4253da3f5e` |
 | Orchestration provenance | [`samsarix-agent-orchestration`](https://github.com/Deathcharge/samsarix-agent-orchestration) `0.1.0` at `0dfc050cf9a4582c9fa8d34d74b1ca97d43c9005` |
 | Declared consumer Python | 3.11-3.13 |
-| Executed consumer Python in this record | 3.11.9; extra source-tree pass on 3.14.6 |
+| Executed consumer Python in this record | 3.14.6 source tree and fresh installed wheel |
 | Compatibility owner | Samsarix LLC |
 | Support level | Best effort; no SLA |
 
@@ -50,6 +52,14 @@ logging defaults to `warning`, so a successful event is suppressed until the cli
 selects `info`. The accepted event contains only the public tool name, invocation ID,
 status, and duration; it follows both progress phases and precedes the response. A
 cancelled call emits no terminal log.
+
+The consumer now passes a host-owned lifecycle handler into Core's public runtime API.
+One real, policy-gated redaction invocation produces exactly one `started` and one
+`success` event with the same random invocation identifier, the public tool name, and a
+terminal duration. The consumer serializes those events and proves that seeded source
+secrets, the source and output filenames, the private run identifier, and the resolved
+workspace path are absent. This is provider-neutral process-local observation, not a
+durable audit log, trace exporter, or claim that arbitrary downstream handlers are safe.
 
 The consumer adapter now installs a fail-closed host policy through Core's public
 `ToolPolicyContext` and `ToolPolicyDecision` API. It admits only the exact redaction
@@ -100,22 +110,22 @@ was signed out of Copilot, so no trust prompt or VS Code tool call was accepted.
 desktop configuration-discovery evidence, not a completed desktop-agent journey.
 
 The consumer's merged
-[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/688c629b25829df88adb21367f9d8e7a15243f16/pyproject.toml)
+[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/0455b7a16e0309ba295c0ddd8ad3776d709ea782/pyproject.toml)
 is the dependency manifest. It declares
-`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@8e3d9460709a21b84934bc64e975824ca1882046`;
-the installed public package reports Core version `2.0.0a3`. The same manifest
+`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90`;
+the installed public package reports Core version `2.0.0a4`. The same manifest
 records the Guard and Orchestration commits above, and the compatibility test
 asserts all three installed package versions.
 
 ## Verified contract
 
 The installed-wheel consumer contract checks completed locally on Windows with Python
-3.11.9:
+3.14.6:
 
 ```text
 python -m ruff check .       -> passed
 python -m mypy               -> passed, strict mode
-python -m pytest             -> 35 passed, 91.03% branch coverage from installed wheel
+python -m pytest             -> 36 passed, 91.03% branch coverage from installed wheel
 python -m bandit -q -r src   -> passed
 ```
 
@@ -127,12 +137,12 @@ python -m twine check <artifacts> -> wheel and sdist passed
 ```
 
 A fresh virtual environment installed the consumer wheel with dependencies resolved
-from their exact public Git commits. Import metadata resolved to `0.2.9`, and pip cloned
-Core and resolved commit `8e3d9460709a21b84934bc64e975824ca1882046`.
+from their exact public Git commits. Import metadata resolved to `0.2.10`, and pip cloned
+Core and resolved commit `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90`.
 Outside the source checkout, the installed consumer suite proved both the permitted real
 redaction path and safe denial of the out-of-contract tool. Both installed CLIs also
 passed their help journeys. The source-tree development run on Python 3.14.6 separately
-completed the same 35 tests at 91.64% branch coverage. Python 3.12 and 3.13 remain
+completed the same 36 tests at 91.64% branch coverage. Python 3.12 and 3.13 remain
 declared consumer support, but their hosted jobs did not execute in this record because
 the account billing gate stopped the matrix before checkout.
 
@@ -140,14 +150,14 @@ Final local artifacts were:
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `samsarix_integration_examples-0.2.9-py3-none-any.whl` | 18,717 | `6eb601bfed0ee56a8d211b24703a3be98ea631c96f7ab0439b11588bf9faaa73` |
-| `samsarix_integration_examples-0.2.9.tar.gz` | 38,587 | `98239e0fdcd16219f671e429acf1fe28c5a2973c8894a87bd3e3cdcf4782ff5e` |
+| `samsarix_integration_examples-0.2.10-py3-none-any.whl` | 18,838 | `8cf067bd326d7a565b3879580af0ffa66570e6137ea8b6f389bdf2d119e7af1e` |
+| `samsarix_integration_examples-0.2.10.tar.gz` | 39,381 | `169d8ab69d568ada568d7224c2f0f459ee2ee0b7e583738b6195d3e3aa97b398` |
 
 CodeRabbit attached a green high-level status, but its free-plan notice says the pass
 provides only a summary and walkthrough; it is not counted as independent line-level
 review evidence. The consumer's
-[pull-request run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30741765513)
-and [post-merge run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30741792998)
+[pull-request run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30746005628)
+and [post-merge run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30746052161)
 did not start their jobs: GitHub attached an account
 billing/spending-limit failure before checkout, leaving zero executed steps and
 no job logs. That infrastructure failure is not represented as hosted test
