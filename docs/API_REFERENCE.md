@@ -66,6 +66,7 @@ ToolRuntime(
     max_progress_message_bytes: int = 4_096,
     default_timeout: float = 30.0,
     expose_exceptions: bool = False,
+    policy: ToolPolicy | None = None,
 )
 ```
 
@@ -78,7 +79,7 @@ ToolRuntime(
 - `await aclose(*, wait_for_sync=False, timeout=None) -> bool`
 
 Timeout precedence is invocation override, decorator timeout, then runtime default.
-The timeout includes time waiting for a concurrency slot. Batch results preserve
+The timeout includes policy evaluation and time waiting for a concurrency slot. Batch results preserve
 order. A batch larger than `max_batch_size` raises `ValueError` before any call is
 started. `aclose()` is idempotent.
 
@@ -102,6 +103,17 @@ cancels active async waits, cancels sync work that has not started, and returns
 whether submitted sync work is quiescent. Its default does not wait; pass
 `wait_for_sync=True` with a finite timeout when shutdown needs bounded quiescence.
 Calling it again is safe. The async context manager uses the non-waiting default.
+
+`policy` must be an async callable that receives one `ToolPolicyContext` after the
+tool exists and its arguments pass schema/resource validation. The context contains the
+invocation ID, a detached `ToolSpec`, and a detached default-filled argument mapping.
+Return `ToolPolicyDecision.ALLOW` or `ToolPolicyDecision.DENY`. Policy evaluation is
+bounded to `max_concurrency`; denial returns status `denied` with safe code
+`tool_denied`, while exceptions or any other return value fail closed with status
+`failed` and safe code `tool_policy_failed`. Neither path runs the tool. The same policy
+applies to direct, batch, ordinary MCP, and task-augmented MCP calls. Policy context is
+not serialized or logged by Core, but it contains application input and must be treated
+as sensitive. Use an outer persistent workflow for long-running human approval.
 
 `progress_handler` is an optional sync or async callable receiving immutable
 `ToolProgress` values. An asynchronous tool reports through
@@ -191,13 +203,17 @@ All public models are frozen, slotted dataclasses.
   async state, optional title, read-only/destructive/idempotent/open-world hints,
   and MCP task-support mode.
 - `ToolCall`: name, arguments, and optional timeout override.
+- `ToolPolicyContext`: invocation ID plus detached validated arguments and tool spec;
+  unlike result models, it intentionally has no serialization helper.
+- `ToolPolicyDecision`: explicit `allow` or `deny` policy outcome.
+- `ToolPolicy`: async policy callable type alias.
 - `ToolResult`: invocation ID, tool name, status, UTC start time, duration, output,
   and optional structured error. `success` is a convenience property.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
 - `ToolProgress`: numeric progress, optional total, and optional human-readable message.
-- `RuntimeMetrics`: content-free counters only.
-- `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `timed_out`, `failed`,
-  and `runtime_closed`.
+- `RuntimeMetrics`: content-free counters only, including policy denials.
+- `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `denied`, `timed_out`,
+  `failed`, and `runtime_closed`.
 - `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.
 
 `ToolSpec`, `ToolResult`, `ToolError`, and `RuntimeMetrics` provide `to_dict()`.

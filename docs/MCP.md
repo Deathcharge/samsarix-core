@@ -11,7 +11,7 @@ The supported server surface is intentionally narrow:
 - `ping`;
 - `tools/list` with JSON Schema Draft 2020-12 input and output contracts;
 - `tools/call` with Samsarix validation, timeouts, concurrency limits, and safe
-  structured errors;
+  structured errors, including optional host-policy denial;
 - requested `notifications/progress` updates from cooperative asynchronous tools;
 - opt-in `logging/setLevel` and content-free `notifications/message` operational
   events;
@@ -73,6 +73,18 @@ The metadata has conservative defaults:
 Annotations are hints, not an authorization system. A client must not trust
 annotations from an untrusted server, and an application must still enforce its
 own identity, permissions, tenant boundaries, and human-approval policy.
+
+## Apply a server-side policy without replacing client approval
+
+An `MCPServer` uses its runtime's optional `policy` for ordinary and task-augmented
+calls. The policy runs after argument validation and before the tool, and a denial is a
+safe `isError: true` result with Samsarix status `denied`. It receives a detached call
+snapshot that Core never adds to protocol output or operational logs.
+
+This is a programmatic host gate, not MCP authorization or a confirmation prompt. The
+MCP specification recommends that applications provide a human the ability to deny
+tool invocations, so clients should continue to show and approve sensitive actions:
+<https://modelcontextprotocol.io/specification/2025-11-25/server/tools>.
 
 ## Structured output
 
@@ -346,6 +358,8 @@ already-computed tool result remains unchanged.
 - `serve_stdio()` admits at most 64 active tool-call or task-result requests by
   default; tune the cap with `max_in_flight_requests`.
 - Runtime timeouts and concurrency controls continue to apply to MCP calls.
+- Host-policy evaluation is bounded, included in invocation timeout/cancellation, and
+  precedes any tool progress or side effect.
 - Progress is opt-in, strictly increasing, update-capped, message-bounded, and
   automatically closed before a call's terminal response.
 - Progress messages cross the protocol boundary; keep them free of sensitive data.

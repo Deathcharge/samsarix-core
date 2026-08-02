@@ -14,6 +14,8 @@ import pytest
 from samsarix_core import (
     ProgressHandlerError,
     ToolCall,
+    ToolPolicyContext,
+    ToolPolicyDecision,
     ToolProgress,
     ToolRuntime,
     ToolStatus,
@@ -489,6 +491,205 @@ async def test_batch_size_is_bounded_before_workers_are_created() -> None:
         await runtime.aclose()
 
     assert runtime.metrics().calls_total == 0
+
+
+@pytest.mark.asyncio
+async def test_policy_receives_detached_validated_calls_and_fails_closed_on_denial() -> None:
+    executions: list[tuple[list[int], str]] = []
+    snapshots: list[ToolPolicyContext] = []
+
+    @helix_tool
+    async def guarded_total(values: list[int], label: str = "default") -> int:
+        """Sum values after the host policy allows execution."""
+
+        executions.append((values, label))
+        return sum(values)
+
+    async def policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        snapshots.append(context)
+        label = context.arguments["label"]
+        context.arguments["values"].append(99)
+        context.spec.input_schema.clear()
+        return ToolPolicyDecision.DENY if label == "deny" else ToolPolicyDecision.ALLOW
+
+    runtime = ToolRuntime(policy=policy)
+    runtime.register(guarded_total)
+    try:
+        allowed = await runtime.invoke("guarded_total", {"values": [1, 2]})
+        denied = await runtime.invoke("guarded_total", {"values": [4], "label": "deny"})
+        invalid = await runtime.invoke("guarded_total", {"values": ["private"]})
+        missing = await runtime.invoke("private-tool", {"secret": "value"})
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    assert allowed.status is ToolStatus.SUCCESS
+    assert allowed.output == 3
+    assert denied.status is ToolStatus.DENIED
+    assert denied.error is not None
+    assert denied.error.to_dict() == {
+        "code": "tool_denied",
+        "message": "Tool invocation was denied by host policy",
+        "retryable": False,
+    }
+    assert invalid.status is ToolStatus.INVALID_ARGUMENTS
+    assert missing.status is ToolStatus.NOT_FOUND
+    assert executions == [([1, 2], "default")]
+    assert len(snapshots) == 2
+    assert snapshots[0].invocation_id == allowed.invocation_id
+    assert snapshots[1].invocation_id == denied.invocation_id
+    assert snapshots[0].arguments["label"] == "default"
+    assert runtime.registry.get("guarded_total").input_schema["properties"]
+    assert metrics.calls_total == 4
+    assert metrics.succeeded == 1
+    assert metrics.denied == 1
+    assert metrics.invalid_arguments == 1
+    assert metrics.not_found == 1
+    assert metrics.in_flight == 0
+    assert metrics.to_dict()["denied"] == 1
+
+
+@pytest.mark.asyncio
+async def test_policy_exceptions_and_invalid_decisions_are_safe_failures() -> None:
+    executions = 0
+
+    @helix_tool
+    async def policy_target(mode: Literal["raise", "invalid"]) -> str:
+        """Run only after a valid policy decision."""
+
+        nonlocal executions
+        executions += 1
+        return mode
+
+    async def broken_policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        if context.arguments["mode"] == "raise":
+            raise RuntimeError("private-policy-detail")
+        return "allow"  # type: ignore[return-value]
+
+    runtime = ToolRuntime(policy=broken_policy, expose_exceptions=True)
+    runtime.register(policy_target)
+    try:
+        raised = await runtime.invoke("policy_target", {"mode": "raise"})
+        invalid = await runtime.invoke("policy_target", {"mode": "invalid"})
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    for result in (raised, invalid):
+        assert result.status is ToolStatus.FAILED
+        assert result.error is not None
+        assert result.error.to_dict() == {
+            "code": "tool_policy_failed",
+            "message": "Tool invocation policy failed",
+            "retryable": False,
+        }
+        assert "private-policy-detail" not in str(result.to_dict())
+    assert executions == 0
+    assert metrics.failed == 2
+    assert metrics.denied == 0
+    assert metrics.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_policy_timeout_and_cancellation_stop_before_tool_execution() -> None:
+    started = {name: asyncio.Event() for name in ("timeout", "cancel", "allow")}
+    stopped = {name: asyncio.Event() for name in ("timeout", "cancel")}
+    release = {name: asyncio.Event() for name in ("timeout", "cancel", "allow")}
+    executions: list[str] = []
+
+    @helix_tool
+    async def policy_wait_target(value: str) -> str:
+        """Return a value only after policy completion."""
+
+        executions.append(value)
+        return value
+
+    async def waiting_policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        value = context.arguments["value"]
+        started[value].set()
+        try:
+            await release[value].wait()
+        finally:
+            if value in stopped:
+                stopped[value].set()
+        return ToolPolicyDecision.ALLOW
+
+    runtime = ToolRuntime(policy=waiting_policy, max_concurrency=1)
+    runtime.register(policy_wait_target)
+    try:
+        timed_out = await runtime.invoke("policy_wait_target", {"value": "timeout"}, timeout=0.01)
+        await asyncio.wait_for(stopped["timeout"].wait(), timeout=1)
+
+        cancelled_call = asyncio.create_task(
+            runtime.invoke("policy_wait_target", {"value": "cancel"}, timeout=1)
+        )
+        await asyncio.wait_for(started["cancel"].wait(), timeout=1)
+        cancelled_call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled_call
+        await asyncio.wait_for(stopped["cancel"].wait(), timeout=1)
+
+        release["allow"].set()
+        allowed = await runtime.invoke("policy_wait_target", {"value": "allow"}, timeout=1)
+        metrics = runtime.metrics()
+    finally:
+        for event in release.values():
+            event.set()
+        await runtime.aclose()
+
+    assert timed_out.status is ToolStatus.TIMED_OUT
+    assert allowed.output == "allow"
+    assert executions == ["allow"]
+    assert metrics.timed_out == 1
+    assert metrics.cancelled == 1
+    assert metrics.succeeded == 1
+    assert metrics.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_policy_evaluation_concurrency_is_bounded() -> None:
+    active = 0
+    peak = 0
+
+    @helix_tool
+    async def policy_concurrency_target(value: int) -> int:
+        """Return one policy-approved value."""
+
+        return value
+
+    async def bounded_policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        del context
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return ToolPolicyDecision.ALLOW
+
+    runtime = ToolRuntime(policy=bounded_policy, max_concurrency=2)
+    runtime.register(policy_concurrency_target)
+    try:
+        results = await asyncio.gather(
+            *(runtime.invoke("policy_concurrency_target", {"value": value}) for value in range(6))
+        )
+    finally:
+        await runtime.aclose()
+
+    assert [result.output for result in results] == list(range(6))
+    assert peak == 2
+
+
+def test_policy_must_be_an_async_callable() -> None:
+    with pytest.raises(TypeError, match="async callable"):
+        ToolRuntime(policy=lambda context: ToolPolicyDecision.ALLOW)  # type: ignore[arg-type]
+
+    class AsyncPolicy:
+        async def __call__(self, context: ToolPolicyContext) -> ToolPolicyDecision:
+            del context
+            return ToolPolicyDecision.ALLOW
+
+    runtime = ToolRuntime(policy=AsyncPolicy())
+    asyncio.run(runtime.aclose())
 
 
 @pytest.mark.asyncio

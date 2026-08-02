@@ -9,7 +9,14 @@ import math
 
 import pytest
 
-from samsarix_core import MCPServer, ToolRuntime, report_progress, samsarix_tool
+from samsarix_core import (
+    MCPServer,
+    ToolPolicyContext,
+    ToolPolicyDecision,
+    ToolRuntime,
+    report_progress,
+    samsarix_tool,
+)
 from samsarix_core.mcp import MCP_PROTOCOL_VERSION
 
 
@@ -481,6 +488,61 @@ async def test_background_notification_failure_becomes_a_safe_failed_task() -> N
     assert result["result"]["isError"] is True
     assert "task_execution_failed" in encoded
     assert "private transport detail" not in encoded
+
+
+@pytest.mark.asyncio
+async def test_task_policy_denial_retains_only_a_safe_failed_result() -> None:
+    executed = False
+
+    @samsarix_tool(task_support="optional", destructive=True)
+    async def publish_private_record(record_id: str) -> str:
+        """Publish only after the host policy allows this record."""
+
+        nonlocal executed
+        executed = True
+        return record_id
+
+    async def deny_policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        assert context.arguments["record_id"] == "private-record"
+        return ToolPolicyDecision.DENY
+
+    runtime = ToolRuntime(policy=deny_policy)
+    runtime.register(publish_private_record)
+    server = MCPServer(runtime, enable_tasks=True)
+    try:
+        await initialize(server)
+        created = await request(
+            server,
+            "create-denied",
+            "tools/call",
+            {
+                "name": "publish_private_record",
+                "arguments": {"record_id": "private-record"},
+                "task": {},
+            },
+        )
+        identifier = task_id(created)
+        result = await request(server, "result-denied", "tasks/result", {"taskId": identifier})
+        state = await request(server, "state-denied", "tasks/get", {"taskId": identifier})
+    finally:
+        await server.aclose()
+
+    assert state["result"]["status"] == "failed"
+    assert result["result"]["isError"] is True
+    assert result["result"]["_meta"] == {
+        "com.samsarix/invocation-id": result["result"]["_meta"]["com.samsarix/invocation-id"],
+        "com.samsarix/status": "denied",
+        "com.samsarix/duration-ms": result["result"]["_meta"]["com.samsarix/duration-ms"],
+        "io.modelcontextprotocol/related-task": {"taskId": identifier},
+    }
+    assert json.loads(result["result"]["content"][0]["text"])["error"] == {
+        "code": "tool_denied",
+        "message": "Tool invocation was denied by host policy",
+        "retryable": False,
+    }
+    assert executed is False
+    assert runtime.metrics().denied == 1
+    assert "private-record" not in json.dumps([created, state, result])
 
 
 def test_task_configuration_and_metadata_validation() -> None:

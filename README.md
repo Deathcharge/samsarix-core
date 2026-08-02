@@ -18,10 +18,13 @@ persistence, or an untrusted-code sandbox.
 - turns annotated sync or async functions into inspectable tool contracts;
 - emits JSON Schema Draft 2020-12 input and output schemas;
 - validates arguments and outputs without surprising scalar coercion;
-- returns structured success, validation, timeout, missing-tool, and failure results;
+- returns structured success, validation, policy-denial, timeout, missing-tool, and
+  failure results;
 - bounds registry growth, batches, value size/complexity, concurrent work, and
   thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
+- optionally requires a bounded host-owned policy decision after validation and
+  before any tool code executes;
 - keeps metrics content-free and redacts exception messages by default;
 - exposes the same contracts through a dependency-free, cancellable,
   progress-aware, operationally observable, and admission-bounded MCP stdio bridge;
@@ -82,6 +85,11 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+For a fail-closed request-local capability example, run
+`python examples/policy_gate.py`. A host policy receives a detached, validated call
+snapshot and returns `ToolPolicyDecision.ALLOW` or `DENY`; it is not an authentication
+service or a durable human-approval workflow.
 
 ## Connect an MCP client
 
@@ -145,6 +153,7 @@ exception. It returns a `ToolResult` with one of these states:
 - `success`
 - `not_found`
 - `invalid_arguments`
+- `denied`
 - `timed_out`
 - `failed`
 - `runtime_closed`
@@ -155,6 +164,12 @@ structured-concurrency semantics keep working.
 `expose_exceptions=False` is the default. Failure results include the exception
 class but not its message or traceback. Enable exception messages only in a
 trusted local debugging context.
+
+An optional async `ToolRuntime(policy=...)` gate runs after argument validation and
+before sync or async tool execution. Policy denials and policy failures never expose
+the call snapshot in results; malformed policy output and policy exceptions fail
+closed. Evaluation is concurrency-bounded, and the invocation timeout and caller
+cancellation include policy waiting and execution.
 
 The runtime also rejects oversized, cyclic, deeply nested, or overly complex
 arguments before a tool runs. Output-limit failures are redacted structured
@@ -175,6 +190,9 @@ them to the host's actual workload.
   unauthenticated task listing.
 - Tool outputs are returned to the caller. Do not return secrets to an untrusted
   model, client, or log sink.
+- A policy is application code, not caller authentication or user consent. Keep MCP
+  confirmation in the client and durable pause/approve/resume state in the outer agent
+  or workflow.
 - Use one runtime within one event-loop lifecycle; close it with `async with` or
   `await runtime.aclose()`. The default close is non-blocking for surviving sync
   threads and reports whether they are already quiescent.

@@ -25,6 +25,9 @@ remain separate decisions.
   inventory example. Exact-head CI evidence remains required.
 - Runtime input/output, batch, and registry resources are now capped and covered
   by adversarial tests.
+- A host-owned async policy can centrally allow or deny validated direct, batch, MCP,
+  and task calls before execution; evaluation is bounded and fails closed without
+  replacing client authentication or durable human approval.
 - Timed-out sync work now retains its real concurrency slot and in-flight gauge;
   callers can inspect, wait for, and require bounded shutdown quiescence.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
@@ -42,8 +45,9 @@ remain separate decisions.
   independently discovered and invoked through official MCP Inspector 0.21.2. The
   consumer now proves real redaction through task creation, status, blocking result
   retrieval, related-task progress, bounded private retention, and safe task cancellation.
-- Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
-  the consumer matrix after GitHub Actions billing is restored. Use observed
+- Next: prove the invocation-policy contract from the independent redaction consumer,
+  complete the signed-in Visual Studio Code trust/tool-approval journey, and rerun the
+  consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
 - Review priority: Capture all 101 dirty/untracked paths.

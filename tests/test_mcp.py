@@ -14,6 +14,8 @@ import pytest
 from samsarix_core import (
     MCPServer,
     ProgressHandlerError,
+    ToolPolicyContext,
+    ToolPolicyDecision,
     ToolRuntime,
     report_progress,
     samsarix_tool,
@@ -382,6 +384,68 @@ async def test_mcp_tool_calls_return_structured_results_and_safe_errors() -> Non
     )
     assert failed is not None and failed["result"]["isError"] is True
     assert "token" not in json.dumps(failed)
+
+
+@pytest.mark.asyncio
+async def test_mcp_policy_denial_is_safe_observable_and_never_executes() -> None:
+    executed = False
+    notifications: list[dict] = []
+
+    @samsarix_tool(destructive=True)
+    async def delete_record(record_id: str) -> str:
+        """Delete one record only after host policy approval."""
+
+        nonlocal executed
+        executed = True
+        return record_id
+
+    async def deny_policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        assert context.spec.destructive is True
+        assert context.arguments["record_id"] == "private-record"
+        return ToolPolicyDecision.DENY
+
+    async def collect(message: dict) -> None:
+        notifications.append(message)
+
+    runtime = ToolRuntime(policy=deny_policy)
+    runtime.register(delete_record)
+    server = MCPServer(runtime, enable_logging=True)
+    try:
+        await initialize(server)
+        response = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "denied-call",
+                "method": "tools/call",
+                "params": {
+                    "name": "delete_record",
+                    "arguments": {"record_id": "private-record"},
+                    "_meta": {"progressToken": "denied-progress"},
+                },
+            },
+            notification_sender=collect,
+        )
+    finally:
+        await server.aclose()
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["_meta"]["com.samsarix/status"] == "denied"
+    assert json.loads(response["result"]["content"][0]["text"]) == {
+        "error": {
+            "code": "tool_denied",
+            "message": "Tool invocation was denied by host policy",
+            "retryable": False,
+        }
+    }
+    assert executed is False
+    assert runtime.metrics().denied == 1
+    assert not any(item["method"] == "notifications/progress" for item in notifications)
+    logs = [item for item in notifications if item["method"] == "notifications/message"]
+    assert len(logs) == 1
+    assert logs[0]["params"]["level"] == "error"
+    assert logs[0]["params"]["data"]["status"] == "denied"
+    assert "private-record" not in json.dumps([response, notifications])
 
 
 @pytest.mark.asyncio

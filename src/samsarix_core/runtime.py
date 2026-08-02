@@ -11,6 +11,7 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
+from copy import deepcopy
 from datetime import datetime, timezone
 from functools import partial
 from threading import Lock
@@ -18,7 +19,18 @@ from typing import Any, cast
 from uuid import uuid4
 
 from .errors import ProgressHandlerError, ToolArgumentError, ToolNotFoundError, ToolOutputError
-from .models import JSONValue, RuntimeMetrics, ToolCall, ToolError, ToolResult, ToolSpec, ToolStatus
+from .models import (
+    JSONValue,
+    RuntimeMetrics,
+    ToolCall,
+    ToolError,
+    ToolPolicy,
+    ToolPolicyContext,
+    ToolPolicyDecision,
+    ToolResult,
+    ToolSpec,
+    ToolStatus,
+)
 from .progress import (
     ProgressHandler,
     _close_progress,
@@ -28,6 +40,22 @@ from .progress import (
 )
 from .registry import RegisteredTool, ToolRegistry
 from .schema import enforce_value_limits, to_json_value, validate_arguments, validate_value
+
+
+class _ToolPolicyDenied(Exception):
+    """Signal an explicit policy denial inside one invocation task."""
+
+
+class _ToolPolicyFailed(Exception):
+    """Signal that a host policy failed closed."""
+
+
+def _is_async_callable(value: object) -> bool:
+    """Recognize async functions and objects with an async ``__call__``."""
+
+    return inspect.iscoroutinefunction(value) or (
+        callable(value) and inspect.iscoroutinefunction(type(value).__call__)
+    )
 
 
 class ToolRuntime:
@@ -47,6 +75,7 @@ class ToolRuntime:
         max_progress_message_bytes: int = 4_096,
         default_timeout: float = 30.0,
         expose_exceptions: bool = False,
+        policy: ToolPolicy | None = None,
     ) -> None:
         if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int):
             raise TypeError("max_concurrency must be an integer")
@@ -71,6 +100,8 @@ class ToolRuntime:
             or default_timeout <= 0
         ):
             raise ValueError("default_timeout must be a positive number")
+        if policy is not None and not _is_async_callable(policy):
+            raise TypeError("policy must be an async callable or None")
 
         self.registry = registry if registry is not None else ToolRegistry()
         self.max_concurrency = max_concurrency
@@ -83,7 +114,9 @@ class ToolRuntime:
         self.max_progress_message_bytes = max_progress_message_bytes
         self.default_timeout = float(default_timeout)
         self.expose_exceptions = expose_exceptions
+        self.policy = policy
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        self._policy_semaphore = asyncio.Semaphore(max_concurrency)
         self._executor = ThreadPoolExecutor(
             max_workers=max_concurrency, thread_name_prefix="samsarix-tool"
         )
@@ -98,6 +131,7 @@ class ToolRuntime:
             "succeeded": 0,
             "not_found": 0,
             "invalid_arguments": 0,
+            "denied": 0,
             "timed_out": 0,
             "failed": 0,
             "runtime_closed": 0,
@@ -198,7 +232,13 @@ class ToolRuntime:
             max_updates=self.max_progress_updates,
             max_message_bytes=self.max_progress_message_bytes,
         )
-        execution = asyncio.create_task(self._execute(registered, validated))
+        execution = asyncio.create_task(
+            self._authorize_and_execute(
+                registered,
+                validated,
+                invocation_id=invocation_id,
+            )
+        )
         self._active.add(execution)
         self._active_progress[execution] = progress_scope
         try:
@@ -230,6 +270,32 @@ class ToolRuntime:
                 await execution
             self._increment("cancelled")
             raise
+        except _ToolPolicyDenied:
+            self._increment("denied")
+            return self._result(
+                invocation_id,
+                name,
+                ToolStatus.DENIED,
+                started_at,
+                started,
+                error=ToolError(
+                    "tool_denied",
+                    "Tool invocation was denied by host policy",
+                ),
+            )
+        except _ToolPolicyFailed:
+            self._increment("failed")
+            return self._result(
+                invocation_id,
+                name,
+                ToolStatus.FAILED,
+                started_at,
+                started,
+                error=ToolError(
+                    "tool_policy_failed",
+                    "Tool invocation policy failed",
+                ),
+            )
         except ToolOutputError as exc:
             self._increment("failed")
             return self._result(
@@ -387,6 +453,34 @@ class ToolRuntime:
         sync_future.add_done_callback(partial(self._sync_finished, loop=loop))
         raw_output = await self._wrap_sync_future(sync_future)
         return self._normalize_output(registered, raw_output)
+
+    async def _authorize_and_execute(
+        self,
+        registered: RegisteredTool,
+        arguments: dict[str, Any],
+        *,
+        invocation_id: str,
+    ) -> JSONValue:
+        """Fail closed on one bounded policy decision before tool execution."""
+
+        if self.policy is not None:
+            context = ToolPolicyContext(
+                invocation_id=invocation_id,
+                spec=deepcopy(registered.spec),
+                arguments=deepcopy(arguments),
+            )
+            async with self._policy_semaphore:
+                try:
+                    decision = await self.policy(context)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    raise _ToolPolicyFailed from exc
+            if not isinstance(decision, ToolPolicyDecision):
+                raise _ToolPolicyFailed
+            if decision is ToolPolicyDecision.DENY:
+                raise _ToolPolicyDenied
+        return await self._execute(registered, arguments)
 
     def _run_sync(self, function: Callable[..., Any], arguments: dict[str, Any]) -> Any:
         """Run one sync callable while tracking its real thread lifetime."""
