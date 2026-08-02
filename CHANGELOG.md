@@ -27,6 +27,8 @@ This is a replacement alpha rather than a compatibility release.
   MCP progress-token correlation, and notification-before-response delivery;
 - formatter, linter, and strict type-check coverage for the shipped examples and
   benchmark programs;
+- independently packaged consumer evidence for progress-token correlation,
+  notification ordering, protocol privacy, and cancellation cutoff;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
