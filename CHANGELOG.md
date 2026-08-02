@@ -8,6 +8,8 @@ This is a replacement alpha rather than a compatibility release.
 
 - dependency-free typed sync/async tool declarations;
 - JSON Schema Draft 2020-12 contract export;
+- strict named and nested object contracts from `TypedDict`, including inherited
+  totality and `Required`/`NotRequired` presence qualifiers when available;
 - strict argument/default/output validation;
 - structured results with exception redaction by default;
 - bounded concurrency, a private sync thread pool, timeouts, cancellation, and
@@ -32,6 +34,8 @@ This is a replacement alpha rather than a compatibility release.
   copyright, attribution, and trademark notices;
 - the supported product is a local tool runtime, not the previously described
   orchestration, reasoning, UCF, or provider platform.
+- structurally invalid but JSON-compatible outputs now report a declared-return-type
+  mismatch rather than a generic JSON-compatibility message.
 
 ### Removed from the supported surface
 

@@ -7,12 +7,26 @@ import asyncio
 import math
 import time
 from threading import Event
-from typing import Literal
+from typing import Literal, TypedDict
 
 import pytest
 
 from samsarix_core import ToolCall, ToolRuntime, ToolStatus
 from samsarix_core import samsarix_tool as helix_tool
+
+
+class OptionalProfileFields(TypedDict, total=False):
+    nickname: str
+
+
+class ProfileInput(OptionalProfileFields):
+    name: str
+    scores: list[int]
+
+
+class ProfileOutput(TypedDict):
+    display_name: str
+    total: int
 
 
 @helix_tool
@@ -151,6 +165,64 @@ async def test_nested_argument_validation_and_tuple_normalization() -> None:
     paths = {item["path"] for item in invalid.error.details["issues"]}  # type: ignore[index,union-attr]
     assert paths == {"$.values[1]", "$.mode"}
     assert valid_float.output == "done"
+
+
+@pytest.mark.asyncio
+async def test_typed_dict_invocation_validates_named_fields_and_nested_values() -> None:
+    executions = 0
+
+    @helix_tool
+    def summarize_profile(profile: ProfileInput) -> ProfileOutput:
+        """Summarize a typed profile."""
+
+        nonlocal executions
+        executions += 1
+        return {"display_name": profile["name"].strip(), "total": sum(profile["scores"])}
+
+    runtime = ToolRuntime()
+    runtime.register(summarize_profile)
+    try:
+        valid = await runtime.invoke(
+            "summarize_profile", {"profile": {"name": " Ada ", "scores": [2, 3]}}
+        )
+        invalid = await runtime.invoke(
+            "summarize_profile",
+            {"profile": {"scores": [1, "two"], "unknown": True}},
+        )
+    finally:
+        await runtime.aclose()
+
+    assert valid.output == {"display_name": "Ada", "total": 5}
+    assert invalid.status is ToolStatus.INVALID_ARGUMENTS
+    assert invalid.error is not None and invalid.error.details is not None
+    issues = invalid.error.details["issues"]
+    assert {(issue["path"], issue["code"]) for issue in issues} == {  # type: ignore[index,union-attr]
+        ("$.profile.name", "missing_field"),
+        ("$.profile.scores[1]", "type_mismatch"),
+        ("$.profile.unknown", "unexpected_field"),
+    }
+    assert executions == 1
+
+
+@pytest.mark.asyncio
+async def test_typed_dict_output_contract_rejects_missing_and_extra_fields() -> None:
+    @helix_tool
+    def invalid_profile() -> ProfileOutput:
+        """Return an invalid named result."""
+
+        return {"display_name": "Ada", "extra": 1}  # type: ignore[return-value,typeddict-unknown-key]
+
+    runtime = ToolRuntime()
+    runtime.register(invalid_profile)
+    try:
+        result = await runtime.invoke("invalid_profile")
+    finally:
+        await runtime.aclose()
+
+    assert result.status is ToolStatus.FAILED
+    assert result.error is not None
+    assert result.error.code == "invalid_output"
+    assert result.error.message == "Tool output did not match its declared return type"
 
 
 @pytest.mark.asyncio

@@ -24,12 +24,15 @@ remain separate decisions.
   by adversarial tests.
 - Timed-out sync work now retains its real concurrency slot and in-flight gauge;
   callers can inspect, wait for, and require bounded shutdown quiescence.
+- Strict `TypedDict` input and output contracts now preserve named nested fields,
+  descriptions, and required/optional key semantics in JSON Schema and runtime
+  validation.
 - External consumer: `samsarix-integration-examples` version 0.2.0 pins Core
   commit `6f54bcdf428359f1eee654944b6abc8788575eab` and proves a confined,
   privacy-first redaction workflow through the public MCP API.
 - Next: rerun the consumer matrix after GitHub Actions billing is restored. Use
   observed consumer demand and confirmed contract gaps—not framework parity—to
-  prioritize richer nested schema types.
+  prioritize dataclass, enum, or constrained-value schema support.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.

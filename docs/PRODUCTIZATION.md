@@ -91,6 +91,12 @@ application infrastructure, not a Samsarix-hosted service.
 - Export conservative JSON-Schema-compatible object schemas and reject unknown
   arguments. JSON Schema Draft 2020-12 is the reference vocabulary:
   <https://json-schema.org/draft/2020-12>.
+- Compile `TypedDict` into strict named object properties rather than representing
+  heterogeneous records as a loose value union. MCP defines tool input/output
+  contracts as JSON Schema objects, while Python exposes `is_typeddict` and
+  semantic required/optional key introspection without a runtime dependency:
+  <https://modelcontextprotocol.io/specification/2025-11-25/schema> and
+  <https://docs.python.org/3/library/typing.html#typing.TypedDict>.
 - Return structured results rather than swallowing errors or raising ordinary
   tool failures across the runtime boundary. Programmer/configuration errors may
   still raise during decoration or registration.
@@ -177,8 +183,10 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - [ ] Add opt-in persistence for registry metadata and invocation summaries.
 - [ ] Add process isolation for untrusted tools as a separate package or explicit
   execution backend.
-- [ ] Add richer schema support for dataclasses, `TypedDict`, enums, and constrained
-  values if real adopters need it.
+- [x] Add strict named and nested `TypedDict` schemas after the first consumer
+  exposed the ambiguity of heterogeneous `dict` results.
+- [ ] Add richer schema support for dataclasses, enums, and constrained values if
+  real adopters need it.
 
 ## Implementation checklist
 
