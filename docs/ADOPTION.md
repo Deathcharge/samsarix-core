@@ -19,7 +19,8 @@ Repository:
 | Consumer package version | `0.2.7` |
 | Integration Guard provenance | [`samsarix-integration-guard`](https://github.com/Deathcharge/samsarix-integration-guard) `0.2.0` at `1aa711d89eaedcc396f0cd6eb416fb4253da3f5e` |
 | Orchestration provenance | [`samsarix-agent-orchestration`](https://github.com/Deathcharge/samsarix-agent-orchestration) `0.1.0` at `0dfc050cf9a4582c9fa8d34d74b1ca97d43c9005` |
-| Supported consumer Python | 3.11-3.13 |
+| Declared consumer Python | 3.11-3.13 |
+| Executed consumer Python in this record | 3.11.9; extra source-tree pass on 3.14.6 |
 | Compatibility owner | Samsarix LLC |
 | Support level | Best effort; no SLA |
 
@@ -46,7 +47,7 @@ selects `info`. The accepted event contains only the public tool name, invocatio
 status, and duration; it follows both progress phases and precedes the response. A
 cancelled call emits no terminal log.
 
-The same production redaction tool advertises task support as optional, preserving the
+The same consumer redaction tool advertises task support as optional, preserving the
 ordinary call and older-client contract. A task-aware MCP `2025-11-25` client receives
 an immediate `working` state with a random 128-bit identifier; that state contains no
 source name, output name, run id, arguments, result, secret, or workspace path. The
@@ -112,7 +113,9 @@ terminal status. It published a sanitized artifact, emitted exactly two related-
 progress notifications, and exposed neither the three seeded secrets nor the resolved
 workspace path in protocol output. Both installed CLIs also passed their help journeys.
 The source-tree development run on Python 3.14.6 separately completed the same 33 tests
-at 91.47% branch coverage.
+at 91.47% branch coverage. Python 3.12 and 3.13 remain declared consumer support, but
+their hosted jobs did not execute in this record because the account billing gate stopped
+the matrix before checkout.
 
 Final local artifacts were:
 
