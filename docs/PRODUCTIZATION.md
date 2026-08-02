@@ -248,10 +248,10 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   without a runtime dependency.
 - Added registry, batch, value-complexity, argument, and output resource budgets,
   plus observable bounded shutdown quiescence for timed-out synchronous work.
-- Proved the public MCP API and exact typed result discovery from
-  `samsarix-integration-examples` 0.2.1 at merge commit
-  `bfb8c001fcaad7464e6b745c1e332ee8a52a3cd9`; the consumer pins Core commit
-  `0437f84799a124ef8407597591e5eb4a147495af`.
+- Proved the public MCP API, exact typed result discovery, and response-free
+  asynchronous cancellation from `samsarix-integration-examples` 0.2.2 at merge
+  commit `dd7bfb84a40537522fbe964fb1ce0d2267586854`; the consumer pins Core commit
+  `37a996bf0af4b5277990f3db6a7607ea70e14349`.
 
 ## Deferred work and rationale
 
@@ -259,10 +259,10 @@ P2 framework/provider adapters, registry persistence, process isolation, and ric
 schema types remain deliberately deferred. They are not required for the first useful
 release. One independent repository now proves the MCP boundary without needing those
 features; subsequent surface area should follow concrete consumer demand. Core's own
-[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30724220457)
+[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30727341629)
 is green; Core's local Python 3.11 suite has 69 tests and 93.42% branch coverage.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
-reported an account billing/spending-limit problem, so its local 28-test and
+reported an account billing/spending-limit problem, so its local 29-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
