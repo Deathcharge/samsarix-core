@@ -21,8 +21,12 @@ This is a replacement alpha rather than a compatibility release.
   and optional bounded shutdown quiescence;
 - dependency-free MCP `2025-11-25`/`2025-06-18` lifecycle, tool discovery,
   invocation, structured results, behavioral annotations, and bounded stdio;
+- MCP client cancellation for active tool calls, concurrent stdio dispatch, and
+  configurable in-flight request admission;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
+- a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
+  validation, execution, and response serialization.
 
 ### Changed
 

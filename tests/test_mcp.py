@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from threading import Event
 from typing import TypedDict
 
 import pytest
@@ -197,6 +198,127 @@ async def test_mcp_tool_calls_return_structured_results_and_safe_errors() -> Non
 
 
 @pytest.mark.asyncio
+async def test_mcp_cancel_notification_stops_active_call_without_a_response() -> None:
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+    release = asyncio.Event()
+
+    @samsarix_tool(timeout=5.0)
+    async def wait_for_release() -> str:
+        """Wait until the test permits completion."""
+
+        started.set()
+        try:
+            await release.wait()
+        finally:
+            stopped.set()
+        return "released"
+
+    runtime = ToolRuntime()
+    runtime.register(wait_for_release)
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        call = asyncio.create_task(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "slow-call",
+                    "method": "tools/call",
+                    "params": {"name": "wait_for_release", "arguments": {}},
+                }
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1.0)
+
+        assert (
+            await server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {"requestId": "unknown", "reason": "ignored"},
+                }
+            )
+            is None
+        )
+        await asyncio.sleep(0)
+        assert not call.done()
+
+        duplicate = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "slow-call",
+                "method": "tools/call",
+                "params": {"name": "wait_for_release", "arguments": {}},
+            }
+        )
+        assert duplicate is not None
+        assert duplicate["error"] == {
+            "code": -32600,
+            "message": "Request id is already active",
+        }
+
+        assert (
+            await server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {
+                        "requestId": "slow-call",
+                        "reason": "client stopped waiting",
+                    },
+                }
+            )
+            is None
+        )
+        assert await asyncio.wait_for(call, timeout=1.0) is None
+        await asyncio.wait_for(stopped.wait(), timeout=1.0)
+        metrics = runtime.metrics()
+        assert metrics.cancelled == 1
+        assert metrics.in_flight == 0
+    finally:
+        release.set()
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_host_task_cancellation_still_propagates() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @samsarix_tool(timeout=5.0)
+    async def wait_for_host() -> str:
+        """Wait until the host permits completion."""
+
+        started.set()
+        await release.wait()
+        return "released"
+
+    runtime = ToolRuntime()
+    runtime.register(wait_for_host)
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        call = asyncio.create_task(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "host-call",
+                    "method": "tools/call",
+                    "params": {"name": "wait_for_host", "arguments": {}},
+                }
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1.0)
+        call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await call
+    finally:
+        release.set()
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
 async def test_mcp_protocol_errors_are_json_rpc_errors() -> None:
     runtime = mcp_runtime()
     server = MCPServer(runtime)
@@ -211,6 +333,16 @@ async def test_mcp_protocol_errors_are_json_rpc_errors() -> None:
         assert (
             await server.handle(
                 {"jsonrpc": "2.0", "method": "notifications/progress", "params": []}
+            )
+            is None
+        )
+        assert (
+            await server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {"requestId": True},
+                }
             )
             is None
         )
@@ -310,6 +442,219 @@ async def test_stdio_transport_is_bounded_and_emits_only_protocol_messages() -> 
 
 
 @pytest.mark.asyncio
+async def test_stdio_cancels_active_calls_and_rejects_excess_admission() -> None:
+    started = Event()
+    stopped = asyncio.Event()
+    never_release = asyncio.Event()
+
+    @samsarix_tool(timeout=5.0)
+    async def slow_operation() -> str:
+        """Remain active until the client cancels the request."""
+
+        started.set()
+        try:
+            await never_release.wait()
+        finally:
+            stopped.set()
+        return "unexpected"
+
+    runtime = ToolRuntime(max_concurrency=1)
+    runtime.register(slow_operation)
+    initialize_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "cancel-test", "version": "1"},
+        },
+    }
+    messages = [
+        initialize_request,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0",
+            "id": "active",
+            "method": "tools/call",
+            "params": {"name": "slow_operation", "arguments": {}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": True,
+            "method": "tools/call",
+            "params": {"name": "slow_operation", "arguments": {}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": "excess",
+            "method": "tools/call",
+            "params": {"name": "slow_operation", "arguments": {}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": {"requestId": "active"},
+        },
+        {"jsonrpc": "2.0", "id": "catalog", "method": "tools/list"},
+    ]
+
+    class GatedReader(io.BytesIO):
+        def __init__(self, value: bytes) -> None:
+            super().__init__(value)
+            self.gated = False
+
+        def readline(self, size: int = -1) -> bytes:
+            line = super().readline(size)
+            message = json.loads(line) if line else {}
+            if message.get("id") == "excess":
+                self.gated = True
+                assert started.wait(timeout=1.0)
+            return line
+
+    payload = ("\n".join(json.dumps(message) for message in messages) + "\n").encode()
+    writer = io.StringIO()
+    reader = GatedReader(payload)
+    await serve_stdio(
+        MCPServer(runtime),
+        input_stream=reader,
+        output_stream=writer,
+        max_in_flight_requests=1,
+        close_runtime=False,
+    )
+
+    responses = [json.loads(line) for line in writer.getvalue().splitlines()]
+    assert reader.gated
+    assert [response["id"] for response in responses] == [1, None, "excess", "catalog"]
+    assert responses[1]["error"]["code"] == -32600
+    assert responses[2]["error"] == {
+        "code": -32000,
+        "message": "Too many in-flight MCP requests",
+    }
+    assert responses[3]["result"]["tools"][0]["name"] == "slow_operation"
+    await asyncio.wait_for(stopped.wait(), timeout=1.0)
+    assert runtime.metrics().cancelled == 1
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_stdio_drains_an_admitted_call_at_normal_eof() -> None:
+    @samsarix_tool
+    async def delayed() -> str:
+        """Return after yielding once."""
+
+        await asyncio.sleep(0.01)
+        return "done"
+
+    runtime = ToolRuntime()
+    runtime.register(delayed)
+    initialize_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "drain-test", "version": "1"},
+        },
+    }
+    messages = [
+        initialize_request,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "delayed", "arguments": {}},
+        },
+    ]
+    reader = io.BytesIO(("\n".join(json.dumps(message) for message in messages) + "\n").encode())
+    writer = io.StringIO()
+
+    await serve_stdio(MCPServer(runtime), input_stream=reader, output_stream=writer)
+
+    responses = [json.loads(line) for line in writer.getvalue().splitlines()]
+    assert [response["id"] for response in responses] == [1, 2]
+    assert responses[1]["result"]["structuredContent"] == {"result": "done"}
+
+
+@pytest.mark.asyncio
+async def test_stdio_cancels_and_joins_siblings_after_background_write_failure() -> None:
+    started = Event()
+    stopped = asyncio.Event()
+    never_release = asyncio.Event()
+
+    @samsarix_tool(timeout=5.0)
+    async def slow_operation() -> str:
+        """Remain active while a sibling transport task fails."""
+
+        started.set()
+        try:
+            await never_release.wait()
+        finally:
+            stopped.set()
+        return "unexpected"
+
+    @samsarix_tool
+    async def fast_operation() -> str:
+        """Complete so its response exercises a broken writer."""
+
+        return "done"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(slow_operation)
+    runtime.register(fast_operation)
+    server = MCPServer(runtime)
+    await initialize(server)
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": "slow",
+            "method": "tools/call",
+            "params": {"name": "slow_operation", "arguments": {}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": "fast",
+            "method": "tools/call",
+            "params": {"name": "fast_operation", "arguments": {}},
+        },
+    ]
+
+    class GatedReader(io.BytesIO):
+        gated = False
+
+        def readline(self, size: int = -1) -> bytes:
+            line = super().readline(size)
+            message = json.loads(line) if line else {}
+            if message.get("id") == "fast":
+                self.gated = True
+                assert started.wait(timeout=1.0)
+            return line
+
+    class FailingWriter(io.StringIO):
+        def write(self, value: str) -> int:
+            raise OSError("writer failed")
+
+    payload = ("\n".join(json.dumps(message) for message in messages) + "\n").encode()
+    reader = GatedReader(payload)
+    try:
+        with pytest.raises(OSError, match="writer failed"):
+            await serve_stdio(
+                server,
+                input_stream=reader,
+                output_stream=FailingWriter(),
+                close_runtime=False,
+            )
+        assert reader.gated
+        await asyncio.wait_for(stopped.wait(), timeout=1.0)
+        assert runtime.metrics().cancelled == 1
+        assert runtime.metrics().in_flight == 0
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
 async def test_stdio_transport_handles_parse_errors_and_oversized_lines() -> None:
     runtime = mcp_runtime()
     parse_writer = io.StringIO()
@@ -392,5 +737,9 @@ def test_mcp_server_metadata_and_transport_limits_are_validated() -> None:
             asyncio.run(serve_stdio(MCPServer(runtime), max_message_bytes=True))
         with pytest.raises(ValueError, match="at least 256"):
             asyncio.run(serve_stdio(MCPServer(runtime), max_message_bytes=0))
+        with pytest.raises(TypeError, match="max_in_flight_requests"):
+            asyncio.run(serve_stdio(MCPServer(runtime), max_in_flight_requests=True))
+        with pytest.raises(ValueError, match="max_in_flight_requests"):
+            asyncio.run(serve_stdio(MCPServer(runtime), max_in_flight_requests=0))
     finally:
         asyncio.run(runtime.aclose())

@@ -158,6 +158,8 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   error contracts.
 - [x] Support both sync and async tools with documented timeout and cancellation
   behavior.
+- [x] Keep MCP cancellation responsive while bounding concurrently admitted stdio
+  calls.
 - [x] Bound parallel execution and retain input/result correlation.
 - [x] Bound registry, batch, argument/output byte, nesting-depth, and value-node
   resources before executing untrusted calls.
@@ -242,7 +244,8 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Completed the repository threat model and closed five conservative security
   candidates with no reportable or deferred finding in the final worktree.
 - Added the stable MCP 2025-11-25 tool lifecycle, structured output, behavioral
-  annotations, and bounded local stdio transport without a runtime dependency.
+  annotations, client cancellation, and bounded concurrent local stdio transport
+  without a runtime dependency.
 - Added registry, batch, value-complexity, argument, and output resource budgets,
   plus observable bounded shutdown quiescence for timed-out synchronous work.
 - Proved the public MCP API and exact typed result discovery from
@@ -257,7 +260,7 @@ schema types remain deliberately deferred. They are not required for the first u
 release. One independent repository now proves the MCP boundary without needing those
 features; subsequent surface area should follow concrete consumer demand. Core's own
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30724220457)
-is green; Core's local Python 3.11 suite has 64 tests and 93.59% branch coverage.
+is green; Core's local Python 3.11 suite has 69 tests and 93.42% branch coverage.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
 reported an account billing/spending-limit problem, so its local 28-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.

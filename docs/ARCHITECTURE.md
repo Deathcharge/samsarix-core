@@ -25,6 +25,8 @@ typed function
   thread-safe map.
 - `runtime.py` owns concurrency, the sync thread pool, timeouts, cancellation,
   exception redaction, batch workers, lifecycle, and content-free counters.
+- `mcp.py` owns protocol lifecycle, schema/result translation, active request
+  correlation, client cancellation, and bounded concurrent stdio dispatch.
 - `models.py` and `errors.py` define the public boundary types.
 
 ## Trust boundaries
@@ -49,12 +51,15 @@ One semaphore bounds executing work. Async functions run on the event loop. Sync
 functions run in a private `ThreadPoolExecutor` whose worker count equals
 `max_concurrency`. `invoke_many` uses a bounded worker set rather than one task per
 call. Registry and batch caps bound catalog and fan-out growth; per-value byte,
-depth, and node limits bound validation work. These per-request controls do not
-replace host-level rate limits or aggregate admission control.
+depth, and node limits bound validation work. The stdio adapter separately caps
+admitted tool-call coroutines so cancellation can remain responsive without
+creating an unbounded wait queue. These controls do not replace host-level rate
+limits or tenant quotas.
 
 Async cancellation is cooperative. Python cannot safely kill a running thread, so
-a timed-out sync function may outlive its result. Its semaphore slot and actual
-in-flight metric remain held until the thread finishes, preventing repeated
+a timed-out or client-cancelled sync function may outlive its protocol result. Its
+semaphore slot and actual in-flight metric remain held until the thread finishes,
+preventing repeated
 timeouts from filling an unbounded executor queue. `pending_sync_calls` exposes
 this state. `wait_for_sync()` and the opt-in waiting form of `aclose()` provide
 bounded quiescence checks; the default close remains non-blocking. Blocking sync
