@@ -32,6 +32,8 @@ This is a replacement alpha rather than a compatibility release.
   benchmark programs;
 - independently packaged consumer evidence for progress-token correlation,
   notification ordering, protocol privacy, and cancellation cutoff;
+- independently packaged consumer evidence for client-filtered content-free MCP
+  operational logging;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
