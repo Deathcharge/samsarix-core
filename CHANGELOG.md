@@ -34,6 +34,8 @@ This is a replacement alpha rather than a compatibility release.
   notification ordering, protocol privacy, and cancellation cutoff;
 - independently packaged consumer evidence for client-filtered content-free MCP
   operational logging;
+- independently packaged consumer evidence for retained synchronous worker capacity
+  after timeout and bounded shutdown quiescence;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
