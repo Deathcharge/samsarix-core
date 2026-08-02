@@ -66,6 +66,7 @@ class ToolRuntime:
         registry: ToolRegistry | None = None,
         *,
         max_concurrency: int = 8,
+        max_pending_invocations: int = 256,
         max_batch_size: int = 256,
         max_argument_bytes: int = 1_048_576,
         max_output_bytes: int = 1_048_576,
@@ -82,6 +83,7 @@ class ToolRuntime:
         if max_concurrency <= 0:
             raise ValueError("max_concurrency must be positive")
         for name, value in (
+            ("max_pending_invocations", max_pending_invocations),
             ("max_batch_size", max_batch_size),
             ("max_argument_bytes", max_argument_bytes),
             ("max_output_bytes", max_output_bytes),
@@ -105,6 +107,7 @@ class ToolRuntime:
 
         self.registry = registry if registry is not None else ToolRegistry()
         self.max_concurrency = max_concurrency
+        self.max_pending_invocations = max_pending_invocations
         self.max_batch_size = max_batch_size
         self.max_argument_bytes = max_argument_bytes
         self.max_output_bytes = max_output_bytes
@@ -132,10 +135,13 @@ class ToolRuntime:
             "not_found": 0,
             "invalid_arguments": 0,
             "denied": 0,
+            "busy": 0,
             "timed_out": 0,
             "failed": 0,
             "runtime_closed": 0,
             "cancelled": 0,
+            "pending_invocations": 0,
+            "peak_pending_invocations": 0,
             "in_flight": 0,
             "peak_in_flight": 0,
         }
@@ -186,6 +192,47 @@ class ToolRuntime:
                 started,
                 error=ToolError("invalid_timeout", "Invocation timeout must be a positive number"),
             )
+
+        if not self._try_admit():
+            self._increment("busy")
+            return self._result(
+                invocation_id,
+                name,
+                ToolStatus.BUSY,
+                started_at,
+                started,
+                error=ToolError(
+                    "runtime_busy",
+                    "Runtime invocation capacity is full",
+                    retryable=True,
+                ),
+            )
+
+        try:
+            return await self._invoke_admitted(
+                name,
+                arguments,
+                timeout=timeout,
+                progress_handler=progress_handler,
+                invocation_id=invocation_id,
+                started_at=started_at,
+                started=started,
+            )
+        finally:
+            self._release_admission()
+
+    async def _invoke_admitted(
+        self,
+        name: str,
+        arguments: dict[str, Any] | None,
+        *,
+        timeout: float | None,
+        progress_handler: ProgressHandler | None,
+        invocation_id: str,
+        started_at: str,
+        started: float,
+    ) -> ToolResult:
+        """Resolve, validate, authorize, and execute one admitted invocation."""
 
         try:
             registered = self.registry._resolve(name)
@@ -354,9 +401,8 @@ class ToolRuntime:
                     call.name, dict(call.arguments), timeout=call.timeout
                 )
 
-        workers = [
-            asyncio.create_task(worker()) for _ in range(min(self.max_concurrency, len(calls)))
-        ]
+        worker_count = min(self.max_concurrency, self.max_pending_invocations, len(calls))
+        workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
         await asyncio.gather(*workers)
         return [cast(ToolResult, result) for result in results]
 
@@ -572,6 +618,25 @@ class ToolRuntime:
     def _end_execution(self) -> None:
         with self._metrics_lock:
             self._counters["in_flight"] -= 1
+
+    def _try_admit(self) -> bool:
+        """Atomically reserve one non-terminal invocation slot without waiting."""
+
+        with self._metrics_lock:
+            if self._counters["pending_invocations"] >= self.max_pending_invocations:
+                return False
+            self._counters["pending_invocations"] += 1
+            self._counters["peak_pending_invocations"] = max(
+                self._counters["peak_pending_invocations"],
+                self._counters["pending_invocations"],
+            )
+            return True
+
+    def _release_admission(self) -> None:
+        """Release one invocation slot on every terminal or cancellation path."""
+
+        with self._metrics_lock:
+            self._counters["pending_invocations"] -= 1
 
     def _increment(self, name: str) -> None:
         with self._metrics_lock:

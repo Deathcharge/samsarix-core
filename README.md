@@ -8,7 +8,7 @@ Samsarix Core is a small, dependency-free Python runtime from
 [Samsarix LLC](https://samsarix.com) for declaring typed local tools and invoking
 them through one predictable async API.
 
-This `2.0.0a1` line is an honest alpha: the primary workflow is implemented and
+This `2.0` line is an honest alpha: the primary workflow is implemented and
 tested, but the API and distribution are not yet declared stable. It does not
 provide an LLM, agent loop, plugin marketplace, network service, authentication,
 persistence, or an untrusted-code sandbox.
@@ -18,10 +18,10 @@ persistence, or an untrusted-code sandbox.
 - turns annotated sync or async functions into inspectable tool contracts;
 - emits JSON Schema Draft 2020-12 input and output schemas;
 - validates arguments and outputs without surprising scalar coercion;
-- returns structured success, validation, policy-denial, timeout, missing-tool, and
-  failure results;
-- bounds registry growth, batches, value size/complexity, concurrent work, and
-  thread-pool use;
+- returns structured success, validation, policy-denial, overload, timeout,
+  missing-tool, and failure results;
+- bounds pending invocations, registry growth, batches, value size/complexity,
+  concurrent work, and thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - optionally requires a bounded host-owned policy decision after validation and
   before any tool code executes;
@@ -111,10 +111,11 @@ service or a durable human-approval workflow.
 Samsarix Core implements the stable MCP tool lifecycle, discovery, invocation,
 structured output, behavioral annotations, progress notifications, and client
 cancellation without adding an SDK dependency. Opt-in operational logging emits
-content-free terminal events at the minimum level selected by the client. Concurrent stdio calls are
-separately admission-bounded so the runtime's execution queue cannot grow without
-a protocol-level cap. Experimental MCP task execution is disabled by default; the
-included inventory server enables it for one progress-reporting audit tool while
+content-free terminal events at the minimum level selected by the client. Concurrent
+stdio calls are separately admission-bounded so protocol work is capped before it
+reaches the runtime's own pending-invocation limit. Experimental MCP task execution
+is disabled by default; the included inventory server enables it for one
+progress-reporting audit tool while
 retaining normal calls for clients that do not support tasks. A complete server is included:
 
 ```bash

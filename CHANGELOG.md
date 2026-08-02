@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 2.0.0a2 - 2026-08-02
+
+### Added
+
+- bounded direct-runtime admission with fail-fast, retryable `runtime_busy` results,
+  content-free current/peak/rejection metrics, batch-aware worker sizing, and MCP
+  serialization coverage.
 
 ### Changed
 

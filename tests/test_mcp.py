@@ -449,6 +449,60 @@ async def test_mcp_policy_denial_is_safe_observable_and_never_executes() -> None
 
 
 @pytest.mark.asyncio
+async def test_mcp_exposes_safe_retryable_runtime_overload() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @samsarix_tool
+    async def admission_target(value: str) -> str:
+        """Hold the runtime's only pending-invocation slot."""
+
+        started.set()
+        await release.wait()
+        return value
+
+    runtime = ToolRuntime(max_pending_invocations=1)
+    runtime.register(admission_target)
+    server = MCPServer(runtime)
+    admitted = asyncio.create_task(runtime.invoke("admission_target", {"value": "first"}))
+    try:
+        await initialize(server)
+        await asyncio.wait_for(started.wait(), timeout=1)
+        response = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "overloaded-call",
+                "method": "tools/call",
+                "params": {
+                    "name": "admission_target",
+                    "arguments": {"value": "private-overload-value"},
+                },
+            }
+        )
+        release.set()
+        completed = await admitted
+    finally:
+        release.set()
+        admitted.cancel()
+        await asyncio.gather(admitted, return_exceptions=True)
+        await server.aclose()
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["_meta"]["com.samsarix/status"] == "busy"
+    assert json.loads(response["result"]["content"][0]["text"]) == {
+        "error": {
+            "code": "runtime_busy",
+            "message": "Runtime invocation capacity is full",
+            "retryable": True,
+        }
+    }
+    assert completed.output == "first"
+    assert runtime.metrics().busy == 1
+    assert "private-overload-value" not in json.dumps(response)
+
+
+@pytest.mark.asyncio
 async def test_mcp_cancel_notification_stops_active_call_without_a_response() -> None:
     started = asyncio.Event()
     stopped = asyncio.Event()

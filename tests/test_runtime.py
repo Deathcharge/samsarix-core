@@ -17,6 +17,7 @@ from samsarix_core import (
     ToolPolicyContext,
     ToolPolicyDecision,
     ToolProgress,
+    ToolResult,
     ToolRuntime,
     ToolStatus,
     report_progress,
@@ -494,6 +495,92 @@ async def test_batch_size_is_bounded_before_workers_are_created() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_sheds_excess_invocations_without_exposing_arguments() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @helix_tool
+    async def admission_target(value: str) -> str:
+        """Hold an admitted call until the test releases it."""
+
+        started.set()
+        await release.wait()
+        return value
+
+    runtime = ToolRuntime(max_concurrency=1, max_pending_invocations=2)
+    runtime.register(admission_target)
+    first = asyncio.create_task(runtime.invoke("admission_target", {"value": "first"}))
+    second: asyncio.Task[ToolResult] | None = None
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        second = asyncio.create_task(runtime.invoke("admission_target", {"value": "second"}))
+        for _ in range(100):
+            if runtime.metrics().pending_invocations == 2:
+                break
+            await asyncio.sleep(0)
+        else:
+            pytest.fail("second invocation was not admitted")
+
+        overloaded = await runtime.invoke("admission_target", {"value": "private-overload-value"})
+        saturated = runtime.metrics()
+        release.set()
+        completed = await asyncio.gather(first, second)
+        final = runtime.metrics()
+    finally:
+        release.set()
+        first.cancel()
+        if second is not None:
+            second.cancel()
+        await asyncio.gather(
+            first, *(item for item in (second,) if item is not None), return_exceptions=True
+        )
+        await runtime.aclose()
+
+    assert overloaded.status is ToolStatus.BUSY
+    assert overloaded.error is not None
+    assert overloaded.error.to_dict() == {
+        "code": "runtime_busy",
+        "message": "Runtime invocation capacity is full",
+        "retryable": True,
+    }
+    assert "private-overload-value" not in str(overloaded.to_dict())
+    assert [result.output for result in completed] == ["first", "second"]
+    assert saturated.busy == 1
+    assert saturated.pending_invocations == 2
+    assert saturated.peak_pending_invocations == 2
+    assert saturated.in_flight == 1
+    assert final.calls_total == 3
+    assert final.succeeded == 2
+    assert final.busy == 1
+    assert final.pending_invocations == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_uses_pending_capacity_as_its_worker_bound() -> None:
+    @helix_tool
+    async def batch_admission_target(value: int) -> int:
+        """Return one value after yielding to competing workers."""
+
+        await asyncio.sleep(0)
+        return value
+
+    runtime = ToolRuntime(max_concurrency=4, max_pending_invocations=1)
+    runtime.register(batch_admission_target)
+    try:
+        results = await runtime.invoke_many(
+            [ToolCall("batch_admission_target", {"value": value}) for value in range(4)]
+        )
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    assert [result.output for result in results] == list(range(4))
+    assert all(result.status is ToolStatus.SUCCESS for result in results)
+    assert metrics.busy == 0
+    assert metrics.peak_pending_invocations == 1
+
+
+@pytest.mark.asyncio
 async def test_policy_receives_detached_validated_calls_and_fails_closed_on_denial() -> None:
     executions: list[tuple[list[int], str]] = []
     snapshots: list[ToolPolicyContext] = []
@@ -807,6 +894,7 @@ async def test_cancellation_propagates_and_updates_content_free_metrics() -> Non
     metrics = runtime.metrics()
     await runtime.aclose()
     assert metrics.cancelled == 1
+    assert metrics.pending_invocations == 0
     assert metrics.in_flight == 0
 
 
@@ -1082,6 +1170,8 @@ async def test_async_context_manager_closes_the_runtime() -> None:
     [
         ({"max_concurrency": 0}, ValueError),
         ({"max_concurrency": True}, TypeError),
+        ({"max_pending_invocations": 0}, ValueError),
+        ({"max_pending_invocations": True}, TypeError),
         ({"default_timeout": 0}, ValueError),
         ({"default_timeout": True}, ValueError),
         ({"max_batch_size": 0}, ValueError),

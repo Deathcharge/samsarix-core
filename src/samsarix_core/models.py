@@ -23,6 +23,7 @@ class ToolStatus(str, Enum):
     NOT_FOUND = "not_found"
     INVALID_ARGUMENTS = "invalid_arguments"
     DENIED = "denied"
+    BUSY = "busy"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
     RUNTIME_CLOSED = "runtime_closed"
@@ -168,6 +169,9 @@ class RuntimeMetrics:
     cancelled: int
     in_flight: int
     peak_in_flight: int
+    busy: int = 0
+    pending_invocations: int = 0
+    peak_pending_invocations: int = 0
 
     def to_dict(self) -> dict[str, int]:
         """Return the counters as a plain mapping."""
@@ -178,10 +182,13 @@ class RuntimeMetrics:
             "not_found": self.not_found,
             "invalid_arguments": self.invalid_arguments,
             "denied": self.denied,
+            "busy": self.busy,
             "timed_out": self.timed_out,
             "failed": self.failed,
             "runtime_closed": self.runtime_closed,
             "cancelled": self.cancelled,
+            "pending_invocations": self.pending_invocations,
+            "peak_pending_invocations": self.peak_pending_invocations,
             "in_flight": self.in_flight,
             "peak_in_flight": self.peak_in_flight,
         }

@@ -58,4 +58,4 @@ jobs:
       - run: python -m venv .smoke
       - run: .smoke/bin/python -m pip install --no-deps dist/*.whl
       - run: .smoke/bin/python -c "from samsarix_core import MCPServer, ToolPolicyContext, ToolPolicyDecision, ToolRuntime, serve_stdio, __version__; print(__version__)"
-      - run: .smoke/bin/python -c "from helix_core import MCPServer, ToolPolicyContext, ToolPolicyDecision, serve_stdio; import helix_core; assert helix_core.__version__ == '2.0.0a1'"
+      - run: .smoke/bin/python -c "from helix_core import MCPServer, ToolPolicyContext, ToolPolicyDecision, serve_stdio; import helix_core; assert helix_core.__version__ == '2.0.0a2'"
