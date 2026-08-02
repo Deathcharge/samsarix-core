@@ -46,6 +46,8 @@ This is a replacement alpha rather than a compatibility release.
 - independently packaged redaction evidence for experimental task creation, status,
   blocking result retrieval, related-task progress, bounded retention, cancellation,
   and private task state;
+- independently packaged redaction evidence for the invocation-policy allow path and
+  safe denial of an out-of-contract tool before execution;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,

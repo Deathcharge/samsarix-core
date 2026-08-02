@@ -33,8 +33,8 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.7 pins Core
-  commit `1558624ba294f47d59ea1713ac5609ef3122239e` and proves a confined,
+- External consumer: `samsarix-integration-examples` version 0.2.8 pins Core
+  commit `33f2baa9c81d4437c0e4746355eda7b4d0df0cbd` and proves a confined,
   privacy-first redaction workflow, exact typed result discovery, and
   response-free asynchronous cancellation through the public MCP API. It also
   proves progress-token correlation, monotonic content-free updates, notification
@@ -45,9 +45,10 @@ remain separate decisions.
   independently discovered and invoked through official MCP Inspector 0.21.2. The
   consumer now proves real redaction through task creation, status, blocking result
   retrieval, related-task progress, bounded private retention, and safe task cancellation.
-- Next: prove the invocation-policy contract from the independent redaction consumer,
-  complete the signed-in Visual Studio Code trust/tool-approval journey, and rerun the
-  consumer matrix after GitHub Actions billing is restored. Use observed
+  It also proves the host-policy allow path and safe pre-execution denial of an
+  independently registered out-of-contract tool without private-input disclosure.
+- Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
+  the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
 - Review priority: Capture all 101 dirty/untracked paths.
