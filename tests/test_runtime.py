@@ -11,7 +11,14 @@ from typing import Literal, TypedDict
 
 import pytest
 
-from samsarix_core import ToolCall, ToolRuntime, ToolStatus
+from samsarix_core import (
+    ProgressHandlerError,
+    ToolCall,
+    ToolProgress,
+    ToolRuntime,
+    ToolStatus,
+    report_progress,
+)
 from samsarix_core import samsarix_tool as helix_tool
 
 
@@ -603,6 +610,250 @@ async def test_cancellation_propagates_and_updates_content_free_metrics() -> Non
 
 
 @pytest.mark.asyncio
+async def test_cancellation_closes_progress_before_tool_cleanup() -> None:
+    started = asyncio.Event()
+    never_release = asyncio.Event()
+    cleanup_delivery: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+
+    @helix_tool
+    async def cancellable_progress() -> str:
+        """Try to report from cleanup after cancellation."""
+
+        assert await report_progress(1)
+        started.set()
+        try:
+            await never_release.wait()
+        finally:
+            cleanup_delivery.set_result(await report_progress(2))
+        return "unexpected"
+
+    updates: list[ToolProgress] = []
+    runtime = ToolRuntime()
+    runtime.register(cancellable_progress)
+    invocation = asyncio.create_task(
+        runtime.invoke("cancellable_progress", progress_handler=updates.append)
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        invocation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+        assert cleanup_delivery.result() is False
+    finally:
+        await runtime.aclose()
+
+    assert updates == [ToolProgress(progress=1.0)]
+
+
+@pytest.mark.asyncio
+async def test_timeout_closes_progress_before_tool_cleanup() -> None:
+    never_release = asyncio.Event()
+    cleanup_delivery: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+
+    @helix_tool(timeout=0.01)
+    async def timed_progress() -> str:
+        """Try to report from cleanup after timeout."""
+
+        assert await report_progress(1)
+        try:
+            await never_release.wait()
+        finally:
+            cleanup_delivery.set_result(await report_progress(2))
+        return "unexpected"
+
+    updates: list[ToolProgress] = []
+    runtime = ToolRuntime()
+    runtime.register(timed_progress)
+    try:
+        result = await runtime.invoke("timed_progress", progress_handler=updates.append)
+    finally:
+        await runtime.aclose()
+
+    assert result.status is ToolStatus.TIMED_OUT
+    assert cleanup_delivery.result() is False
+    assert updates == [ToolProgress(progress=1.0)]
+
+
+@pytest.mark.asyncio
+async def test_runtime_close_stops_progress_before_cancelling_active_tools() -> None:
+    started = asyncio.Event()
+    never_release = asyncio.Event()
+    cleanup_delivery: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+
+    @helix_tool
+    async def closing_progress() -> str:
+        """Try to report from cleanup during runtime close."""
+
+        assert await report_progress(1)
+        started.set()
+        try:
+            await never_release.wait()
+        finally:
+            cleanup_delivery.set_result(await report_progress(2))
+        return "unexpected"
+
+    updates: list[ToolProgress] = []
+    runtime = ToolRuntime()
+    runtime.register(closing_progress)
+    invocation = asyncio.create_task(
+        runtime.invoke("closing_progress", progress_handler=updates.append)
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    assert await runtime.aclose()
+    with pytest.raises(asyncio.CancelledError):
+        await invocation
+
+    assert cleanup_delivery.result() is False
+    assert updates == [ToolProgress(progress=1.0)]
+
+
+@pytest.mark.asyncio
+async def test_async_tools_report_bounded_monotonic_progress() -> None:
+    delivery_results: list[bool] = []
+
+    @helix_tool
+    async def progressive() -> list[bool]:
+        """Report more updates than the runtime permits."""
+
+        delivery_results.append(await report_progress(1, total=3, message="started"))
+        delivery_results.append(await report_progress(2, total=3))
+        delivery_results.append(await report_progress(3, total=3, message="capped"))
+        return delivery_results
+
+    updates: list[ToolProgress] = []
+    handler_reports: list[bool] = []
+
+    async def collect(update: ToolProgress) -> None:
+        updates.append(update)
+        handler_reports.append(await report_progress(999))
+
+    runtime = ToolRuntime(max_progress_updates=2)
+    runtime.register(progressive)
+    try:
+        result = await runtime.invoke("progressive", progress_handler=collect)
+    finally:
+        await runtime.aclose()
+
+    assert result.output == [True, True, False]
+    assert updates == [
+        ToolProgress(progress=1.0, total=3.0, message="started"),
+        ToolProgress(progress=2.0, total=3.0),
+    ]
+    assert handler_reports == [False, False]
+    assert await report_progress(4) is False
+
+
+@pytest.mark.asyncio
+async def test_progress_scope_closes_before_detached_tool_work_can_report() -> None:
+    release = asyncio.Event()
+    child_result: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+
+    @helix_tool
+    async def spawn_reporter() -> str:
+        """Start a child that attempts a late progress update."""
+
+        async def report_later() -> None:
+            await release.wait()
+            child_result.set_result(await report_progress(2))
+
+        asyncio.create_task(report_later())
+        assert await report_progress(1)
+        return "done"
+
+    updates: list[ToolProgress] = []
+    runtime = ToolRuntime()
+    runtime.register(spawn_reporter)
+    try:
+        assert (await runtime.invoke("spawn_reporter", progress_handler=updates.append)).success
+        release.set()
+        assert await asyncio.wait_for(child_result, timeout=1) is False
+    finally:
+        release.set()
+        await runtime.aclose()
+
+    assert updates == [ToolProgress(progress=1.0)]
+
+
+@pytest.mark.asyncio
+async def test_progress_validation_fails_safely_inside_a_tool() -> None:
+    @helix_tool
+    async def invalid_progress() -> str:
+        """Repeat a progress value in violation of the contract."""
+
+        await report_progress(1, message="x")
+        await report_progress(1)
+        return "unexpected"
+
+    @helix_tool
+    async def oversized_progress_message() -> str:
+        """Exceed the configured UTF-8 progress-message limit."""
+
+        await report_progress(1, message="é")
+        return "unexpected"
+
+    @helix_tool
+    async def invalid_progress_message() -> str:
+        """Supply a non-string progress message."""
+
+        await report_progress(1, message=1)  # type: ignore[arg-type]
+        return "unexpected"
+
+    runtime = ToolRuntime(max_progress_message_bytes=1)
+    runtime.register(invalid_progress)
+    runtime.register(oversized_progress_message)
+    runtime.register(invalid_progress_message)
+    try:
+        result = await runtime.invoke("invalid_progress", progress_handler=lambda update: None)
+        oversized = await runtime.invoke(
+            "oversized_progress_message", progress_handler=lambda update: None
+        )
+        invalid_message = await runtime.invoke(
+            "invalid_progress_message", progress_handler=lambda update: None
+        )
+        with pytest.raises(TypeError, match="progress_handler"):
+            await runtime.invoke("invalid_progress", progress_handler=True)  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="progress"):
+            await report_progress(True)
+        with pytest.raises(ValueError, match="finite"):
+            await report_progress(float("inf"))
+        with pytest.raises(ValueError, match="finite"):
+            await report_progress(10**1_000)
+    finally:
+        await runtime.aclose()
+
+    assert result.status is ToolStatus.FAILED
+    assert result.error is not None
+    assert result.error.message == "Tool execution failed"
+    assert oversized.status is ToolStatus.FAILED
+    assert invalid_message.status is ToolStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_progress_handler_failures_propagate_as_host_errors() -> None:
+    @helix_tool
+    async def reporting_tool() -> str:
+        """Emit one update through a failing host callback."""
+
+        await report_progress(1)
+        return "unexpected"
+
+    def broken_handler(update: ToolProgress) -> None:
+        raise OSError("progress transport failed")
+
+    runtime = ToolRuntime()
+    runtime.register(reporting_tool)
+    try:
+        with pytest.raises(ProgressHandlerError, match="Progress handler failed") as raised:
+            await runtime.invoke("reporting_tool", progress_handler=broken_handler)
+    finally:
+        await runtime.aclose()
+
+    assert runtime.metrics().failed == 0
+    assert isinstance(raised.value.__cause__, OSError)
+
+
+@pytest.mark.asyncio
 async def test_close_is_idempotent_and_rejects_new_calls() -> None:
     runtime = populated_runtime()
     await runtime.aclose()
@@ -636,6 +887,8 @@ async def test_async_context_manager_closes_the_runtime() -> None:
         ({"max_output_bytes": 1.5}, TypeError),
         ({"max_value_depth": 0}, ValueError),
         ({"max_value_nodes": True}, TypeError),
+        ({"max_progress_updates": 0}, ValueError),
+        ({"max_progress_message_bytes": True}, TypeError),
     ],
 )
 def test_runtime_configuration_is_validated(

@@ -98,6 +98,8 @@ remove the consumer workspace's generated artifacts and sanitized checkpoints.
 - Exercise timeout and bounded synchronous-thread quiescence through a
   consumer-owned deliberately slow synchronous tool; asynchronous MCP
   cancellation is now proven.
+- Upgrade the consumer to prove progress-token correlation, monotonic phase
+  updates, cancellation cutoff, and content-free progress messages.
 - Record an independently operated deployment or downstream repository before
   claiming production adoption.
 - Use consumer demand, not framework parity, to decide whether dataclass, enum,

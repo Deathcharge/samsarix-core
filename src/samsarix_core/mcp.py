@@ -7,13 +7,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import sys
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from typing import Any, BinaryIO, TextIO, cast
 
 from ._version import __version__
+from .errors import ProgressHandlerError
 from .models import JSONValue, ToolResult, ToolSpec
+from .progress import ProgressHandler, ToolProgress
 from .runtime import ToolRuntime
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
@@ -26,14 +29,16 @@ _INTERNAL_ERROR = -32603
 _SERVER_NOT_INITIALIZED = -32002
 _SERVER_BUSY = -32000
 
+NotificationSender = Callable[[dict[str, JSONValue]], Awaitable[None]]
+
 
 class MCPServer:
     """Expose a :class:`ToolRuntime` through MCP's JSON-RPC tool surface.
 
     The server implements initialization, ping, ``tools/list``, ``tools/call``,
-    and cancellation of active calls. Transport and authentication remain
-    application concerns; :func:`serve_stdio` provides a bounded local stdio
-    transport for trusted process launchers.
+    progress reporting, and cancellation of active calls. Transport and
+    authentication remain application concerns; :func:`serve_stdio` provides a
+    bounded local stdio transport for trusted process launchers.
     """
 
     def __init__(
@@ -63,9 +68,18 @@ class MCPServer:
         self._protocol_version: str | None = None
         self._in_flight_requests: dict[str | int | float, asyncio.Task[Any]] = {}
         self._client_cancelled_tasks: set[asyncio.Task[Any]] = set()
+        self._active_progress_tokens: set[str | int | float] = set()
 
-    async def handle(self, message: Mapping[str, Any]) -> dict[str, JSONValue] | None:
+    async def handle(
+        self,
+        message: Mapping[str, Any],
+        *,
+        notification_sender: NotificationSender | None = None,
+    ) -> dict[str, JSONValue] | None:
         """Handle one parsed JSON-RPC message and return a response if required."""
+
+        if notification_sender is not None and not callable(notification_sender):
+            raise TypeError("notification_sender must be callable or None")
 
         if not isinstance(message, Mapping) or message.get("jsonrpc") != "2.0":
             return self._error(None, _INVALID_REQUEST, "Invalid JSON-RPC request")
@@ -120,7 +134,13 @@ class MCPServer:
                     )
                 self._in_flight_requests[request_key] = active
                 try:
-                    return self._success(request_id, await self._call_tool(params))
+                    return self._success(
+                        request_id,
+                        await self._call_tool(
+                            params,
+                            notification_sender=notification_sender,
+                        ),
+                    )
                 except asyncio.CancelledError:
                     if active in self._client_cancelled_tasks:
                         return None
@@ -132,6 +152,8 @@ class MCPServer:
             return self._error(request_id, _METHOD_NOT_FOUND, f"Unknown method '{method}'")
         except _InvalidParams as exc:
             return self._error(request_id, _INVALID_PARAMS, str(exc))
+        except ProgressHandlerError:
+            raise
         except Exception:
             return self._error(request_id, _INTERNAL_ERROR, "Internal server error")
 
@@ -179,7 +201,12 @@ class MCPServer:
             raise _InvalidParams("Pagination cursors are not supported by this bounded registry")
         return {"tools": [self._tool_definition(spec) for spec in self.runtime.registry.list()]}
 
-    async def _call_tool(self, params: Mapping[str, Any]) -> dict[str, JSONValue]:
+    async def _call_tool(
+        self,
+        params: Mapping[str, Any],
+        *,
+        notification_sender: NotificationSender | None,
+    ) -> dict[str, JSONValue]:
         name = params.get("name")
         if not isinstance(name, str) or not name:
             raise _InvalidParams("tools/call requires a tool name")
@@ -187,8 +214,52 @@ class MCPServer:
         if not isinstance(arguments, dict):
             raise _InvalidParams("tools/call arguments must be an object")
 
-        result = await self.runtime.invoke(name, cast(dict[str, Any], arguments))
-        return self._tool_result(result)
+        progress_token = _request_progress_token(params)
+        if progress_token is not None and progress_token in self._active_progress_tokens:
+            raise _InvalidParams("progressToken is already active")
+        if progress_token is not None:
+            self._active_progress_tokens.add(progress_token)
+        try:
+            progress_handler = self._progress_handler(
+                progress_token,
+                notification_sender,
+            )
+            result = await self.runtime.invoke(
+                name,
+                cast(dict[str, Any], arguments),
+                progress_handler=progress_handler,
+            )
+            return self._tool_result(result)
+        finally:
+            if progress_token is not None:
+                self._active_progress_tokens.discard(progress_token)
+
+    @staticmethod
+    def _progress_handler(
+        progress_token: str | int | float | None,
+        notification_sender: NotificationSender | None,
+    ) -> ProgressHandler | None:
+        if progress_token is None or notification_sender is None:
+            return None
+
+        async def send(update: ToolProgress) -> None:
+            params: dict[str, JSONValue] = {
+                "progressToken": progress_token,
+                "progress": update.progress,
+            }
+            if update.total is not None:
+                params["total"] = update.total
+            if update.message is not None:
+                params["message"] = update.message
+            await notification_sender(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/progress",
+                    "params": params,
+                }
+            )
+
+        return send
 
     @staticmethod
     def _tool_definition(spec: ToolSpec) -> dict[str, JSONValue]:
@@ -435,7 +506,15 @@ async def _handle_and_write(
 ) -> None:
     """Handle one parsed message and write its optional response."""
 
-    response = await server.handle(message)
+    async def send_notification(notification: dict[str, JSONValue]) -> None:
+        await _write_response(
+            notification,
+            writer=writer,
+            max_message_bytes=max_message_bytes,
+            lock=lock,
+        )
+
+    response = await server.handle(message, notification_sender=send_notification)
     if response is not None:
         await _write_response(
             response,
@@ -456,6 +535,8 @@ async def _write_response(
 
     encoded = _json_text(response)
     if len(encoded.encode("utf-8")) > max_message_bytes:
+        if "id" not in response:
+            return
         fallback_id = response.get("id")
         encoded = _json_text(
             MCPServer._error(fallback_id, _INTERNAL_ERROR, "MCP response exceeds limit")
@@ -502,7 +583,25 @@ def _json_text(value: Any) -> str:
 
 
 def _valid_request_id(value: Any) -> bool:
-    return isinstance(value, (str, int, float)) and not isinstance(value, bool)
+    return (
+        isinstance(value, (str, int, float))
+        and not isinstance(value, bool)
+        and (not isinstance(value, float) or math.isfinite(value))
+    )
+
+
+def _request_progress_token(params: Mapping[str, Any]) -> str | int | float | None:
+    if "_meta" not in params:
+        return None
+    metadata = params.get("_meta")
+    if not isinstance(metadata, Mapping):
+        raise _InvalidParams("tools/call _meta must be an object")
+    if "progressToken" not in metadata:
+        return None
+    token = metadata.get("progressToken")
+    if not _valid_request_id(token):
+        raise _InvalidParams("progressToken must be a finite string or number")
+    return cast(str | int | float, token)
 
 
 class _InvalidParams(ValueError):

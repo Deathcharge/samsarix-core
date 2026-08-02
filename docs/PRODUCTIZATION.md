@@ -246,6 +246,9 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Added the stable MCP 2025-11-25 tool lifecycle, structured output, behavioral
   annotations, client cancellation, and bounded concurrent local stdio transport
   without a runtime dependency.
+- Added stable MCP progress notifications with invocation-scoped async reporting,
+  strict monotonicity, update and UTF-8 message caps, cancellation cutoff, and
+  custom-transport failure propagation.
 - Added registry, batch, value-complexity, argument, and output resource budgets,
   plus observable bounded shutdown quiescence for timed-out synchronous work.
 - Proved the public MCP API, exact typed result discovery, and response-free
@@ -260,7 +263,7 @@ schema types remain deliberately deferred. They are not required for the first u
 release. One independent repository now proves the MCP boundary without needing those
 features; subsequent surface area should follow concrete consumer demand. Core's own
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30727341629)
-is green; Core's local Python 3.11 suite has 69 tests and 93.42% branch coverage.
+is green; Core's local Python 3.11 suite has 82 tests and 94.28% branch coverage.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
 reported an account billing/spending-limit problem, so its local 29-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.

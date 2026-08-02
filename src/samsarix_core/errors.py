@@ -1,7 +1,7 @@
 # Copyright 2026 Samsarix LLC
 # SPDX-License-Identifier: MPL-2.0
 
-"""Public exceptions raised while defining and registering tools."""
+"""Public exceptions raised at Samsarix Core's host-facing boundaries."""
 
 from __future__ import annotations
 
@@ -30,6 +30,10 @@ class RegistryCapacityError(SamsarixError, ValueError):
 
 class ToolNotFoundError(SamsarixError, KeyError):
     """Raised by direct registry lookups for an unknown tool."""
+
+
+class ProgressHandlerError(SamsarixError, RuntimeError):
+    """Raised when an invocation's host-owned progress callback fails."""
 
 
 @dataclass(frozen=True, slots=True)

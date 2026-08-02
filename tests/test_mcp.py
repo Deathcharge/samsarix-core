@@ -11,7 +11,14 @@ from typing import TypedDict
 
 import pytest
 
-from samsarix_core import MCPServer, ToolRuntime, samsarix_tool, serve_stdio
+from samsarix_core import (
+    MCPServer,
+    ProgressHandlerError,
+    ToolRuntime,
+    report_progress,
+    samsarix_tool,
+    serve_stdio,
+)
 from samsarix_core.mcp import MCP_PROTOCOL_VERSION
 
 
@@ -374,6 +381,34 @@ async def test_mcp_protocol_errors_are_json_rpc_errors() -> None:
                 "params": {"name": "inventory", "arguments": []},
             }
         )
+        bad_progress_meta = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {"name": "inventory", "arguments": {}, "_meta": []},
+            }
+        )
+        null_progress_meta = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "null-meta",
+                "method": "tools/call",
+                "params": {"name": "inventory", "arguments": {}, "_meta": None},
+            }
+        )
+        bad_progress_token = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {
+                    "name": "inventory",
+                    "arguments": {},
+                    "_meta": {"progressToken": True},
+                },
+            }
+        )
     finally:
         await runtime.aclose()
 
@@ -385,6 +420,9 @@ async def test_mcp_protocol_errors_are_json_rpc_errors() -> None:
     assert bad_cursor is not None and bad_cursor["error"]["code"] == -32602
     assert bad_name is not None and bad_name["error"]["code"] == -32602
     assert bad_arguments is not None and bad_arguments["error"]["code"] == -32602
+    assert bad_progress_meta is not None and bad_progress_meta["error"]["code"] == -32602
+    assert null_progress_meta is not None and null_progress_meta["error"]["code"] == -32602
+    assert bad_progress_token is not None and bad_progress_token["error"]["code"] == -32602
 
 
 @pytest.mark.asyncio
@@ -439,6 +477,212 @@ async def test_stdio_transport_is_bounded_and_emits_only_protocol_messages() -> 
     assert responses[1]["result"]["tools"][0]["name"] == "explode"
     assert runtime.metrics().in_flight == 0
     assert (await runtime.invoke("inventory", {"sku": "A-1"})).error.code == "runtime_closed"
+
+
+@pytest.mark.asyncio
+async def test_stdio_emits_requested_progress_before_the_tool_response() -> None:
+    @samsarix_tool
+    async def index_records() -> str:
+        """Report deterministic progress while indexing records."""
+
+        assert await report_progress(1, total=2, message="loaded")
+        assert await report_progress(2, total=2, message="indexed")
+        return "done"
+
+    runtime = ToolRuntime()
+    runtime.register(index_records)
+    initialize_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "progress-test", "version": "1"},
+        },
+    }
+    messages = [
+        initialize_request,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0",
+            "id": "index-call",
+            "method": "tools/call",
+            "params": {
+                "name": "index_records",
+                "arguments": {},
+                "_meta": {"progressToken": "progress-42"},
+            },
+        },
+    ]
+    reader = io.BytesIO(("\n".join(json.dumps(item) for item in messages) + "\n").encode())
+    writer = io.StringIO()
+
+    await serve_stdio(MCPServer(runtime), input_stream=reader, output_stream=writer)
+
+    output = [json.loads(line) for line in writer.getvalue().splitlines()]
+    assert [message.get("id") for message in output] == [1, None, None, "index-call"]
+    assert [message["params"] for message in output[1:3]] == [
+        {
+            "progressToken": "progress-42",
+            "progress": 1.0,
+            "total": 2.0,
+            "message": "loaded",
+        },
+        {
+            "progressToken": "progress-42",
+            "progress": 2.0,
+            "total": 2.0,
+            "message": "indexed",
+        },
+    ]
+    assert output[3]["result"]["structuredContent"] == {"result": "done"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_rejects_duplicate_active_progress_tokens() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @samsarix_tool(timeout=5)
+    async def wait_with_progress() -> str:
+        """Remain active while the duplicate request is checked."""
+
+        started.set()
+        await release.wait()
+        return "done"
+
+    async def discard_notification(message: dict) -> None:
+        return None
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(wait_with_progress)
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        first = asyncio.create_task(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "first",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "wait_with_progress",
+                        "arguments": {},
+                        "_meta": {"progressToken": 7},
+                    },
+                },
+                notification_sender=discard_notification,
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        duplicate = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "second",
+                "method": "tools/call",
+                "params": {
+                    "name": "wait_with_progress",
+                    "arguments": {},
+                    "_meta": {"progressToken": 7},
+                },
+            },
+            notification_sender=discard_notification,
+        )
+        await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/cancelled",
+                "params": {"requestId": "first"},
+            }
+        )
+        assert await asyncio.wait_for(first, timeout=1) is None
+    finally:
+        release.set()
+        await runtime.aclose()
+
+    assert duplicate is not None
+    assert duplicate["error"] == {
+        "code": -32602,
+        "message": "progressToken is already active",
+    }
+
+
+@pytest.mark.asyncio
+async def test_mcp_progress_sender_failure_propagates_to_the_transport() -> None:
+    @samsarix_tool
+    async def reporting_tool() -> str:
+        """Send one update through a broken custom transport."""
+
+        await report_progress(1)
+        return "unexpected"
+
+    async def broken_sender(message: dict) -> None:
+        raise OSError("notification writer failed")
+
+    runtime = ToolRuntime()
+    runtime.register(reporting_tool)
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        with pytest.raises(ProgressHandlerError) as raised:
+            await server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "reporting",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "reporting_tool",
+                        "arguments": {},
+                        "_meta": {"progressToken": "broken"},
+                    },
+                },
+                notification_sender=broken_sender,
+            )
+    finally:
+        await runtime.aclose()
+
+    assert isinstance(raised.value.__cause__, OSError)
+    assert str(raised.value.__cause__) == "notification writer failed"
+
+
+@pytest.mark.asyncio
+async def test_stdio_drops_an_oversized_progress_notification_without_spurious_error() -> None:
+    @samsarix_tool
+    async def noisy_progress() -> str:
+        """Emit a progress message larger than the transport limit."""
+
+        assert await report_progress(1, message="x" * 600)
+        return "done"
+
+    runtime = ToolRuntime(max_progress_message_bytes=1_024)
+    runtime.register(noisy_progress)
+    server = MCPServer(runtime)
+    await initialize(server)
+    request = {
+        "jsonrpc": "2.0",
+        "id": "noisy",
+        "method": "tools/call",
+        "params": {
+            "name": "noisy_progress",
+            "arguments": {},
+            "_meta": {"progressToken": "noise"},
+        },
+    }
+    writer = io.StringIO()
+    await serve_stdio(
+        server,
+        input_stream=io.BytesIO((json.dumps(request) + "\n").encode()),
+        output_stream=writer,
+        max_message_bytes=512,
+        close_runtime=False,
+    )
+
+    output = [json.loads(line) for line in writer.getvalue().splitlines()]
+    assert len(output) == 1
+    assert output[0]["id"] == "noisy"
+    assert output[0]["result"]["structuredContent"] == {"result": "done"}
+    await runtime.aclose()
 
 
 @pytest.mark.asyncio
@@ -741,5 +985,9 @@ def test_mcp_server_metadata_and_transport_limits_are_validated() -> None:
             asyncio.run(serve_stdio(MCPServer(runtime), max_in_flight_requests=True))
         with pytest.raises(ValueError, match="max_in_flight_requests"):
             asyncio.run(serve_stdio(MCPServer(runtime), max_in_flight_requests=0))
+        with pytest.raises(TypeError, match="notification_sender"):
+            asyncio.run(
+                MCPServer(runtime).handle({}, notification_sender=True)  # type: ignore[arg-type]
+            )
     finally:
         asyncio.run(runtime.aclose())

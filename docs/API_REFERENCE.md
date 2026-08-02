@@ -57,13 +57,15 @@ ToolRuntime(
     max_output_bytes: int = 1_048_576,
     max_value_depth: int = 32,
     max_value_nodes: int = 10_000,
+    max_progress_updates: int = 1_000,
+    max_progress_message_bytes: int = 4_096,
     default_timeout: float = 30.0,
     expose_exceptions: bool = False,
 )
 ```
 
 - `register(function, *, replace=False) -> ToolSpec`
-- `await invoke(name, arguments=None, *, timeout=None) -> ToolResult`
+- `await invoke(name, arguments=None, *, timeout=None, progress_handler=None) -> ToolResult`
 - `await invoke_many(calls) -> list[ToolResult]`
 - `metrics() -> RuntimeMetrics`
 - `pending_sync_calls -> int`
@@ -96,6 +98,15 @@ whether submitted sync work is quiescent. Its default does not wait; pass
 `wait_for_sync=True` with a finite timeout when shutdown needs bounded quiescence.
 Calling it again is safe. The async context manager uses the non-waiting default.
 
+`progress_handler` is an optional sync or async callable receiving immutable
+`ToolProgress` values. An asynchronous tool reports through
+`await report_progress(progress, total=None, message=None)`. Updates must use
+finite non-negative numbers and strictly increase. The helper returns `False`
+when no handler is active, the invocation is complete, or the configured update
+cap is exhausted. Progress messages are UTF-8 bounded separately and may contain
+sensitive application text, so tools should keep them generic. Synchronous tools
+do not have an async reporting context.
+
 ## `MCPServer`
 
 ```python
@@ -109,15 +120,17 @@ MCPServer(
 )
 ```
 
-- `await handle(message) -> dict | None`
+- `await handle(message, *, notification_sender=None) -> dict | None`
 
 `handle()` accepts one parsed MCP JSON-RPC message. It supports lifecycle
 initialization, `ping`, `tools/list`, `tools/call`, initialized notifications, and
-`notifications/cancelled` for active calls. It negotiates MCP `2025-11-25` and
-`2025-06-18`. Application-level tool failures are successful JSON-RPC responses
-with `isError: true`; malformed protocol calls use standard JSON-RPC error objects.
-An MCP-cancelled call returns `None` and emits no response. Direct host task
-cancellation continues to raise `asyncio.CancelledError`.
+`notifications/cancelled` for active calls. A request with
+`_meta.progressToken` can receive `notifications/progress` through the optional
+async `notification_sender`; duplicate active tokens are rejected. It negotiates
+MCP `2025-11-25` and `2025-06-18`. Application-level tool failures are successful
+JSON-RPC responses with `isError: true`; malformed protocol calls use standard
+JSON-RPC error objects. An MCP-cancelled call returns `None` and emits no response.
+Direct host task cancellation continues to raise `asyncio.CancelledError`.
 
 ## `serve_stdio`
 
@@ -151,6 +164,7 @@ All public models are frozen, slotted dataclasses.
 - `ToolResult`: invocation ID, tool name, status, UTC start time, duration, output,
   and optional structured error. `success` is a convenience property.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
+- `ToolProgress`: numeric progress, optional total, and optional human-readable message.
 - `RuntimeMetrics`: content-free counters only.
 - `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `timed_out`, `failed`,
   and `runtime_closed`.
@@ -183,9 +197,10 @@ outputs are checked too.
 ## Exceptions
 
 Public definition/registry exceptions are `SamsarixError`, `ToolDefinitionError`,
-`DuplicateToolError`, `RegistryCapacityError`, and `ToolNotFoundError`. Ordinary
-invocation failures are returned as `ToolResult`. `asyncio.CancelledError`
-propagates.
+`DuplicateToolError`, `RegistryCapacityError`, and `ToolNotFoundError`. A host
+progress callback failure raises `ProgressHandlerError` with the original failure
+as its cause instead of misclassifying it as a tool result. Ordinary invocation
+failures are returned as `ToolResult`. `asyncio.CancelledError` propagates.
 
 `helix_core`, `helix_tool`, and `HelixError` are compatibility aliases for the
 pre-rebrand alpha surface. They are not the preferred names for new code.

@@ -23,8 +23,8 @@ persistence, or an untrusted-code sandbox.
   thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - keeps metrics content-free and redacts exception messages by default;
-- exposes the same contracts through a dependency-free, cancellable, and
-  admission-bounded MCP stdio bridge.
+- exposes the same contracts through a dependency-free, cancellable,
+  progress-aware, and admission-bounded MCP stdio bridge.
 
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
 accounts, no API keys, no external service, and no hosted operating cost.
@@ -84,10 +84,10 @@ asyncio.run(main())
 ## Connect an MCP client
 
 Samsarix Core implements the stable MCP tool lifecycle, discovery, invocation,
-structured output, behavioral annotations, and client cancellation without adding
-an SDK dependency. Concurrent stdio calls are separately admission-bounded so the
-runtime's execution queue cannot grow without a protocol-level cap. A complete
-inventory server is included:
+structured output, behavioral annotations, progress notifications, and client
+cancellation without adding an SDK dependency. Concurrent stdio calls are
+separately admission-bounded so the runtime's execution queue cannot grow without
+a protocol-level cap. A complete inventory server is included:
 
 ```bash
 python examples/mcp_inventory_server.py
@@ -96,7 +96,7 @@ python examples/mcp_inventory_server.py
 Configure that command in a trusted local MCP client to discover and call the
 decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
 read/write/destructive annotations, scalar-output wrapping, cancellation, stdio
-admission limits, and security boundaries.
+progress, admission limits, and security boundaries.
 
 ## Proven external consumer
 

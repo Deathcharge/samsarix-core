@@ -40,6 +40,13 @@ Keep `ToolRegistry.max_tools` close to the catalog size you actually expose.
 For stdio MCP servers, also tune `max_in_flight_requests` to bound calls waiting
 behind the runtime's execution limit.
 
+For long-running async tools, report meaningful phase or item-count progress only
+when work actually advances. Keep values strictly increasing and tune
+`max_progress_updates` plus `max_progress_message_bytes` below client and
+transport limits. Progress messages cross the protocol boundary and may be logged
+or displayed, so keep document content, paths, credentials, and tenant data out of
+them.
+
 These limits bound one runtime request; they are not tenant quotas or request-rate
 limits. A network host still needs authentication, admission control, rate limits,
 and aggregate memory/connection limits.

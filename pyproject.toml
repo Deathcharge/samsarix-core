@@ -16,7 +16,7 @@ authors = [
 maintainers = [
   { name = "Samsarix LLC", email = "support@samsarix.com" },
 ]
-keywords = ["tools", "agents", "runtime", "asyncio", "json-schema"]
+keywords = ["tools", "agents", "runtime", "asyncio", "json-schema", "mcp"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -75,7 +75,7 @@ select = ["E", "F", "I", "UP", "B", "ASYNC"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["src/samsarix_core", "src/helix_core"]
+files = ["src/samsarix_core", "src/helix_core", "examples", "benchmarks"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --cov=samsarix_core --cov-branch --cov-report=term-missing --cov-fail-under=90"

@@ -17,8 +17,15 @@ from threading import Lock
 from typing import Any, cast
 from uuid import uuid4
 
-from .errors import ToolArgumentError, ToolNotFoundError, ToolOutputError
+from .errors import ProgressHandlerError, ToolArgumentError, ToolNotFoundError, ToolOutputError
 from .models import JSONValue, RuntimeMetrics, ToolCall, ToolError, ToolResult, ToolSpec, ToolStatus
+from .progress import (
+    ProgressHandler,
+    _close_progress,
+    _open_progress,
+    _ProgressScope,
+    _stop_progress,
+)
 from .registry import RegisteredTool, ToolRegistry
 from .schema import enforce_value_limits, to_json_value, validate_arguments, validate_value
 
@@ -36,6 +43,8 @@ class ToolRuntime:
         max_output_bytes: int = 1_048_576,
         max_value_depth: int = 32,
         max_value_nodes: int = 10_000,
+        max_progress_updates: int = 1_000,
+        max_progress_message_bytes: int = 4_096,
         default_timeout: float = 30.0,
         expose_exceptions: bool = False,
     ) -> None:
@@ -49,6 +58,8 @@ class ToolRuntime:
             ("max_output_bytes", max_output_bytes),
             ("max_value_depth", max_value_depth),
             ("max_value_nodes", max_value_nodes),
+            ("max_progress_updates", max_progress_updates),
+            ("max_progress_message_bytes", max_progress_message_bytes),
         ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{name} must be an integer")
@@ -68,6 +79,8 @@ class ToolRuntime:
         self.max_output_bytes = max_output_bytes
         self.max_value_depth = max_value_depth
         self.max_value_nodes = max_value_nodes
+        self.max_progress_updates = max_progress_updates
+        self.max_progress_message_bytes = max_progress_message_bytes
         self.default_timeout = float(default_timeout)
         self.expose_exceptions = expose_exceptions
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -75,6 +88,7 @@ class ToolRuntime:
             max_workers=max_concurrency, thread_name_prefix="samsarix-tool"
         )
         self._active: set[asyncio.Task[JSONValue]] = set()
+        self._active_progress: dict[asyncio.Task[JSONValue], _ProgressScope | None] = {}
         self._sync_futures: set[Future[Any]] = set()
         self._sync_futures_lock = Lock()
         self._closed = False
@@ -103,13 +117,17 @@ class ToolRuntime:
         arguments: dict[str, Any] | None = None,
         *,
         timeout: float | None = None,
+        progress_handler: ProgressHandler | None = None,
     ) -> ToolResult:
-        """Attempt one invocation and return a structured terminal result."""
+        """Attempt one invocation with optional progress and return its result."""
 
         started_at = datetime.now(timezone.utc).isoformat()
         started = time.perf_counter()
         invocation_id = uuid4().hex
         self._increment("calls_total")
+
+        if progress_handler is not None and not callable(progress_handler):
+            raise TypeError("progress_handler must be callable or None")
 
         if self._closed:
             self._increment("runtime_closed")
@@ -175,11 +193,24 @@ class ToolRuntime:
             )
 
         effective_timeout = float(timeout or registered.spec.timeout or self.default_timeout)
+        progress_scope, progress_token = _open_progress(
+            progress_handler,
+            max_updates=self.max_progress_updates,
+            max_message_bytes=self.max_progress_message_bytes,
+        )
         execution = asyncio.create_task(self._execute(registered, validated))
         self._active.add(execution)
+        self._active_progress[execution] = progress_scope
         try:
-            output = await asyncio.wait_for(execution, timeout=effective_timeout)
+            output = await asyncio.wait_for(
+                asyncio.shield(execution),
+                timeout=effective_timeout,
+            )
         except asyncio.TimeoutError:
+            _stop_progress(progress_scope)
+            execution.cancel()
+            with suppress(asyncio.CancelledError):
+                await execution
             self._increment("timed_out")
             return self._result(
                 invocation_id,
@@ -193,6 +224,7 @@ class ToolRuntime:
                 ),
             )
         except asyncio.CancelledError:
+            _stop_progress(progress_scope)
             execution.cancel()
             with suppress(asyncio.CancelledError):
                 await execution
@@ -212,6 +244,8 @@ class ToolRuntime:
                     type=type(exc).__name__,
                 ),
             )
+        except ProgressHandlerError:
+            raise
         except Exception as exc:
             self._increment("failed")
             message = str(exc) if self.expose_exceptions else "Tool execution failed"
@@ -235,6 +269,8 @@ class ToolRuntime:
             )
         finally:
             self._active.discard(execution)
+            self._active_progress.pop(execution, None)
+            await _close_progress(progress_scope, progress_token)
 
     async def invoke_many(self, calls: Sequence[ToolCall]) -> list[ToolResult]:
         """Invoke a batch in input order with a bounded number of worker tasks."""
@@ -309,6 +345,7 @@ class ToolRuntime:
             self._closed = True
             active = tuple(self._active)
             for task in active:
+                _stop_progress(self._active_progress.get(task))
                 task.cancel()
             if active:
                 await asyncio.gather(*active, return_exceptions=True)
@@ -323,7 +360,11 @@ class ToolRuntime:
     async def __aexit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         await self.aclose()
 
-    async def _execute(self, registered: RegisteredTool, arguments: dict[str, Any]) -> JSONValue:
+    async def _execute(
+        self,
+        registered: RegisteredTool,
+        arguments: dict[str, Any],
+    ) -> JSONValue:
         if registered.spec.is_async:
             async with self._semaphore:
                 self._begin_execution()
