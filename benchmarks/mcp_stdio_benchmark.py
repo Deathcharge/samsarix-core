@@ -22,6 +22,8 @@ from samsarix_core import (
     serve_stdio,
 )
 
+MAX_PROGRESS_UPDATES_PER_CALL = 1_000
+
 
 @samsarix_tool(read_only=True)
 async def increment(value: int, progress_updates: int = 0) -> int:
@@ -39,6 +41,11 @@ async def benchmark(
     progress_updates_per_call: int,
 ) -> dict[str, Any]:
     """Measure the complete in-memory MCP stdio tool-call path."""
+
+    if not 0 <= progress_updates_per_call <= MAX_PROGRESS_UPDATES_PER_CALL:
+        raise ValueError(
+            "progress_updates_per_call must be between 0 and " f"{MAX_PROGRESS_UPDATES_PER_CALL}"
+        )
 
     initialize = {
         "jsonrpc": "2.0",
@@ -71,7 +78,10 @@ async def benchmark(
         )
     payload = ("\n".join(json.dumps(message) for message in messages) + "\n").encode()
     output = io.StringIO()
-    runtime = ToolRuntime(max_concurrency=max_concurrency)
+    runtime = ToolRuntime(
+        max_concurrency=max_concurrency,
+        max_progress_updates=MAX_PROGRESS_UPDATES_PER_CALL,
+    )
     runtime.register(increment)
 
     started = time.perf_counter()
@@ -154,11 +164,13 @@ def positive_integer(value: str) -> int:
 
 
 def non_negative_integer(value: str) -> int:
-    """Parse one non-negative command-line integer."""
+    """Parse one supported progress-update count."""
 
     parsed = int(value)
-    if parsed < 0:
-        raise argparse.ArgumentTypeError("value must be non-negative")
+    if not 0 <= parsed <= MAX_PROGRESS_UPDATES_PER_CALL:
+        raise argparse.ArgumentTypeError(
+            f"value must be between 0 and {MAX_PROGRESS_UPDATES_PER_CALL}"
+        )
     return parsed
 
 

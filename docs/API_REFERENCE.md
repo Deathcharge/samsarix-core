@@ -105,7 +105,8 @@ finite non-negative numbers and strictly increase. The helper returns `False`
 when no handler is active, the invocation is complete, or the configured update
 cap is exhausted. Progress messages are UTF-8 bounded separately and may contain
 sensitive application text, so tools should keep them generic. Synchronous tools
-do not have an async reporting context.
+do not have an async reporting context. A non-increasing progress value or an
+oversized message raises `ValueError` and fails the tool invocation.
 
 ## `MCPServer`
 

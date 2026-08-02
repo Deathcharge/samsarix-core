@@ -101,6 +101,12 @@ public schema:
 from samsarix_core import report_progress, samsarix_tool
 
 
+async def index_one(record: str) -> None:
+    """Replace this stub with application-owned async indexing."""
+
+    return None
+
+
 @samsarix_tool
 async def index_records(records: list[str]) -> int:
     """Index records and report completed work."""
@@ -138,6 +144,8 @@ UTF-8 bytes per progress message for each invocation; tune
 Once the cap is reached, no handler exists, or the call has completed,
 `report_progress()` returns `False`. Oversized transport notifications are
 omitted instead of being replaced by a spurious JSON-RPC error.
+A non-increasing progress value or an oversized progress message raises
+`ValueError` and fails the tool invocation.
 
 Progress is cooperative and currently available inside async tools. Messages are
 sent to the client and may be displayed or logged, so do not include credentials,

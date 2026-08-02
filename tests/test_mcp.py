@@ -409,6 +409,21 @@ async def test_mcp_protocol_errors_are_json_rpc_errors() -> None:
                 },
             }
         )
+        non_finite_token = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "infinite-token",
+                "method": "tools/call",
+                "params": {
+                    "name": "inventory",
+                    "arguments": {},
+                    "_meta": {"progressToken": float("inf")},
+                },
+            }
+        )
+        non_finite_id = await server.handle(
+            {"jsonrpc": "2.0", "id": float("nan"), "method": "ping"}
+        )
     finally:
         await runtime.aclose()
 
@@ -423,6 +438,8 @@ async def test_mcp_protocol_errors_are_json_rpc_errors() -> None:
     assert bad_progress_meta is not None and bad_progress_meta["error"]["code"] == -32602
     assert null_progress_meta is not None and null_progress_meta["error"]["code"] == -32602
     assert bad_progress_token is not None and bad_progress_token["error"]["code"] == -32602
+    assert non_finite_token is not None and non_finite_token["error"]["code"] == -32602
+    assert non_finite_id is not None and non_finite_id["error"]["code"] == -32600
 
 
 @pytest.mark.asyncio
@@ -609,6 +626,68 @@ async def test_mcp_rejects_duplicate_active_progress_tokens() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp_does_not_reserve_progress_tokens_without_a_sender() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @samsarix_tool(timeout=5)
+    async def waiting_tool() -> str:
+        """Remain active while another call reuses its undeliverable token."""
+
+        started.set()
+        await release.wait()
+        return "waited"
+
+    @samsarix_tool
+    async def fast_tool() -> str:
+        """Complete while the first call remains active."""
+
+        return "fast"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(waiting_tool)
+    runtime.register(fast_tool)
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        first = asyncio.create_task(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "waiting",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "waiting_tool",
+                        "arguments": {},
+                        "_meta": {"progressToken": "not-delivered"},
+                    },
+                }
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        second = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "fast",
+                "method": "tools/call",
+                "params": {
+                    "name": "fast_tool",
+                    "arguments": {},
+                    "_meta": {"progressToken": "not-delivered"},
+                },
+            }
+        )
+        release.set()
+        assert await asyncio.wait_for(first, timeout=1) is not None
+    finally:
+        release.set()
+        await runtime.aclose()
+
+    assert second is not None
+    assert second["result"]["structuredContent"] == {"result": "fast"}
+
+
+@pytest.mark.asyncio
 async def test_mcp_progress_sender_failure_propagates_to_the_transport() -> None:
     @samsarix_tool
     async def reporting_tool() -> str:
@@ -647,7 +726,9 @@ async def test_mcp_progress_sender_failure_propagates_to_the_transport() -> None
 
 
 @pytest.mark.asyncio
-async def test_stdio_drops_an_oversized_progress_notification_without_spurious_error() -> None:
+async def test_stdio_drops_an_oversized_progress_notification_without_spurious_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     @samsarix_tool
     async def noisy_progress() -> str:
         """Emit a progress message larger than the transport limit."""
@@ -682,6 +763,9 @@ async def test_stdio_drops_an_oversized_progress_notification_without_spurious_e
     assert len(output) == 1
     assert output[0]["id"] == "noisy"
     assert output[0]["result"]["structuredContent"] == {"result": "done"}
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "dropped an oversized MCP notification" in captured.err
     await runtime.aclose()
 
 

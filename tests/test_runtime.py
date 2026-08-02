@@ -748,6 +748,7 @@ async def test_async_tools_report_bounded_monotonic_progress() -> None:
 async def test_progress_scope_closes_before_detached_tool_work_can_report() -> None:
     release = asyncio.Event()
     child_result: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+    pending: list[asyncio.Task[None]] = []
 
     @helix_tool
     async def spawn_reporter() -> str:
@@ -757,7 +758,7 @@ async def test_progress_scope_closes_before_detached_tool_work_can_report() -> N
             await release.wait()
             child_result.set_result(await report_progress(2))
 
-        asyncio.create_task(report_later())
+        pending.append(asyncio.create_task(report_later()))
         assert await report_progress(1)
         return "done"
 
@@ -768,6 +769,7 @@ async def test_progress_scope_closes_before_detached_tool_work_can_report() -> N
         assert (await runtime.invoke("spawn_reporter", progress_handler=updates.append)).success
         release.set()
         assert await asyncio.wait_for(child_result, timeout=1) is False
+        await pending[0]
     finally:
         release.set()
         await runtime.aclose()

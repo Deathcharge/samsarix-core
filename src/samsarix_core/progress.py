@@ -54,6 +54,8 @@ class _ProgressScope:
                 return False
             if self._last_progress is not None and update.progress <= self._last_progress:
                 raise ValueError("progress must increase with every reported update")
+            # Preserve ordering checks after the delivery cap: increasing updates
+            # return False, while repeated or decreasing updates still fail.
             self._last_progress = update.progress
             if self._updates >= self.max_updates:
                 return False

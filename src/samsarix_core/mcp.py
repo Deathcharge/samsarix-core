@@ -215,15 +215,16 @@ class MCPServer:
             raise _InvalidParams("tools/call arguments must be an object")
 
         progress_token = _request_progress_token(params)
-        if progress_token is not None and progress_token in self._active_progress_tokens:
+        progress_handler = self._progress_handler(progress_token, notification_sender)
+        active_progress_token = progress_token if progress_handler is not None else None
+        if (
+            active_progress_token is not None
+            and active_progress_token in self._active_progress_tokens
+        ):
             raise _InvalidParams("progressToken is already active")
-        if progress_token is not None:
-            self._active_progress_tokens.add(progress_token)
+        if active_progress_token is not None:
+            self._active_progress_tokens.add(active_progress_token)
         try:
-            progress_handler = self._progress_handler(
-                progress_token,
-                notification_sender,
-            )
             result = await self.runtime.invoke(
                 name,
                 cast(dict[str, Any], arguments),
@@ -231,8 +232,8 @@ class MCPServer:
             )
             return self._tool_result(result)
         finally:
-            if progress_token is not None:
-                self._active_progress_tokens.discard(progress_token)
+            if active_progress_token is not None:
+                self._active_progress_tokens.discard(active_progress_token)
 
     @staticmethod
     def _progress_handler(
@@ -536,6 +537,7 @@ async def _write_response(
     encoded = _json_text(response)
     if len(encoded.encode("utf-8")) > max_message_bytes:
         if "id" not in response:
+            print("Samsarix Core dropped an oversized MCP notification", file=sys.stderr)
             return
         fallback_id = response.get("id")
         encoded = _json_text(
