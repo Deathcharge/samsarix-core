@@ -71,7 +71,7 @@ ToolRuntime(
 )
 ```
 
-- `register(function, *, replace=False) -> ToolSpec`
+- `register(function, *, replace=False, max_concurrency=None) -> ToolSpec`
 - `await invoke(name, arguments=None, *, timeout=None, progress_handler=None) -> ToolResult`
 - `await invoke_many(calls) -> list[ToolResult]`
 - `metrics() -> RuntimeMetrics`
@@ -89,9 +89,23 @@ result, including validation, policy, execution-slot waiting, and execution. Cal
 beyond the cap fail fast with status `busy`, safe code `runtime_busy`, and
 `retryable=True`; their arguments are not retained in runtime metrics or errors.
 `RuntimeMetrics.busy`, `pending_invocations`, and `peak_pending_invocations` expose
-content-free saturation signals. Batch workers are capped by both concurrency and
-pending capacity so an isolated batch processes every accepted item rather than
-self-shedding. This process-local limit is not a request-rate or per-tenant quota.
+content-free saturation signals. Batch workers are capped by pending capacity and
+execution remains bounded by the global and per-tool semaphores. This lets an unrelated
+call later in a mixed batch reach free execution capacity when it fits within available
+pending capacity, instead of waiting behind workers queued on one constrained tool. An
+isolated batch still processes every accepted item rather than self-shedding. This
+process-local limit is not a request-rate or per-tenant quota.
+
+`register(..., max_concurrency=N)` gives that exact tool registration its own positive
+execution limit. Calls acquire the per-tool semaphore before the runtime-wide semaphore,
+so waiters for one constrained or unhealthy dependency do not occupy global execution
+slots needed by unrelated tools. The limit applies identically to direct, batch, MCP,
+and task-augmented MCP invocation, but is host deployment policy and is therefore absent
+from `ToolSpec` and MCP discovery. Its wait time is covered by the invocation timeout and
+its waiters are covered by `max_pending_invocations`. Replacing a tool without supplying
+a limit makes the replacement unbounded apart from the runtime-wide cap. Booleans and
+non-integers raise `TypeError`; non-positive integers raise `ValueError` before the tool
+is registered.
 
 Argument and output sizes are the UTF-8 byte length of compact JSON. The root is
 depth zero; every child increments depth. Each container and scalar is one node,
@@ -101,7 +115,7 @@ executing the tool. Output resource violations return `failed` with the safe err
 code `output_limit_exceeded`. All integer limits must be positive and reject booleans.
 
 A timed-out or caller-cancelled sync callable cannot be killed safely. It remains
-in `pending_sync_calls`, keeps its semaphore slot, and remains included in
+in `pending_sync_calls`, keeps its global and per-tool semaphore slots, and remains included in
 `metrics().in_flight` until the underlying thread actually stops. This prevents
 timeouts from feeding an unbounded executor queue. Late exceptions are consumed
 without being exposed through the event loop.

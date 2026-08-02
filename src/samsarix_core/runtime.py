@@ -120,6 +120,7 @@ class ToolRuntime:
         self.policy = policy
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._policy_semaphore = asyncio.Semaphore(max_concurrency)
+        self._tool_semaphores: dict[int, tuple[RegisteredTool, asyncio.Semaphore]] = {}
         self._executor = ThreadPoolExecutor(
             max_workers=max_concurrency, thread_name_prefix="samsarix-tool"
         )
@@ -146,10 +147,38 @@ class ToolRuntime:
             "peak_in_flight": 0,
         }
 
-    def register(self, function: Callable[..., Any], *, replace: bool = False) -> ToolSpec:
-        """Register a decorated callable on this runtime."""
+    def register(
+        self,
+        function: Callable[..., Any],
+        *,
+        replace: bool = False,
+        max_concurrency: int | None = None,
+    ) -> ToolSpec:
+        """Register a decorated callable with an optional execution bulkhead."""
 
-        return self.registry.register(function, replace=replace)
+        if max_concurrency is not None:
+            if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int):
+                raise TypeError("max_concurrency must be an integer or None")
+            if max_concurrency <= 0:
+                raise ValueError("max_concurrency must be positive")
+
+        # Keep the callable registration and its deployment-local policy atomic
+        # with respect to both direct registry mutation and invocation resolution.
+        with self.registry._lock:
+            spec = self.registry.register(function, replace=replace)
+            registered = self.registry._resolve(spec.name)
+            tool_semaphores = {
+                key: entry
+                for key, entry in self._tool_semaphores.items()
+                if entry[0].spec.name != spec.name
+            }
+            if max_concurrency is not None:
+                tool_semaphores[id(registered)] = (
+                    registered,
+                    asyncio.Semaphore(max_concurrency),
+                )
+            self._tool_semaphores = tool_semaphores
+        return spec
 
     async def invoke(
         self,
@@ -235,7 +264,14 @@ class ToolRuntime:
         """Resolve, validate, authorize, and execute one admitted invocation."""
 
         try:
-            registered = self.registry._resolve(name)
+            with self.registry._lock:
+                registered = self.registry._resolve(name)
+                tool_bulkhead = self._tool_semaphores.get(id(registered))
+                tool_semaphore = (
+                    tool_bulkhead[1]
+                    if tool_bulkhead is not None and tool_bulkhead[0] is registered
+                    else None
+                )
         except ToolNotFoundError:
             self._increment("not_found")
             return self._result(
@@ -246,7 +282,6 @@ class ToolRuntime:
                 started,
                 error=ToolError("tool_not_found", "Tool is not registered"),
             )
-
         try:
             supplied_arguments = arguments if arguments is not None else {}
             enforce_value_limits(
@@ -284,6 +319,7 @@ class ToolRuntime:
                 registered,
                 validated,
                 invocation_id=invocation_id,
+                tool_semaphore=tool_semaphore,
             )
         )
         self._active.add(execution)
@@ -386,7 +422,7 @@ class ToolRuntime:
             await _close_progress(progress_scope, progress_token)
 
     async def invoke_many(self, calls: Sequence[ToolCall]) -> list[ToolResult]:
-        """Invoke a batch in input order with a bounded number of worker tasks."""
+        """Invoke a batch in input order with pending-capacity-bounded workers."""
 
         if not calls:
             return []
@@ -401,7 +437,10 @@ class ToolRuntime:
                     call.name, dict(call.arguments), timeout=call.timeout
                 )
 
-        worker_count = min(self.max_concurrency, self.max_pending_invocations, len(calls))
+        # Execution remains globally and per-tool bounded inside ``invoke``. Using
+        # pending capacity here prevents workers waiting on one tool's bulkhead
+        # from head-of-line blocking unrelated calls later in a mixed batch.
+        worker_count = min(self.max_pending_invocations, len(calls))
         workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
         await asyncio.gather(*workers)
         return [cast(ToolResult, result) for result in results]
@@ -476,27 +515,49 @@ class ToolRuntime:
         self,
         registered: RegisteredTool,
         arguments: dict[str, Any],
+        tool_semaphore: asyncio.Semaphore | None,
     ) -> JSONValue:
         if registered.spec.is_async:
-            async with self._semaphore:
-                self._begin_execution()
-                try:
-                    awaitable = cast(Awaitable[Any], registered.function(**arguments))
-                    raw_output = await awaitable
-                    return self._normalize_output(registered, raw_output)
-                finally:
-                    self._end_execution()
+            if tool_semaphore is not None:
+                await tool_semaphore.acquire()
+            try:
+                async with self._semaphore:
+                    self._begin_execution()
+                    try:
+                        awaitable = cast(Awaitable[Any], registered.function(**arguments))
+                        raw_output = await awaitable
+                        return self._normalize_output(registered, raw_output)
+                    finally:
+                        self._end_execution()
+            finally:
+                if tool_semaphore is not None:
+                    tool_semaphore.release()
 
-        await self._semaphore.acquire()
+        if tool_semaphore is not None:
+            await tool_semaphore.acquire()
+        try:
+            await self._semaphore.acquire()
+        except BaseException:
+            if tool_semaphore is not None:
+                tool_semaphore.release()
+            raise
         loop = asyncio.get_running_loop()
         try:
             sync_future = self._executor.submit(self._run_sync, registered.function, arguments)
         except BaseException:
             self._semaphore.release()
+            if tool_semaphore is not None:
+                tool_semaphore.release()
             raise
         with self._sync_futures_lock:
             self._sync_futures.add(sync_future)
-        sync_future.add_done_callback(partial(self._sync_finished, loop=loop))
+        sync_future.add_done_callback(
+            partial(
+                self._sync_finished,
+                loop=loop,
+                tool_semaphore=tool_semaphore,
+            )
+        )
         raw_output = await self._wrap_sync_future(sync_future)
         return self._normalize_output(registered, raw_output)
 
@@ -506,6 +567,7 @@ class ToolRuntime:
         arguments: dict[str, Any],
         *,
         invocation_id: str,
+        tool_semaphore: asyncio.Semaphore | None,
     ) -> JSONValue:
         """Fail closed on one bounded policy decision before tool execution."""
 
@@ -526,7 +588,7 @@ class ToolRuntime:
                 raise _ToolPolicyFailed
             if decision is ToolPolicyDecision.DENY:
                 raise _ToolPolicyDenied
-        return await self._execute(registered, arguments)
+        return await self._execute(registered, arguments, tool_semaphore)
 
     def _run_sync(self, function: Callable[..., Any], arguments: dict[str, Any]) -> Any:
         """Run one sync callable while tracking its real thread lifetime."""
@@ -537,13 +599,25 @@ class ToolRuntime:
         finally:
             self._end_execution()
 
-    def _sync_finished(self, future: Future[Any], *, loop: asyncio.AbstractEventLoop) -> None:
-        """Release one sync slot only after its underlying future is truly done."""
+    def _sync_finished(
+        self,
+        future: Future[Any],
+        *,
+        loop: asyncio.AbstractEventLoop,
+        tool_semaphore: asyncio.Semaphore | None,
+    ) -> None:
+        """Release global and tool slots after the sync future is truly done."""
 
         with self._sync_futures_lock:
             self._sync_futures.discard(future)
+
+        def release_slots() -> None:
+            self._semaphore.release()
+            if tool_semaphore is not None:
+                tool_semaphore.release()
+
         with suppress(RuntimeError):
-            loop.call_soon_threadsafe(self._semaphore.release)
+            loop.call_soon_threadsafe(release_slots)
 
     @staticmethod
     def _wrap_sync_future(future: Future[Any]) -> asyncio.Future[Any]:

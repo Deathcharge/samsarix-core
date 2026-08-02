@@ -266,6 +266,9 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Added an async invocation policy with detached validated context, explicit decisions,
   bounded evaluation, timeout/cancellation integration, safe denial/failure results,
   and content-free denial metrics across direct, batch, MCP, and MCP task execution.
+- Added host-configured per-tool execution bulkheads that acquire before global runtime
+  capacity, preserve unrelated tool availability, and retain their slot for surviving
+  synchronous work after timeout or cancellation.
 - Proved the public MCP API, exact typed result discovery, response-free
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded

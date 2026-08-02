@@ -65,7 +65,8 @@ async def main() -> None:
     runtime = ToolRuntime(max_concurrency=4, default_timeout=10)
     runtime.register(check_inventory)
     runtime.register(reserve_inventory)
-    runtime.register(audit_inventory)
+    # Keep an expensive audit from occupying every execution slot needed by other tools.
+    runtime.register(audit_inventory, max_concurrency=1)
     server = MCPServer(
         runtime,
         name="samsarix-inventory-example",
