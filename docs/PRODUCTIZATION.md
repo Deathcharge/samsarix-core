@@ -295,8 +295,8 @@ evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
-The immutable GitHub prerelease `v2.0.0a3` is published from commit
-`8e3d9460709a21b84934bc64e975824ca1882046` with verified checksums and GitHub Actions
+The immutable GitHub prerelease `v2.0.0a4` is published from commit
+`27c871942b0e90d8303d212b438d5251cb28d43f` with verified checksums and GitHub Actions
 build provenance. The exact assets, workflow runs, verification, installation evidence,
 and recovery model are recorded in `docs/RELEASING.md`. This passes the GitHub release
 gate only; it does not pass the PyPI, stable API, or third-party production-adoption
