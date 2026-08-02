@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Only the current `2.0.0a1` source line is under active security review. Code under
+Only the current `2.0` alpha source line is under active security review. Code under
 `legacy/` is an unsupported archive and is not shipped in the package.
 
 ## Reporting a Vulnerability

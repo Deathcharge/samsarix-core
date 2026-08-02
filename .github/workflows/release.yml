@@ -44,7 +44,7 @@ jobs:
           python -m venv .release-smoke
           .release-smoke/bin/python -m pip install --no-deps dist/*.whl
           .release-smoke/bin/python -c "from samsarix_core import MCPServer, ToolPolicyContext, ToolPolicyDecision, ToolRuntime, serve_stdio, __version__; print(__version__)"
-          .release-smoke/bin/python -c "from helix_core import MCPServer, ToolPolicyContext, ToolPolicyDecision, serve_stdio; import helix_core; assert helix_core.__version__ == '2.0.0a1'"
+          .release-smoke/bin/python -c "from helix_core import MCPServer, ToolPolicyContext, ToolPolicyDecision, serve_stdio, __version__ as legacy_version; from samsarix_core import __version__; assert legacy_version == __version__, f'{legacy_version} != {__version__}'"
       - name: Require the tag to match the package version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
