@@ -31,6 +31,29 @@ def greet(name: str, excited: bool = False) -> str:
 Tool definitions are checked when Python evaluates the decorator. All parameters
 and the return value must use the supported JSON-compatible type subset.
 
+Use `TypedDict` when each object field has a different type and should appear by
+name in JSON Schema:
+
+```python
+from typing import TypedDict
+
+
+class Greeting(TypedDict):
+    message: str
+    excited: bool
+
+
+@samsarix_tool
+def structured_greeting(name: str, excited: bool = False) -> Greeting:
+    """Build a structured greeting."""
+
+    suffix = "!" if excited else "."
+    return {"message": f"Hello, {name}{suffix}", "excited": excited}
+```
+
+Unlike `dict[str, str | bool]`, this produces individual `message` and `excited`
+properties, requires both keys, and rejects additional output keys.
+
 ## 3. Register, inspect, and invoke
 
 ```python

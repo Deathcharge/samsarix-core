@@ -116,6 +116,7 @@ The decorator rejects ambiguous definitions early. Every parameter and return
 value needs a supported type annotation, and every tool needs a description or
 docstring. Supported types are `str`, `bool`, `int`, finite `float`, `None`,
 `Literal`, unions/optionals, typed `list`, typed `tuple`, and `dict[str, T]`.
+`TypedDict` adds strict named nested objects, and
 `Annotated[T, "description"]` adds a property description to the schema.
 
 ## Runtime contract

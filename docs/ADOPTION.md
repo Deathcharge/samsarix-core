@@ -90,5 +90,6 @@ remove the consumer workspace's generated artifacts and sanitized checkpoints.
   slow tool.
 - Record an independently operated deployment or downstream repository before
   claiming production adoption.
-- Use consumer demand, not framework parity, to decide whether richer dataclass,
-  `TypedDict`, enum, or constrained-value schemas belong in Core.
+- Use consumer demand, not framework parity, to decide whether dataclass, enum,
+  or constrained-value schemas belong in Core after the named-field `TypedDict`
+  gap is closed.

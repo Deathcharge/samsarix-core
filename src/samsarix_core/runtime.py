@@ -390,7 +390,18 @@ class ToolRuntime:
                 max_depth=self.max_value_depth,
                 max_nodes=self.max_value_nodes,
             )
+        except ToolArgumentError as exc:
+            raise self._output_data_error(exc) from exc
+
+        try:
             validated_output = validate_value(raw_output, registered.hints["return"], path="$")
+        except ToolArgumentError as exc:
+            raise ToolOutputError(
+                "Tool output did not match its declared return type",
+                public_message="Tool output did not match its declared return type",
+            ) from exc
+
+        try:
             normalized_output = to_json_value(validated_output)
             enforce_value_limits(
                 normalized_output,
@@ -400,17 +411,21 @@ class ToolRuntime:
             )
             return normalized_output
         except ToolArgumentError as exc:
-            limit_codes = {"value_too_deep", "value_too_complex", "value_too_large"}
-            exceeded_limit = any(issue.code in limit_codes for issue in exc.issues)
-            raise ToolOutputError(
-                "Tool output is not JSON-compatible",
-                code="output_limit_exceeded" if exceeded_limit else "invalid_output",
-                public_message=(
-                    "Tool output exceeded a configured resource limit"
-                    if exceeded_limit
-                    else "Tool returned a value that is not JSON-compatible"
-                ),
-            ) from exc
+            raise self._output_data_error(exc) from exc
+
+    @staticmethod
+    def _output_data_error(error: ToolArgumentError) -> ToolOutputError:
+        limit_codes = {"value_too_deep", "value_too_complex", "value_too_large"}
+        exceeded_limit = any(issue.code in limit_codes for issue in error.issues)
+        return ToolOutputError(
+            "Tool output is not JSON-compatible",
+            code="output_limit_exceeded" if exceeded_limit else "invalid_output",
+            public_message=(
+                "Tool output exceeded a configured resource limit"
+                if exceeded_limit
+                else "Tool returned a value that is not JSON-compatible"
+            ),
+        )
 
     def _begin_execution(self) -> None:
         with self._metrics_lock:

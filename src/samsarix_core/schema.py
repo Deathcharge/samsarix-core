@@ -11,7 +11,17 @@ import math
 import types
 from collections.abc import Callable, Iterator
 from copy import deepcopy
-from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 from .errors import ToolArgumentError, ToolDefinitionError, ValidationIssue
 from .models import JSONValue
@@ -86,18 +96,32 @@ def compile_tool_contract(
 def schema_for_type(annotation: Any) -> dict[str, Any]:
     """Return JSON Schema for the deliberately small supported type subset."""
 
+    return _schema_for_type(annotation, active_typed_dicts=frozenset())
+
+
+def _schema_for_type(
+    annotation: Any,
+    *,
+    active_typed_dicts: frozenset[Any],
+) -> dict[str, Any]:
+    """Compile one annotation while rejecting recursive named object schemas."""
+
     origin = get_origin(annotation)
     arguments = get_args(annotation)
 
     if origin is Annotated:
         base, *metadata = arguments
-        schema = schema_for_type(base)
+        schema = _schema_for_type(base, active_typed_dicts=active_typed_dicts)
         description = next((item for item in metadata if isinstance(item, str)), None)
         if description:
             schema["description"] = description
         return schema
     if origin in {Union, types.UnionType}:
-        return {"anyOf": [schema_for_type(item) for item in arguments]}
+        return {
+            "anyOf": [
+                _schema_for_type(item, active_typed_dicts=active_typed_dicts) for item in arguments
+            ]
+        }
     if origin is Literal:
         if not arguments or any(not _is_json_scalar(item) for item in arguments):
             raise ToolDefinitionError("Literal values must be JSON scalars")
@@ -112,23 +136,53 @@ def schema_for_type(annotation: Any) -> dict[str, Any]:
         return {"type": "number"}
     if annotation in {None, type(None)}:
         return {"type": "null"}
+    if is_typeddict(annotation):
+        if annotation in active_typed_dicts:
+            raise ToolDefinitionError("Recursive TypedDict annotations are not supported")
+        fields, required = _typed_dict_fields(annotation)
+        nested_active = active_typed_dicts | {annotation}
+        return {
+            "type": "object",
+            "properties": {
+                name: _schema_for_type(
+                    field_annotation,
+                    active_typed_dicts=nested_active,
+                )
+                for name, field_annotation in fields.items()
+            },
+            "required": [name for name in fields if name in required],
+            "additionalProperties": False,
+        }
     if origin is list:
         if len(arguments) != 1:
             raise ToolDefinitionError("list annotations must declare one item type")
-        return {"type": "array", "items": schema_for_type(arguments[0])}
-    if origin is tuple:
-        if len(arguments) == 2 and arguments[1] is Ellipsis:
-            return {"type": "array", "items": schema_for_type(arguments[0])}
         return {
             "type": "array",
-            "prefixItems": [schema_for_type(item) for item in arguments],
+            "items": _schema_for_type(arguments[0], active_typed_dicts=active_typed_dicts),
+        }
+    if origin is tuple:
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            return {
+                "type": "array",
+                "items": _schema_for_type(arguments[0], active_typed_dicts=active_typed_dicts),
+            }
+        return {
+            "type": "array",
+            "prefixItems": [
+                _schema_for_type(item, active_typed_dicts=active_typed_dicts) for item in arguments
+            ],
             "minItems": len(arguments),
             "maxItems": len(arguments),
         }
     if origin is dict:
         if len(arguments) != 2 or arguments[0] is not str:
             raise ToolDefinitionError("dict annotations must use string keys and one value type")
-        return {"type": "object", "additionalProperties": schema_for_type(arguments[1])}
+        return {
+            "type": "object",
+            "additionalProperties": _schema_for_type(
+                arguments[1], active_typed_dicts=active_typed_dicts
+            ),
+        }
     if annotation is Any:
         raise ToolDefinitionError("Any is not supported; use an explicit JSON-compatible type")
     raise ToolDefinitionError(f"Unsupported tool annotation: {annotation!r}")
@@ -309,6 +363,49 @@ def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
         if value is None:
             return None
         raise _type_error(path, "null")
+    if is_typeddict(annotation):
+        if not isinstance(value, dict):
+            raise _type_error(path, "object")
+        fields, required = _typed_dict_fields(annotation)
+        issues: list[ValidationIssue] = []
+        validated: dict[str, Any] = {}
+        for name in value:
+            if not isinstance(name, str):
+                issues.append(
+                    ValidationIssue(
+                        path=path,
+                        code="invalid_object_key",
+                        message="Object keys must be strings",
+                    )
+                )
+            elif name not in fields:
+                issues.append(
+                    ValidationIssue(
+                        path=f"{path}.{name}",
+                        code="unexpected_field",
+                        message=f"Unexpected field '{name}'",
+                    )
+                )
+        for name, field_annotation in fields.items():
+            if name not in value:
+                if name in required:
+                    issues.append(
+                        ValidationIssue(
+                            path=f"{path}.{name}",
+                            code="missing_field",
+                            message=f"Missing required field '{name}'",
+                        )
+                    )
+                continue
+            try:
+                validated[name] = validate_value(
+                    value[name], field_annotation, path=f"{path}.{name}"
+                )
+            except ToolArgumentError as exc:
+                issues.extend(exc.issues)
+        if issues:
+            raise ToolArgumentError(tuple(issues))
+        return validated
     if origin is list:
         if not isinstance(value, list):
             raise _type_error(path, "array")
@@ -368,6 +465,62 @@ def to_json_value(value: Any) -> JSONValue:
     raise ToolArgumentError(
         (ValidationIssue("$", "not_json_compatible", "Value must be JSON-compatible"),)
     )
+
+
+def _typed_dict_fields(annotation: Any) -> tuple[dict[str, Any], frozenset[str]]:
+    """Resolve TypedDict fields and their semantic required-key set."""
+
+    try:
+        hints = get_type_hints(annotation, include_extras=True)
+    except (NameError, TypeError) as exc:
+        raise ToolDefinitionError(f"Could not resolve TypedDict field hints: {exc}") from exc
+
+    required = set(getattr(annotation, "__required_keys__", ()))
+    optional = set(getattr(annotation, "__optional_keys__", ()))
+    default_required = bool(getattr(annotation, "__total__", True))
+    fields: dict[str, Any] = {}
+    for name, field_annotation in hints.items():
+        normalized, presence = _unwrap_presence_qualifier(field_annotation)
+        fields[name] = normalized
+        if presence is True:
+            required.add(name)
+            optional.discard(name)
+        elif presence is False:
+            optional.add(name)
+            required.discard(name)
+        elif name not in required and name not in optional and default_required:
+            required.add(name)
+    return fields, frozenset(required)
+
+
+def _unwrap_presence_qualifier(annotation: Any) -> tuple[Any, bool | None]:
+    """Remove Required/NotRequired while preserving surrounding Annotated metadata."""
+
+    origin = get_origin(annotation)
+    arguments = get_args(annotation)
+    qualifier = _presence_qualifier(origin)
+    if qualifier is not None:
+        if len(arguments) != 1:
+            raise ToolDefinitionError("Required and NotRequired must wrap one field type")
+        return arguments[0], qualifier
+    if origin is Annotated:
+        base, *metadata = arguments
+        normalized, presence = _unwrap_presence_qualifier(base)
+        if presence is None:
+            return annotation, None
+        return Annotated[(normalized, *metadata)], presence
+    return annotation, None
+
+
+def _presence_qualifier(origin: Any) -> bool | None:
+    if getattr(origin, "__module__", None) not in {"typing", "typing_extensions"}:
+        return None
+    name = getattr(origin, "__qualname__", None)
+    if name == "Required":
+        return True
+    if name == "NotRequired":
+        return False
+    return None
 
 
 def _is_json_scalar(value: Any) -> bool:

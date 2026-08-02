@@ -6,11 +6,17 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from typing import TypedDict
 
 import pytest
 
 from samsarix_core import MCPServer, ToolRuntime, samsarix_tool, serve_stdio
 from samsarix_core.mcp import MCP_PROTOCOL_VERSION
+
+
+class InventoryResult(TypedDict):
+    sku: str
+    available: int
 
 
 @samsarix_tool(
@@ -19,7 +25,7 @@ from samsarix_core.mcp import MCP_PROTOCOL_VERSION
     read_only=True,
     open_world=False,
 )
-def inventory(sku: str) -> dict[str, int | str]:
+def inventory(sku: str) -> InventoryResult:
     """Return local inventory for a stock-keeping unit."""
 
     return {"sku": sku, "available": 7}
@@ -106,7 +112,16 @@ async def test_mcp_tool_catalog_has_schemas_annotations_and_metadata() -> None:
     lookup = tools["inventory"]
     assert lookup["title"] == "Look up inventory"
     assert lookup["inputSchema"]["properties"]["sku"] == {"type": "string"}
-    assert lookup["outputSchema"]["type"] == "object"
+    assert lookup["outputSchema"] == {
+        "type": "object",
+        "properties": {
+            "sku": {"type": "string"},
+            "available": {"type": "integer"},
+        },
+        "required": ["sku", "available"],
+        "additionalProperties": False,
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+    }
     assert lookup["annotations"] == {
         "readOnlyHint": True,
         "destructiveHint": False,

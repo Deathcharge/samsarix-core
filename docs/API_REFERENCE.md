@@ -158,11 +158,20 @@ All public models are frozen, slotted dataclasses.
 - `list[T]`
 - fixed `tuple[T1, T2]` and variable `tuple[T, ...]`
 - `dict[str, T]`
+- `TypedDict` with strict named fields, nesting, inheritance, and total/optional
+  key semantics
 - `Annotated[T, "property description"]`
 
-`Any`, custom classes, sets, arbitrary mappings, bytes, datetimes, and non-string
-dictionary keys are intentionally not part of the alpha contract. Integers do not
-accept booleans. Floats must be finite. Defaults and outputs are checked too.
+`Required` and `NotRequired` are honored when their provider (`typing` on Python
+3.11+ or an application-installed compatible backport) is available. Recursive
+`TypedDict` definitions are rejected during tool declaration so schema generation
+cannot recurse indefinitely. Tool invocations still pass and return ordinary
+dictionaries; Core does not construct user-defined objects.
+
+`Any`, dataclasses, enums, custom classes, sets, arbitrary mappings, bytes,
+datetimes, and non-string dictionary keys are intentionally not part of the alpha
+contract. Integers do not accept booleans. Floats must be finite. Defaults and
+outputs are checked too.
 
 ## Exceptions
 

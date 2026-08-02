@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import math
-from typing import Annotated, Any, Literal
+import sys
+from typing import Annotated, Any, Literal, TypedDict
 
 import pytest
 
@@ -20,6 +21,38 @@ from samsarix_core import (
 )
 
 MARKER = object()
+
+
+class Coordinates(TypedDict):
+    latitude: Annotated[float, "Latitude in decimal degrees"]
+    longitude: float
+
+
+class OptionalSearchFields(TypedDict, total=False):
+    label: str
+    limit: int
+
+
+class SearchRequest(OptionalSearchFields):
+    query: Annotated[str, "Search phrase"]
+    coordinates: Coordinates
+
+
+class SearchResult(TypedDict):
+    matched: bool
+    normalized_query: str
+
+
+class RecursiveRecord(TypedDict, total=False):
+    child: RecursiveRecord
+
+
+if sys.version_info >= (3, 11):
+    from typing import NotRequired, Required
+
+    class MixedPresence(TypedDict, total=False):
+        name: Required[str]
+        note: NotRequired[Annotated[str, "Optional note"]]
 
 
 @helix_tool(
@@ -71,6 +104,77 @@ def test_decorator_and_registry_compile_a_deterministic_contract() -> None:
     assert registry.get("summarize_items") == spec
     assert "summarize_items" in registry
     assert len(registry) == 1
+
+
+def test_typed_dicts_compile_strict_named_nested_object_contracts() -> None:
+    @helix_tool
+    def search(request: SearchRequest) -> SearchResult:
+        """Search a named area."""
+
+        return {"matched": True, "normalized_query": request["query"].lower()}
+
+    spec = ToolRegistry().register(search)
+    request_schema = spec.input_schema["properties"]["request"]
+    assert request_schema == {
+        "type": "object",
+        "properties": {
+            "label": {"type": "string"},
+            "limit": {"type": "integer"},
+            "query": {"type": "string", "description": "Search phrase"},
+            "coordinates": {
+                "type": "object",
+                "properties": {
+                    "latitude": {
+                        "type": "number",
+                        "description": "Latitude in decimal degrees",
+                    },
+                    "longitude": {"type": "number"},
+                },
+                "required": ["latitude", "longitude"],
+                "additionalProperties": False,
+            },
+        },
+        "required": ["query", "coordinates"],
+        "additionalProperties": False,
+    }
+    assert spec.output_schema == {
+        "type": "object",
+        "properties": {
+            "matched": {"type": "boolean"},
+            "normalized_query": {"type": "string"},
+        },
+        "required": ["matched", "normalized_query"],
+        "additionalProperties": False,
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+    }
+
+
+def test_typed_dict_required_and_not_required_qualifiers_are_respected() -> None:
+    if sys.version_info < (3, 11):
+        pytest.skip("stdlib Required and NotRequired were added in Python 3.11")
+
+    @helix_tool
+    def inspect_record(record: MixedPresence) -> bool:
+        """Inspect a mixed-presence record."""
+
+        return bool(record["name"])
+
+    schema = ToolRegistry().register(inspect_record).input_schema["properties"]["record"]
+    assert schema["required"] == ["name"]
+    assert schema["properties"]["note"] == {
+        "type": "string",
+        "description": "Optional note",
+    }
+
+
+def test_recursive_typed_dict_contracts_are_rejected_at_declaration_time() -> None:
+    with pytest.raises(ToolDefinitionError, match="Recursive TypedDict"):
+
+        @helix_tool
+        def inspect_recursive(record: RecursiveRecord) -> bool:
+            """Inspect an unsupported recursive record."""
+
+            return bool(record)
 
 
 def test_samsarix_names_are_canonical_and_legacy_names_remain_compatible() -> None:
