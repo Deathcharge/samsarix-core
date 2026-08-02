@@ -199,13 +199,27 @@ arguments before a tool runs. Output-limit failures are redacted structured
 results. See the [API reference](docs/API_REFERENCE.md) for the defaults and tune
 them to the host's actual workload.
 
+Hosts can isolate a slow or quota-constrained dependency when registering its tool:
+
+```python
+runtime = ToolRuntime(max_concurrency=8)
+runtime.register(query_warehouse, max_concurrency=2)
+runtime.register(health_check)
+```
+
+The per-tool slot is acquired before the global execution slot, so queued warehouse
+calls cannot consume all eight slots and starve `health_check`. The same deployment-local
+limit covers direct, batch, MCP, and MCP task calls without becoming discoverable tool
+metadata. The invocation timeout includes bulkhead waiting, and the overall
+`max_pending_invocations` cap still bounds every waiter.
+
 ## Important boundaries
 
 - Registered functions are trusted application code and run in the current process.
   Registration is not a security sandbox.
 - Async timeouts cancel the running coroutine when it cooperates with cancellation.
 - A timed-out sync function may keep running in its worker thread. The pool stays
-  bounded and its concurrency slot stays occupied until it actually stops. Inspect
+  bounded and its global and per-tool concurrency slots stay occupied until it actually stops. Inspect
   `pending_sync_calls`, or use `wait_for_sync()` / `aclose(wait_for_sync=True)` when
   shutdown must prove quiescence. The function still needs its own I/O deadlines.
 - Opt-in MCP tasks are experimental and session-local. Results remain in memory

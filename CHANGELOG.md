@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- deployment-local per-tool execution bulkheads through
+  `ToolRuntime.register(..., max_concurrency=N)`, with tool-first semaphore ordering,
+  bounded waiting, timeout/cancellation integration, and retained slots for surviving
+  synchronous work.
+
 ### Changed
 
 - recorded immutable `v2.0.0a3` release provenance and independent consumer `0.2.9`

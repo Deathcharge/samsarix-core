@@ -15,6 +15,7 @@ invocation: incoming call
     -> iterative argument resource preflight
     -> ToolRuntime argument validation
     -> optional bounded host policy decision
+    -> optional per-tool execution bulkhead
     -> bounded async or thread-pool execution
     -> optional invocation-scoped progress handler
     -> output validation and resource preflight
@@ -77,8 +78,12 @@ it does not enter a semaphore queue or retain its arguments. Content-free curren
 peak, and rejection counters make saturation observable. `invoke_many` also limits
 its worker set to this cap so a batch does not shed its own queued items.
 
-One semaphore bounds executing work. Async functions run on the event loop. Sync
-functions run in a private `ThreadPoolExecutor` whose worker count equals
+One semaphore bounds all executing work. A registration can add a per-tool semaphore,
+which is acquired first so calls waiting on one constrained dependency do not reserve
+runtime-wide capacity. The bulkhead is bound to the exact internal registration and is
+not exported in the portable schema or MCP catalog; replacing a registration cannot
+inherit stale operational policy. Async functions run on the event loop. Sync functions
+run in a private `ThreadPoolExecutor` whose worker count equals
 `max_concurrency`. `invoke_many` uses a bounded worker set rather than one task per
 call. Registry and batch caps bound catalog and fan-out growth; per-value byte,
 depth, and node limits bound validation work. The stdio adapter separately caps
@@ -100,7 +105,7 @@ closed scope after its parent call completes and cannot emit a late notification
 
 Async cancellation is cooperative. Python cannot safely kill a running thread, so
 a timed-out or client-cancelled sync function may outlive its protocol result. Its
-semaphore slot and actual in-flight metric remain held until the thread finishes,
+global and per-tool semaphore slots and actual in-flight metric remain held until the thread finishes,
 preventing repeated
 timeouts from filling an unbounded executor queue. `pending_sync_calls` exposes
 this state. `wait_for_sync()` and the opt-in waiting form of `aclose()` provide

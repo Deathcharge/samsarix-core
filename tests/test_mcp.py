@@ -503,6 +503,92 @@ async def test_mcp_exposes_safe_retryable_runtime_overload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp_calls_share_runtime_tool_bulkheads_without_cross_tool_starvation() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @samsarix_tool
+    async def constrained(value: int) -> int:
+        """Wait behind one constrained downstream dependency."""
+
+        started.set()
+        await release.wait()
+        return value
+
+    @samsarix_tool
+    async def independent() -> str:
+        """Represent an unrelated healthy dependency."""
+
+        return "available"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(constrained, max_concurrency=1)
+    runtime.register(independent)
+    server = MCPServer(runtime)
+    first: asyncio.Task[dict | None] | None = None
+    second: asyncio.Task[dict | None] | None = None
+    try:
+        await initialize(server)
+        first = asyncio.create_task(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "constrained-1",
+                    "method": "tools/call",
+                    "params": {"name": "constrained", "arguments": {"value": 1}},
+                }
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        second = asyncio.create_task(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "constrained-2",
+                    "method": "tools/call",
+                    "params": {"name": "constrained", "arguments": {"value": 2}},
+                }
+            )
+        )
+        for _ in range(100):
+            if runtime.metrics().pending_invocations == 2:
+                break
+            await asyncio.sleep(0)
+        else:
+            pytest.fail("second MCP invocation was not admitted")
+
+        healthy = await asyncio.wait_for(
+            server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "independent",
+                    "method": "tools/call",
+                    "params": {"name": "independent", "arguments": {}},
+                }
+            ),
+            timeout=0.2,
+        )
+        assert healthy is not None
+        assert healthy["result"]["structuredContent"] == {"result": "available"}
+
+        release.set()
+        completed = await asyncio.gather(first, second)
+        assert [item["result"]["structuredContent"] for item in completed if item] == [
+            {"result": 1},
+            {"result": 2},
+        ]
+    finally:
+        release.set()
+        for call in (first, second):
+            if call is not None:
+                call.cancel()
+        await asyncio.gather(
+            *(call for call in (first, second) if call is not None), return_exceptions=True
+        )
+        await server.aclose()
+
+
+@pytest.mark.asyncio
 async def test_mcp_cancel_notification_stops_active_call_without_a_response() -> None:
     started = asyncio.Event()
     stopped = asyncio.Event()

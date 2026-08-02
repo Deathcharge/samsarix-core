@@ -39,7 +39,7 @@ negotiate that capability. It does not alter direct runtime invocation.
 ToolRegistry(*, max_tools: int = 256)
 ```
 
-- `register(function, *, replace=False) -> ToolSpec`
+- `register(function, *, replace=False, max_concurrency=None) -> ToolSpec`
 - `unregister(name) -> ToolSpec`
 - `get(name) -> ToolSpec`
 - `list() -> tuple[ToolSpec, ...]`
@@ -93,6 +93,17 @@ content-free saturation signals. Batch workers are capped by both concurrency an
 pending capacity so an isolated batch processes every accepted item rather than
 self-shedding. This process-local limit is not a request-rate or per-tenant quota.
 
+`register(..., max_concurrency=N)` gives that exact tool registration its own positive
+execution limit. Calls acquire the per-tool semaphore before the runtime-wide semaphore,
+so waiters for one constrained or unhealthy dependency do not occupy global execution
+slots needed by unrelated tools. The limit applies identically to direct, batch, MCP,
+and task-augmented MCP invocation, but is host deployment policy and is therefore absent
+from `ToolSpec` and MCP discovery. Its wait time is covered by the invocation timeout and
+its waiters are covered by `max_pending_invocations`. Replacing a tool without supplying
+a limit makes the replacement unbounded apart from the runtime-wide cap. Booleans and
+non-integers raise `TypeError`; non-positive integers raise `ValueError` before the tool
+is registered.
+
 Argument and output sizes are the UTF-8 byte length of compact JSON. The root is
 depth zero; every child increments depth. Each container and scalar is one node,
 while object keys are covered by the byte limit but do not count as nodes. Cyclic,
@@ -101,7 +112,7 @@ executing the tool. Output resource violations return `failed` with the safe err
 code `output_limit_exceeded`. All integer limits must be positive and reject booleans.
 
 A timed-out or caller-cancelled sync callable cannot be killed safely. It remains
-in `pending_sync_calls`, keeps its semaphore slot, and remains included in
+in `pending_sync_calls`, keeps its global and per-tool semaphore slots, and remains included in
 `metrics().in_flight` until the underlying thread actually stops. This prevents
 timeouts from feeding an unbounded executor queue. Late exceptions are consumed
 without being exposed through the event loop.

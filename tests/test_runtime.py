@@ -301,6 +301,54 @@ async def test_timed_out_sync_work_remains_observable_and_holds_its_slot() -> No
 
 
 @pytest.mark.asyncio
+async def test_timed_out_sync_work_holds_only_its_tool_bulkhead() -> None:
+    started = Event()
+    release = Event()
+    executions = 0
+
+    @helix_tool
+    def isolated_blocker() -> str:
+        """Block one downstream integration."""
+
+        nonlocal executions
+        executions += 1
+        started.set()
+        release.wait(2)
+        return "released"
+
+    @helix_tool
+    async def healthy_tool() -> str:
+        """Represent an unrelated healthy integration."""
+
+        return "healthy"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(isolated_blocker, max_concurrency=1)
+    runtime.register(healthy_tool)
+    try:
+        first = await runtime.invoke("isolated_blocker", timeout=0.02)
+        assert started.is_set()
+        assert first.status is ToolStatus.TIMED_OUT
+
+        queued = await runtime.invoke("isolated_blocker", timeout=0.02)
+        healthy = await runtime.invoke("healthy_tool", timeout=0.2)
+
+        assert queued.status is ToolStatus.TIMED_OUT
+        assert executions == 1
+        assert runtime.pending_sync_calls == 1
+        assert healthy.output == "healthy"
+
+        release.set()
+        assert await runtime.wait_for_sync(timeout=1) is True
+        recovered = await runtime.invoke("isolated_blocker", timeout=0.2)
+        assert recovered.output == "released"
+        assert executions == 2
+    finally:
+        release.set()
+        await runtime.aclose(wait_for_sync=True, timeout=1)
+
+
+@pytest.mark.asyncio
 async def test_close_can_report_or_wait_for_sync_quiescence() -> None:
     release = Event()
 
@@ -480,6 +528,199 @@ async def test_batch_preserves_order_and_bounds_execution() -> None:
     assert metrics.succeeded == 6
     assert empty == []
     assert metrics.to_dict()["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_per_tool_bulkhead_prevents_one_tool_from_starving_another() -> None:
+    first_started = asyncio.Event()
+    release = asyncio.Event()
+    isolated_active = 0
+    isolated_peak = 0
+
+    @helix_tool
+    async def isolated(value: int) -> int:
+        """Hold calls to one constrained downstream integration."""
+
+        nonlocal isolated_active, isolated_peak
+        isolated_active += 1
+        isolated_peak = max(isolated_peak, isolated_active)
+        first_started.set()
+        try:
+            await release.wait()
+            return value
+        finally:
+            isolated_active -= 1
+
+    @helix_tool
+    async def independent() -> str:
+        """Complete through an unrelated integration."""
+
+        return "available"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(isolated, max_concurrency=1)
+    runtime.register(independent)
+    first = asyncio.create_task(runtime.invoke("isolated", {"value": 1}))
+    second: asyncio.Task[ToolResult] | None = None
+    try:
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+        second = asyncio.create_task(runtime.invoke("isolated", {"value": 2}))
+        for _ in range(100):
+            if runtime.metrics().pending_invocations == 2:
+                break
+            await asyncio.sleep(0)
+        else:
+            pytest.fail("second isolated invocation was not admitted")
+
+        healthy = await asyncio.wait_for(runtime.invoke("independent"), timeout=0.2)
+        assert healthy.output == "available"
+        assert isolated_active == 1
+
+        release.set()
+        completed = await asyncio.gather(first, second)
+        assert [result.output for result in completed] == [1, 2]
+        assert isolated_peak == 1
+    finally:
+        release.set()
+        first.cancel()
+        if second is not None:
+            second.cancel()
+        await asyncio.gather(
+            first, *(item for item in (second,) if item is not None), return_exceptions=True
+        )
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_batch_calls_respect_the_registered_tool_bulkhead() -> None:
+    active = 0
+    peak = 0
+
+    @helix_tool
+    async def batch_isolated(value: int) -> int:
+        """Track per-tool concurrency inside a batch."""
+
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(0.01)
+            return value
+        finally:
+            active -= 1
+
+    runtime = ToolRuntime(max_concurrency=4)
+    runtime.register(batch_isolated, max_concurrency=2)
+    try:
+        results = await runtime.invoke_many(
+            [ToolCall("batch_isolated", {"value": value}) for value in range(8)]
+        )
+    finally:
+        await runtime.aclose()
+
+    assert [result.output for result in results] == list(range(8))
+    assert peak == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_tool_bulkhead_waiter_does_not_leak_capacity() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    @helix_tool
+    async def serial_tool(value: int) -> int:
+        """Serialize calls behind an explicit tool bulkhead."""
+
+        started.set()
+        await release.wait()
+        return value
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(serial_tool, max_concurrency=1)
+    first = asyncio.create_task(runtime.invoke("serial_tool", {"value": 1}))
+    waiter: asyncio.Task[ToolResult] | None = None
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        waiter = asyncio.create_task(runtime.invoke("serial_tool", {"value": 2}))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+
+        release.set()
+        assert (await first).output == 1
+        recovered = await runtime.invoke("serial_tool", {"value": 3})
+        assert recovered.output == 3
+    finally:
+        release.set()
+        first.cancel()
+        if waiter is not None:
+            waiter.cancel()
+        await asyncio.gather(
+            first, *(item for item in (waiter,) if item is not None), return_exceptions=True
+        )
+        await runtime.aclose()
+
+
+@pytest.mark.parametrize(
+    ("limit", "error"),
+    [
+        (0, ValueError),
+        (True, TypeError),
+        (1.5, TypeError),
+    ],
+)
+def test_per_tool_concurrency_is_validated_before_registration(
+    limit: object, error: type[Exception]
+) -> None:
+    runtime = ToolRuntime()
+    try:
+        with pytest.raises(error):
+            runtime.register(add, max_concurrency=limit)  # type: ignore[arg-type]
+        assert "add" not in runtime.registry
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@pytest.mark.asyncio
+async def test_replacing_a_tool_does_not_inherit_its_previous_bulkhead() -> None:
+    active = 0
+    peak = 0
+
+    @helix_tool(name="replaceable")
+    async def original(value: int) -> int:
+        """Represent the original constrained registration."""
+
+        return value
+
+    @helix_tool(name="replaceable")
+    async def replacement(value: int) -> int:
+        """Track concurrency for the replacement registration."""
+
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(0.01)
+            return value
+        finally:
+            active -= 1
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(original, max_concurrency=1)
+    runtime.register(replacement, replace=True)
+    try:
+        results = await runtime.invoke_many(
+            [
+                ToolCall("replaceable", {"value": 1}),
+                ToolCall("replaceable", {"value": 2}),
+            ]
+        )
+    finally:
+        await runtime.aclose()
+
+    assert [result.output for result in results] == [1, 2]
+    assert peak == 2
 
 
 @pytest.mark.asyncio

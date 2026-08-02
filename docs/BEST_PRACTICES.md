@@ -41,7 +41,19 @@ cannot be force-stopped. Set connect/read/query/process timeouts in the tool its
 make cancellation-friendly async calls, and make side effects idempotent when the
 caller might retry after a timeout.
 
-Choose `max_concurrency` from downstream capacity, not CPU count alone. Set
+Register a tool with `max_concurrency=N` when its downstream API, database pool, model
+deployment, or other resource has a lower safe concurrency than the runtime as a whole.
+Choose the limit from measured capacity and the dependency's quota. Samsarix acquires
+this tool-specific slot before a global execution slot, preserving unrelated tool
+availability while the constrained tool queues.
+
+The per-tool limit is an in-process execution bulkhead, not a request-rate limit,
+tenant quota, circuit breaker, or process sandbox. Keep total admission finite, set
+downstream I/O deadlines, and add caller-aware controls at the hosting boundary.
+See the vendor-neutral [bulkhead pattern guidance](https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead)
+for the reliability trade-offs and complementary controls.
+
+Choose the runtime-wide `max_concurrency` from aggregate downstream capacity, not CPU count alone. Set
 `max_pending_invocations` to the total policy/execution work one process can safely
 hold; monitor `busy` and `peak_pending_invocations` to find sustained saturation.
 Tune `max_batch_size`,
