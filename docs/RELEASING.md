@@ -86,6 +86,44 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a5
+
+The lifecycle-observability alpha was published on 2026-08-02 as an immutable GitHub
+prerelease:
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a5`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a5) |
+| Tagged commit | `60fa5554d8ef4625dc803751cc4bd34cf757e094` |
+| Annotated tag object | `a5b64aac040f87e0746e987e7c773a65a6557f26` |
+| Release workflow | [run `30746440097`](https://github.com/Deathcharge/samsarix-core/actions/runs/30746440097) |
+| Build-only dry run | [run `30746407482`](https://github.com/Deathcharge/samsarix-core/actions/runs/30746407482) |
+| Exact-main CI | [run `30746378277`](https://github.com/Deathcharge/samsarix-core/actions/runs/30746378277) |
+| Release state | published, prerelease, immutable |
+
+Published assets are:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a5-py3-none-any.whl` | 46,592 | `a883741055ef00a38ca01a93a41e761a419d7070210e3f94fe8cc69da8e6ab27` |
+| `samsarix_core-2.0.0a5.tar.gz` | 115,681 | `b7d86c52a30924b5dc158d576589134054ffb334944ca3ed832735c45383c893` |
+| `SHA256SUMS` | 200 | `ee8decc978e7894c68e65d1ae7fdef932c79c41c56d25914e68f9c1403cbf139` |
+
+`gh release verify` confirmed the immutable release, and `gh release verify-asset`
+confirmed all three freshly downloaded assets. The downloaded manifest independently
+matched both distribution digests. `gh attestation verify` validated SLSA provenance
+for the wheel and source distribution while explicitly requiring the public release
+workflow, tag ref, source commit, and GitHub-hosted runner.
+
+A fresh Python 3.14.6 environment installed the downloaded wheel without dependencies
+and reported no broken requirements. An installed-package probe invoked a real tool and
+received correlated `started` and `success` lifecycle events without retaining the
+private argument in their serialized metadata. Both public namespaces reported
+`2.0.0a5`, and the import resolved to the fresh environment's `site-packages`. This is
+GitHub distribution, provenance, and clean-wheel behavior evidence, not PyPI
+publication, a stable-API declaration, a security audit, third-party production
+adoption, or an SLA.
+
 ## Published evidence: v2.0.0a4
 
 The per-tool bulkhead alpha was published on 2026-08-02 as an immutable GitHub

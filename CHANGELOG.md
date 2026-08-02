@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a5` release checksums, provenance, and clean installed-wheel
+  lifecycle evidence.
+
 ## 2.0.0a5 - 2026-08-02
 
 ### Added
