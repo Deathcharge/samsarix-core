@@ -93,10 +93,34 @@ results = await runtime.invoke_many(calls)
 Results keep input order. The runtime creates at most `max_concurrency` workers,
 and sync functions share a thread pool of the same maximum size.
 
-## 5. Handle boundaries explicitly
+## 5. Add a host policy when calls need central admission control
+
+```python
+from samsarix_core import ToolPolicyContext, ToolPolicyDecision, ToolRuntime
+
+
+async def read_only_policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+    return (
+        ToolPolicyDecision.ALLOW
+        if context.spec.read_only
+        else ToolPolicyDecision.DENY
+    )
+
+
+runtime = ToolRuntime(policy=read_only_policy)
+```
+
+The policy runs only for resolved calls with valid, resource-bounded arguments. Its
+snapshot is detached from execution, but may contain sensitive input. A denial returns
+a normal structured result without running tool code. See
+[`examples/policy_gate.py`](../examples/policy_gate.py) for request-local scopes.
+
+## 6. Handle boundaries explicitly
 
 - Use `async with` or call `await runtime.aclose()`.
 - Treat tool functions as trusted in-process code.
 - Add I/O timeouts inside sync tools; the runtime cannot terminate Python threads.
 - Leave exception exposure disabled outside a trusted developer environment.
 - Check `result.status` or `result.success`; caller cancellation still propagates.
+- Treat host policy as defense in depth, not authentication or a persistent
+  human-approval system.

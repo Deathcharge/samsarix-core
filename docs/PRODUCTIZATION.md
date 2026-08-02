@@ -100,6 +100,14 @@ application infrastructure, not a Samsarix-hosted service.
 - Return structured results rather than swallowing errors or raising ordinary
   tool failures across the runtime boundary. Programmer/configuration errors may
   still raise during decoration or registration.
+- Offer an optional host-owned pre-execution policy after validation. Current MCP
+  guidance recommends a human denial surface, while current OpenAI Agents SDK and
+  LangChain documentation expose per-tool guardrails or conditional approval policies:
+  <https://modelcontextprotocol.io/specification/2025-11-25/server/tools>,
+  <https://openai.github.io/openai-agents-python/guardrails/>, and
+  <https://docs.langchain.com/oss/python/langchain/human-in-the-loop>. Core supplies
+  only a bounded programmatic allow/deny boundary; client UI and durable approval state
+  remain outside this runtime.
 - Run synchronous functions in a worker thread. Timeouts bound the caller's wait,
   but cannot forcibly stop a Python thread; this limitation must remain explicit.
 - Do not call in-process execution a sandbox. Registered tools retain the current
@@ -255,6 +263,9 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   custom-transport failure propagation.
 - Added registry, batch, value-complexity, argument, and output resource budgets,
   plus observable bounded shutdown quiescence for timed-out synchronous work.
+- Added an async invocation policy with detached validated context, explicit decisions,
+  bounded evaluation, timeout/cancellation integration, safe denial/failure results,
+  and content-free denial metrics across direct, batch, MCP, and MCP task execution.
 - Proved the public MCP API, exact typed result discovery, response-free
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
@@ -22,6 +22,7 @@ class ToolStatus(str, Enum):
     SUCCESS = "success"
     NOT_FOUND = "not_found"
     INVALID_ARGUMENTS = "invalid_arguments"
+    DENIED = "denied"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
     RUNTIME_CLOSED = "runtime_closed"
@@ -101,6 +102,25 @@ class ToolCall:
     timeout: float | None = None
 
 
+class ToolPolicyDecision(str, Enum):
+    """A host policy's explicit decision for one validated invocation."""
+
+    ALLOW = "allow"
+    DENY = "deny"
+
+
+@dataclass(frozen=True, slots=True)
+class ToolPolicyContext:
+    """A detached validated call snapshot supplied only to host-owned policy code."""
+
+    invocation_id: str
+    spec: ToolSpec
+    arguments: Mapping[str, Any]
+
+
+ToolPolicy: TypeAlias = Callable[[ToolPolicyContext], Awaitable[ToolPolicyDecision]]
+
+
 @dataclass(frozen=True, slots=True)
 class ToolResult:
     """The structured result of one attempted tool invocation."""
@@ -141,6 +161,7 @@ class RuntimeMetrics:
     succeeded: int
     not_found: int
     invalid_arguments: int
+    denied: int
     timed_out: int
     failed: int
     runtime_closed: int
@@ -156,6 +177,7 @@ class RuntimeMetrics:
             "succeeded": self.succeeded,
             "not_found": self.not_found,
             "invalid_arguments": self.invalid_arguments,
+            "denied": self.denied,
             "timed_out": self.timed_out,
             "failed": self.failed,
             "runtime_closed": self.runtime_closed,

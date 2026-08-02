@@ -15,6 +15,8 @@ This is a replacement alpha rather than a compatibility release.
 - bounded concurrency, a private sync thread pool, timeouts, cancellation, and
   ordered batch invocation;
 - content-free runtime metrics;
+- opt-in bounded async invocation policy with detached validated context, explicit
+  allow/deny decisions, safe fail-closed errors, and direct/batch/MCP/task coverage;
 - configurable registry, batch, argument/output byte, nesting-depth, and value-node
   limits with safe structured failures;
 - observable timed-out sync work, retained concurrency slots, late-failure draining,

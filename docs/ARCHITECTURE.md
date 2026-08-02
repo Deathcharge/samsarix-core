@@ -10,6 +10,7 @@ typed function
     -> JSON Schema catalog
     -> iterative argument resource preflight
     -> ToolRuntime argument validation
+    -> optional bounded host policy decision
     -> bounded async or thread-pool execution
     -> optional invocation-scoped progress handler
     -> output validation and resource preflight
@@ -40,13 +41,18 @@ typed function
 
 The registry boundary is developer-controlled. Registered callables have the same
 file, process, environment, network, and credential access as the host application.
-Samsarix Core neither isolates nor authorizes them.
+Samsarix Core does not isolate them or authenticate callers. An optional host-owned
+policy can deny a validated invocation before execution, but it is not an identity
+provider, permission database, or human-approval workflow.
 
 Invocation arguments may originate from an untrusted model or client, so the
 runtime bounds size and structural complexity before recursive type validation and
 before calling a function. Validation is a shape/type boundary, not application
 authorization: each tool still enforces resource access, tenant isolation, quotas,
-and business rules.
+and business rules. A policy receives detached copies of the resolved tool spec and
+default-filled arguments so policy mutation cannot alter the registered contract or
+executed call. Policy failures and invalid decisions fail closed without serializing
+the snapshot.
 
 Exception messages are redacted by default and metrics never retain tool names,
 arguments, outputs, or errors. The successful output is intentionally returned to
@@ -69,6 +75,11 @@ admitted tool-call and blocking task-result coroutines so cancellation can remai
 responsive without creating an unbounded wait queue. The task store independently
 caps retained entries and TTL. These controls do not replace host-level rate
 limits or tenant quotas.
+
+A second semaphore bounds async policy evaluations to `max_concurrency`. The caller's
+invocation timeout covers the policy wait, decision, execution-slot wait, and tool work.
+Cancellation propagates through a running policy. Policy evaluation does not increment
+tool `in_flight`; explicit denials have their own content-free metric.
 
 Async tool progress uses a context variable scoped to the runtime execution task,
 so it does not alter the callable's schema. Each scope serializes updates, enforces

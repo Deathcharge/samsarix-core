@@ -12,6 +12,14 @@ Type validation does not replace authorization. Re-check tenant, user, path,
 resource, and quota permissions inside the tool. Prefer allowlists and resolved
 resource IDs over raw filesystem paths or shell fragments.
 
+Use `ToolRuntime(policy=...)` for centralized defense in depth when every valid call
+must pass an application-owned allow/deny decision. Keep the policy small, cancellation
+friendly, and free of side effects. It sees a detached but sensitive argument snapshot;
+do not log that snapshot, and return an explicit `ToolPolicyDecision` rather than
+raising for an expected denial. A request-local `ContextVar` is one way for a trusted
+host to expose already-authenticated scopes without adding credentials to tool schemas.
+The policy is not authentication, a tenant quota store, or durable human approval.
+
 Never register a callable merely because an untrusted client supplied its import
 path. The registry is for trusted application code, not dynamic code loading.
 
@@ -58,6 +66,11 @@ to authenticated requestor identity and add per-requestor quotas and rate limits
 These limits bound one runtime request; they are not tenant quotas or request-rate
 limits. A network host still needs authentication, admission control, rate limits,
 and aggregate memory/connection limits.
+
+MCP recommends a client-side human confirmation surface for tool calls. Preserve that
+UI even when the server also uses a programmatic policy gate; annotations are hints and
+server policy cannot prove that a person reviewed a call. See the official
+[MCP tool interaction guidance](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
 
 ## Handle results deliberately
 
