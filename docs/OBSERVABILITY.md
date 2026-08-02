@@ -6,15 +6,17 @@ indicators, structured operational logs, and test probes without copying tool
 arguments, outputs, exception messages, policy context, or progress text.
 
 ```python
+from collections import deque
+
 from samsarix_core import ToolLifecycleEvent, ToolRuntime
 
-
-def observe(event: ToolLifecycleEvent) -> None:
-    print(event.to_dict())
-
-
-runtime = ToolRuntime(lifecycle_handler=observe)
+recent_events: deque[ToolLifecycleEvent] = deque(maxlen=1_024)
+runtime = ToolRuntime(lifecycle_handler=recent_events.append)
 ```
+
+This small diagnostic ring buffer is non-blocking and deliberately drops its oldest
+event at capacity. Production export needs an application-owned bounded processor and
+an explicit drop or backpressure policy.
 
 The handler receives one immutable `started` event followed by exactly one terminal
 event for every ordinary invocation path. Returned `ToolResult` states keep their
@@ -44,7 +46,10 @@ telemetry backend.
 constant-time and non-blocking. Ordinary handler exceptions and accidental awaitable
 returns are swallowed, counted in `RuntimeMetrics.lifecycle_handler_failures`, and do
 not replace a tool result or cancellation. Async callables are rejected when the
-runtime is constructed.
+runtime is constructed. If a disguised synchronous handler returns a coroutine, Core
+closes it; returned Tasks/Futures are cancelled and their eventual failure is consumed;
+other awaitables receive best-effort `cancel()` or `close()` cleanup when available.
+Core never awaits or schedules handler output.
 
 Core deliberately does not create an unbounded telemetry queue, thread, or task. Send
 network telemetry through a bounded or batched processor owned by the application.
@@ -74,16 +79,19 @@ from samsarix_core import ToolLifecycleEvent, ToolLifecycleStatus, ToolRuntime
 tracer = trace.get_tracer("my-service.samsarix")
 spans: dict[str, Span] = {}
 spans_lock = Lock()
+# Replace these examples with the exact fixed names registered by your host.
+known_tool_names = frozenset({"search_catalog", "reserve_inventory"})
 
 
 def observe(event: ToolLifecycleEvent) -> None:
     if event.status is ToolLifecycleStatus.STARTED:
+        tool_name = event.tool_name if event.tool_name in known_tool_names else "unknown_tool"
         span = tracer.start_span(
-            f"execute_tool {event.tool_name}",
+            f"execute_tool {tool_name}",
             kind=SpanKind.INTERNAL,
             attributes={
                 "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": event.tool_name,
+                "gen_ai.tool.name": tool_name,
                 "gen_ai.tool.type": "function",
                 "gen_ai.tool.call.id": event.invocation_id,
             },

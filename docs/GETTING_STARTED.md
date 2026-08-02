@@ -120,23 +120,19 @@ a normal structured result without running tool code. See
 ## 6. Add content-free lifecycle signals when needed
 
 ```python
-from queue import Queue
+from collections import deque
 
 from samsarix_core import ToolLifecycleEvent, ToolRuntime
 
-telemetry_queue: Queue[ToolLifecycleEvent] = Queue(maxsize=1_024)
-
-
-def observe(event: ToolLifecycleEvent) -> None:
-    telemetry_queue.put_nowait(event)
-
-
-runtime = ToolRuntime(lifecycle_handler=observe)
+recent_events: deque[ToolLifecycleEvent] = deque(maxlen=1_024)
+runtime = ToolRuntime(lifecycle_handler=recent_events.append)
 ```
 
 The synchronous callback receives paired start and terminal events but no arguments,
-outputs, or exception text. Keep it non-blocking and bound the application-owned
-export path. See the [lifecycle observability guide](OBSERVABILITY.md) for privacy,
+outputs, or exception text. This bounded in-memory diagnostic buffer deliberately drops
+its oldest event at capacity. For durable telemetry, keep the callback non-blocking and
+hand off to a bounded application-owned processor with an explicit drop or backpressure
+policy. See the [lifecycle observability guide](OBSERVABILITY.md) for privacy,
 cancellation, and OpenTelemetry semantics.
 
 ## 7. Handle boundaries explicitly

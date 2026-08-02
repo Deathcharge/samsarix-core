@@ -282,12 +282,19 @@ class ToolRuntime:
             )
             raise
 
-        self._emit_lifecycle(
-            invocation_id,
-            name,
-            ToolLifecycleStatus(result.status.value),
-            duration_ms=result.duration_ms,
-        )
+        try:
+            lifecycle_status = ToolLifecycleStatus(result.status.value)
+        except ValueError:
+            # A future result status must not discard an already-computed result if
+            # lifecycle models have not yet been updated to match it.
+            self._increment("lifecycle_handler_failures")
+        else:
+            self._emit_lifecycle(
+                invocation_id,
+                name,
+                lifecycle_status,
+                duration_ms=result.duration_ms,
+            )
         return result
 
     async def _invoke_admitted(
@@ -779,11 +786,36 @@ class ToolRuntime:
         try:
             returned = self.lifecycle_handler(event)
             if inspect.isawaitable(returned):
-                if inspect.iscoroutine(returned):
-                    returned.close()
+                self._dispose_lifecycle_awaitable(returned)
                 raise TypeError("lifecycle_handler returned an awaitable")
         except Exception:
             self._increment("lifecycle_handler_failures")
+
+    @staticmethod
+    def _dispose_lifecycle_awaitable(returned: object) -> None:
+        """Best-effort cleanup without awaiting or scheduling handler output."""
+
+        if isinstance(returned, asyncio.Future):
+            if returned.done():
+                ToolRuntime._consume_lifecycle_future(returned)
+            else:
+                returned.add_done_callback(ToolRuntime._consume_lifecycle_future)
+                returned.cancel()
+            return
+
+        for method_name in ("cancel", "close"):
+            cleanup = getattr(returned, method_name, None)
+            if callable(cleanup):
+                cleanup()
+                return
+
+    @staticmethod
+    def _consume_lifecycle_future(completed: asyncio.Future[Any]) -> None:
+        """Retrieve a completed handler Future failure to avoid late warnings."""
+
+        if not completed.cancelled():
+            with suppress(BaseException):
+                completed.exception()
 
     @staticmethod
     def _duration_ms(started: float) -> float:
