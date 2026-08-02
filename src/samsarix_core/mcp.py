@@ -534,7 +534,12 @@ async def serve_stdio(
             )
 
         if in_flight:
-            await asyncio.gather(*tuple(in_flight))
+            outcomes = await asyncio.gather(*tuple(in_flight), return_exceptions=True)
+            if task_errors:
+                raise task_errors.pop(0)
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    raise outcome
         if task_errors:
             raise task_errors.pop(0)
     except BaseException:

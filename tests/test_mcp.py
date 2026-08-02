@@ -1113,6 +1113,7 @@ async def test_stdio_drains_an_admitted_call_at_normal_eof() -> None:
 @pytest.mark.asyncio
 async def test_stdio_cancels_and_joins_siblings_after_background_write_failure() -> None:
     started = Event()
+    eof_read = Event()
     stopped = asyncio.Event()
     never_release = asyncio.Event()
 
@@ -1131,6 +1132,7 @@ async def test_stdio_cancels_and_joins_siblings_after_background_write_failure()
     async def fast_operation() -> str:
         """Complete so its response exercises a broken writer."""
 
+        assert await asyncio.to_thread(eof_read.wait, 1.0)
         return "done"
 
     runtime = ToolRuntime(max_concurrency=2)
@@ -1158,6 +1160,8 @@ async def test_stdio_cancels_and_joins_siblings_after_background_write_failure()
 
         def readline(self, size: int = -1) -> bytes:
             line = super().readline(size)
+            if not line:
+                eof_read.set()
             message = json.loads(line) if line else {}
             if message.get("id") == "fast":
                 self.gated = True
