@@ -73,6 +73,9 @@ remain separate decisions.
 - [x] Publish immutable GitHub prerelease `v2.0.0a4` with per-tool bulkhead,
   concurrent-registration, mixed-batch fairness, clean-install, checksum, and SLSA
   provenance evidence.
+- [x] Publish immutable GitHub prerelease `v2.0.0a5` with privacy-safe lifecycle
+  observability, independent consumer, clean-install, checksum, and SLSA provenance
+  evidence.
 
 ## Samsarix adoption
 

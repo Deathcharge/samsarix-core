@@ -300,12 +300,12 @@ evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
-The immutable GitHub prerelease `v2.0.0a4` is published from commit
-`27c871942b0e90d8303d212b438d5251cb28d43f` with verified checksums and GitHub Actions
-build provenance. The exact assets, workflow runs, verification, installation evidence,
-and recovery model are recorded in `docs/RELEASING.md`. This passes the GitHub release
-gate only; it does not pass the PyPI, stable API, or third-party production-adoption
-gates.
+The immutable GitHub prerelease `v2.0.0a5` is published from commit
+`60fa5554d8ef4625dc803751cc4bd34cf757e094` with verified checksums, GitHub Actions
+build provenance, and a clean installed-wheel lifecycle probe. The exact assets,
+workflow runs, verification, installation evidence, and recovery model are recorded in
+`docs/RELEASING.md`. This passes the GitHub release gate only; it does not pass the
+PyPI, stable API, or third-party production-adoption gates.
 
 - Decide whether commercial licensing, paid support, or a service-level agreement
   will be offered separately from the MPL-2.0 community distribution. None is

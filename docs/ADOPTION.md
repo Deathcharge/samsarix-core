@@ -5,10 +5,10 @@ claims. Samsarix Core has a merged independent repository consumer; it does not
 yet have a documented third-party production deployment, paid customer, usage
 volume, or service-level commitment.
 
-The latest published `2.0.0a4` prerelease has independently verified artifacts and
-installed-wheel bulkhead behavior. The repository consumer below pins the merged
-lifecycle-observability commit that follows that release; it reports package metadata
-`2.0.0a4` until the immutable `2.0.0a5` tag is published. Release verification is not
+The latest published `2.0.0a5` prerelease has independently verified artifacts and
+installed-wheel lifecycle behavior. The repository consumer below pins the merged
+lifecycle-observability commit immediately before the release metadata commit, so its
+exact Git installation reports package metadata `2.0.0a4`. Release verification is not
 presented as consumer-adoption evidence.
 
 ## Privacy-first redaction MCP consumer
