@@ -48,6 +48,13 @@ transport limits. Progress messages cross the protocol boundary and may be logge
 or displayed, so keep document content, paths, credentials, and tenant data out of
 them.
 
+Enable experimental MCP tasks only for work that benefits from deferred result
+retrieval. Prefer `task_support="optional"` while client support is uneven. Keep
+`max_retained_tasks` below downstream capacity, use the shortest practical task
+TTL, and remember that the final result remains in memory until expiry. Local
+stdio does not expose `tasks.list`; a network adapter must bind get/result/cancel
+to authenticated requestor identity and add per-requestor quotas and rate limits.
+
 These limits bound one runtime request; they are not tenant quotas or request-rate
 limits. A network host still needs authentication, admission control, rate limits,
 and aggregate memory/connection limits.

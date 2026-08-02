@@ -24,7 +24,9 @@ persistence, or an untrusted-code sandbox.
 - supports ordered batch invocation and cooperative async cancellation;
 - keeps metrics content-free and redacts exception messages by default;
 - exposes the same contracts through a dependency-free, cancellable,
-  progress-aware, operationally observable, and admission-bounded MCP stdio bridge.
+  progress-aware, operationally observable, and admission-bounded MCP stdio bridge;
+- optionally exposes long-running tools through the experimental MCP task lifecycle
+  with bounded in-memory retention, polling, deferred results, and cancellation.
 
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
 accounts, no API keys, no external service, and no hosted operating cost.
@@ -88,7 +90,9 @@ structured output, behavioral annotations, progress notifications, and client
 cancellation without adding an SDK dependency. Opt-in operational logging emits
 content-free terminal events at the minimum level selected by the client. Concurrent stdio calls are
 separately admission-bounded so the runtime's execution queue cannot grow without
-a protocol-level cap. A complete inventory server is included:
+a protocol-level cap. Experimental MCP task execution is disabled by default; the
+included inventory server enables it for one progress-reporting audit tool while
+retaining normal calls for clients that do not support tasks. A complete server is included:
 
 ```bash
 python examples/mcp_inventory_server.py
@@ -97,7 +101,7 @@ python examples/mcp_inventory_server.py
 Configure that command in a trusted local MCP client to discover and call the
 decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
 read/write/destructive annotations, scalar-output wrapping, cancellation, stdio
-progress and logging, admission limits, and security boundaries.
+progress and logging, bounded task retention, admission limits, and security boundaries.
 
 ## Proven external consumer
 
@@ -163,6 +167,9 @@ them to the host's actual workload.
   bounded and its concurrency slot stays occupied until it actually stops. Inspect
   `pending_sync_calls`, or use `wait_for_sync()` / `aclose(wait_for_sync=True)` when
   shutdown must prove quiescence. The function still needs its own I/O deadlines.
+- Opt-in MCP tasks are experimental and session-local. Results remain in memory
+  only until their finite TTL; there is no durable queue, restart recovery, or
+  unauthenticated task listing.
 - Tool outputs are returned to the caller. Do not return secrets to an untrusted
   model, client, or log sink.
 - Use one runtime within one event-loop lifecycle; close it with `async with` or

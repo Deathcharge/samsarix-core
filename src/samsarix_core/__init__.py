@@ -15,7 +15,15 @@ from .errors import (
     ToolNotFoundError,
 )
 from .mcp import MCPServer, serve_stdio
-from .models import RuntimeMetrics, ToolCall, ToolError, ToolResult, ToolSpec, ToolStatus
+from .models import (
+    RuntimeMetrics,
+    TaskSupport,
+    ToolCall,
+    ToolError,
+    ToolResult,
+    ToolSpec,
+    ToolStatus,
+)
 from .progress import ProgressHandler, ToolProgress, report_progress
 from .registry import ToolRegistry
 from .runtime import ToolRuntime
@@ -29,6 +37,7 @@ __all__ = [
     "RegistryCapacityError",
     "RuntimeMetrics",
     "SamsarixError",
+    "TaskSupport",
     "ToolCall",
     "ToolDefinitionError",
     "ToolError",

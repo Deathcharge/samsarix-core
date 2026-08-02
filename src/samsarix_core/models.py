@@ -9,10 +9,11 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
+TaskSupport: TypeAlias = Literal["forbidden", "optional", "required"]
 
 
 class ToolStatus(str, Enum):
@@ -68,6 +69,7 @@ class ToolSpec:
     destructive: bool = True
     idempotent: bool = False
     open_world: bool = True
+    task_support: TaskSupport = "forbidden"
 
     def to_dict(self) -> dict[str, JSONValue]:
         """Return a detached JSON-compatible representation."""
@@ -86,6 +88,7 @@ class ToolSpec:
             "destructive": self.destructive,
             "idempotent": self.idempotent,
             "open_world": self.open_world,
+            "task_support": self.task_support,
         }
 
 

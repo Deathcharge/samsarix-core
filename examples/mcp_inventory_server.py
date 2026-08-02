@@ -44,6 +44,7 @@ def reserve_inventory(sku: str, quantity: int, request_id: str) -> dict[str, int
     tags=("inventory", "read", "progress"),
     read_only=True,
     open_world=False,
+    task_support="optional",
 )
 async def audit_inventory(skus: list[str]) -> dict[str, int]:
     """Count known inventory records while reporting completed work."""
@@ -71,6 +72,7 @@ async def main() -> None:
         title="Samsarix Inventory Example",
         instructions="Confirm with the user before calling tools that are not read-only.",
         enable_logging=True,
+        enable_tasks=True,
     )
     await serve_stdio(server)
 

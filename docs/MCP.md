@@ -15,11 +15,14 @@ The supported server surface is intentionally narrow:
 - requested `notifications/progress` updates from cooperative asynchronous tools;
 - opt-in `logging/setLevel` and content-free `notifications/message` operational
   events;
-- `notifications/cancelled` for active non-task tool calls;
+- `notifications/cancelled` for active tool calls and task-result waits;
+- opt-in experimental task-augmented tool calls with `tasks/get`, blocking
+  `tasks/result`, explicit `tasks/cancel`, finite retention, and bounded capacity;
 - newline-delimited stdio with configurable message-size and active-request caps.
 
-It does not implement MCP resources, prompts, sampling, tasks, HTTP transport,
-authentication, or authorization. Those remain host-application concerns.
+It does not implement MCP resources, prompts, sampling, `tasks/list`, durable
+cross-process task persistence, HTTP transport, authentication, or authorization.
+Those remain host-application concerns.
 
 ## Run the example
 
@@ -153,7 +156,79 @@ Progress is cooperative and currently available inside async tools. Messages are
 sent to the client and may be displayed or logged, so do not include credentials,
 document content, tenant identifiers, or other sensitive values. Core enforces
 the MCP stable [progress utility](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress)
-without adopting experimental Tasks.
+for normal and task-augmented calls. Task-owned progress includes the required
+related-task metadata.
+
+## Experimental task execution
+
+MCP `2025-11-25` defines experimental task augmentation for expensive work and
+batch processing. Samsarix Core supports the bounded local subset as an explicit
+opt-in. Declare support on the individual tool and enable it on the server:
+
+```python
+@samsarix_tool(task_support="optional")
+async def build_export(export_id: str) -> dict[str, str]:
+    """Build one application-owned export."""
+
+    return {"export_id": export_id, "status": "ready"}
+
+
+runtime.register(build_export)
+server = MCPServer(
+    runtime,
+    enable_tasks=True,
+    max_retained_tasks=64,
+    default_task_ttl_ms=300_000,
+    max_task_ttl_ms=3_600_000,
+    task_poll_interval_ms=500,
+)
+```
+
+`task_support` is `"forbidden"` by default. `"optional"` allows either an
+ordinary call or a task-augmented call, while `"required"` requires task
+augmentation whenever `2025-11-25` task capabilities were negotiated. The setting
+does not change direct `ToolRuntime` calls, and `2025-06-18` MCP clients retain
+ordinary synchronous-response behavior.
+
+A client creates a task by adding a task object to `tools/call`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "create-export",
+  "method": "tools/call",
+  "params": {
+    "name": "build_export",
+    "arguments": {"export_id": "export-42"},
+    "task": {"ttl": 60000}
+  }
+}
+```
+
+The immediate response contains a cryptographically random task ID and `working`
+state, never the arguments or result. Poll `tasks/get`, retrieve the final
+`CallToolResult` with `tasks/result`, or stop active work with `tasks/cancel`.
+`tasks/result` waits until a terminal state but remains independently cancellable;
+cancelling only that wait does not cancel the retained task. Every final result,
+progress update, and operational event carries
+`io.modelcontextprotocol/related-task` metadata.
+
+Retention is in memory and scoped to one `MCPServer` session. Requested TTLs are
+clamped to `max_task_ttl_ms`; expired tasks and results are removed, and capacity
+is reclaimed. Arguments must pass the runtime's byte, depth, node, cycle, and JSON
+compatibility preflight before the server detaches them for background execution.
+At `max_retained_tasks`, new task requests receive server-busy error `-32000`.
+Task cancellation is cooperative: async work is cancelled, while a running
+synchronous function can retain its runtime worker until it actually stops.
+
+Core deliberately does not advertise `tasks.list` on unauthenticated stdio. MCP's
+task security guidance warns that listing can expose task metadata when requestor
+identity cannot be bound. Random IDs make guessing impractical, but any process
+with a valid task ID on the same logical session can retrieve or cancel it. A
+network host must bind task access to authenticated authorization context, add
+per-principal quotas and rate limits, and should provide a separate persistent
+task store before claiming durable service behavior. See the experimental
+[MCP Tasks specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks).
 
 ## Operational logging
 
@@ -188,9 +263,10 @@ limits and access control. This implements the stable MCP
 [logging utility](https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/logging)
 with a deliberately content-free data shape.
 
-## Cancellation and admission
+## Request cancellation and admission
 
-MCP clients can stop an active non-task call with a notification:
+MCP clients can stop an active ordinary call or a blocking `tasks/result` wait
+with a notification:
 
 ```json
 {
@@ -203,15 +279,17 @@ MCP clients can stop an active non-task call with a notification:
 }
 ```
 
-Core cancels the matching async request and sends no response for the cancelled
-call, as required by MCP. Unknown, completed, missing, or malformed request IDs
-are ignored. Cancellation reasons are not logged by Core. Host cancellation of
-the `handle()` coroutine still propagates as `asyncio.CancelledError`; it is not
-mistaken for an MCP client notification.
+Core cancels the matching request and sends no response for it, as required by
+MCP. Cancelling a `tasks/result` wait leaves the retained task running; use
+`tasks/cancel` to transition the task itself to `cancelled`. Unknown, completed,
+missing, or malformed request IDs are ignored. Cancellation reasons are not
+logged by Core. Host cancellation of the `handle()` coroutine still propagates
+as `asyncio.CancelledError`; it is not mistaken for an MCP client notification.
 
 `serve_stdio()` reads control messages while tool calls are active and serializes
 all responses through one writer lock. It admits at most
-`max_in_flight_requests=64` tool-call coroutines by default. This admission cap is
+`max_in_flight_requests=64` tool-call or task-result coroutines by default. This
+admission cap is
 separate from `ToolRuntime.max_concurrency`: the former bounds waiting protocol
 requests, while the latter bounds executing tools. Excess calls receive JSON-RPC
 server error `-32000` and are not executed. Normal input EOF drains calls that
@@ -222,7 +300,7 @@ force-stopped; cancelling its MCP request stops the protocol wait while the
 runtime retains its real worker and concurrency slot until the function exits.
 This follows MCP's stable
 [cancellation utility](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation)
-without adopting the separate experimental Tasks surface.
+and the experimental task cancellation state transition.
 
 ## Embed without stdio
 
@@ -246,19 +324,27 @@ outbound messages and deliver cancellation notifications while the corresponding
 validation, request body limits, and rate limits must be implemented by the
 hosting HTTP layer.
 
-A notification-sender failure while delivering requested progress raises
-`ProgressHandlerError` with the original transport exception chained as its cause;
-it is not converted into an `isError` tool result. Operational-log delivery is
-separately best effort, so its sender failures are suppressed and the already-computed
-tool result remains unchanged.
+Call `await server.aclose()` to cancel retained background tasks and close the
+runtime. Pass `close_runtime=False` only when the application owns the runtime's
+later shutdown. `serve_stdio()` performs the default server close at transport
+shutdown unless its own `close_runtime=False` option transfers that responsibility
+to the host.
+
+A notification-sender failure while delivering requested progress for an ordinary
+call raises `ProgressHandlerError` with the original transport exception chained
+as its cause; it is not converted into an `isError` tool result. A task has already
+returned its creation response, so the same background delivery failure instead
+makes that retained task fail with a generic safe result. Operational-log delivery
+is separately best effort, so its sender failures are suppressed and the
+already-computed tool result remains unchanged.
 
 ## Operational boundaries
 
 - Registered functions remain trusted in-process application code.
 - Read-only and idempotent annotations do not make a function safe by themselves.
 - `serve_stdio()` caps individual requests and responses at 1 MiB by default.
-- `serve_stdio()` admits at most 64 active tool-call requests by default; tune the
-  cap with `max_in_flight_requests`.
+- `serve_stdio()` admits at most 64 active tool-call or task-result requests by
+  default; tune the cap with `max_in_flight_requests`.
 - Runtime timeouts and concurrency controls continue to apply to MCP calls.
 - Progress is opt-in, strictly increasing, update-capped, message-bounded, and
   automatically closed before a call's terminal response.
@@ -266,6 +352,10 @@ tool result remains unchanged.
 - Client cancellation emits no response, stops cooperative async tools, and does
   not imply a running sync function has stopped.
 - A timed-out synchronous function retains its bounded worker slot until it stops.
+- Experimental tasks are disabled by default, retained only in memory, capped at
+  64 entries by default, and expire no later than the configured one-hour maximum.
+- `tasks.list` is not exposed without requestor identity; possession of a valid
+  task ID permits get, result, and cancellation within the same server session.
 - `serve_stdio()` closes without waiting indefinitely for surviving sync work. A
   host that requires shutdown quiescence should set `close_runtime=False`, stop
   MCP admission, and call

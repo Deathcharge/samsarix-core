@@ -28,6 +28,9 @@ This is a replacement alpha rather than a compatibility release.
 - opt-in MCP operational logging with capability negotiation, client-selected
   minimum levels, one content-free terminal event per non-cancelled call, and
   best-effort delivery;
+- opt-in experimental MCP task-augmented tool execution with per-tool negotiation,
+  secure task IDs, bounded finite retention, polling, blocking result retrieval,
+  cancellation, related-task metadata, and old-client compatibility;
 - formatter, linter, and strict type-check coverage for the shipped examples and
   benchmark programs;
 - independently packaged consumer evidence for progress-token correlation,
