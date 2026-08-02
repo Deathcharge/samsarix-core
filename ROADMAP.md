@@ -59,9 +59,9 @@ remain separate decisions.
 
 ## Release candidate
 
-- Build and install the wheel in a clean environment.
+- [x] Build and install the wheel in a clean environment.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.
-- Publish only after package-name ownership, licensing, provenance, and rollback are recorded.
+- [ ] Publish only after package-name ownership, licensing, provenance, and rollback are recorded.
 
 ## Samsarix adoption
 

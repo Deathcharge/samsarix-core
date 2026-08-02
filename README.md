@@ -48,8 +48,10 @@ For development:
 python -m pip install -e ".[dev]"
 ```
 
-The project is not represented here as a published PyPI release. Release approval
-and package publication remain owner actions.
+The project is not represented here as a published PyPI release. Approved version tags
+use a fail-closed GitHub release workflow with strict metadata checks, clean-wheel smoke
+tests, SHA-256 manifests, provenance attestations, and immutable assets. See the
+[release process](docs/RELEASING.md).
 
 ## One complete example
 

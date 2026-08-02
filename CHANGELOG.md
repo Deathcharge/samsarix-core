@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0a1 - Unreleased
+## 2.0.0a1 - 2026-08-02
 
 This is a replacement alpha rather than a compatibility release.
 
@@ -48,6 +48,9 @@ This is a replacement alpha rather than a compatibility release.
   and private task state;
 - independently packaged redaction evidence for the invocation-policy allow path and
   safe denial of an out-of-contract tool before execution;
+- tag-gated GitHub release automation with tag/version enforcement, strict metadata and
+  clean-wheel checks, checksums, build-provenance attestations, and immutable-release
+  operating guidance;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
