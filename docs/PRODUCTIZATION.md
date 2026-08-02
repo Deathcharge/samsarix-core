@@ -173,6 +173,8 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   resources before executing untrusted calls.
 - [x] Keep timed-out sync work observable and concurrency-bounded, and provide a
   finite-wait shutdown quiescence contract.
+- [x] Add opt-in per-tool sustained-rate controls with bounded burst, safe retry
+  metadata, and consistent direct, batch, MCP, and task semantics.
 - [x] Remove the false "sandboxed execution" claim.
 - [x] Eliminate unsafe `eval` examples from the active product documentation.
 - [x] Isolate or remove obsolete provider, billing, pseudo-reasoning, and duplicate
@@ -269,6 +271,9 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Added host-configured per-tool execution bulkheads that acquire before global runtime
   capacity, preserve unrelated tool availability, and retain their slot for surviving
   synchronous work after timeout or cancellation.
+- Added host-configured per-tool token buckets immediately before execution, with
+  sustained refill and burst controls, safe retry delays, policy-aware accounting,
+  content-free metrics/lifecycle, and ordinary/task MCP serialization.
 - Added provider-neutral lifecycle observability with immutable content-free event
   models, paired logical start/terminal signals, cancellation and host-abort coverage,
   non-interfering handler failure accounting, and documented OpenTelemetry mapping.
@@ -291,7 +296,8 @@ tasks retain bounded results only inside one server process and do not satisfy d
 persistence or restart recovery. Those features are not required for the first useful
 release. One independent repository now proves the stable MCP boundary, experimental
 task lifecycle, bounded policy gate, fail-fast runtime admission, and privacy-safe
-lifecycle observation. Subsequent surface
+lifecycle observation. Core now also supplies the process-local per-tool rate control
+required by its supported MCP tool boundary. Subsequent surface
 area should follow concrete consumer demand. Core's admission release post-merge
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30741198541)
 is green. The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
@@ -324,8 +330,9 @@ PyPI, stable API, or third-party production-adoption gates.
   documented JSON-compatible subset and rejects ambiguous usage.
 - Exception redaction protects ordinary failures, but successful outputs and
   validation details still cross to the host by design.
-- The MCP stdio adapter and runtime have per-message and per-invocation byte limits,
-  but no request-rate, tenant-quota, connection, or aggregate-memory limit. Any
+- The MCP stdio adapter and runtime have per-message and per-invocation byte limits plus
+  opt-in process-local per-tool rate controls, but no authenticated tenant quota,
+  cross-process rate coordination, connection limit, or aggregate-memory limit. Any
   remote host must apply those controls before invocation.
 - Public package-index publication still requires owner-controlled credentials and
   an explicit release decision.

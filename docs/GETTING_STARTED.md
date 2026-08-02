@@ -81,6 +81,23 @@ asyncio.run(main())
 `runtime.registry.schema_catalog()` returns all registered contracts in stable
 name order. Catalog data and results are detached JSON-compatible objects.
 
+When one dependency has both a concurrency ceiling and a sustained request quota,
+configure the exact registration rather than slowing unrelated tools:
+
+```python
+from samsarix_core import ToolRateLimit
+
+quota_runtime = ToolRuntime(max_concurrency=8)
+quota_runtime.register(
+    greet,
+    max_concurrency=2,
+    rate_limit=ToolRateLimit(calls=30, period_seconds=60, burst=3),
+)
+```
+
+An empty bucket returns the retryable `rate_limited` result without running the tool.
+The bucket is local to this runtime process; see [per-tool rate limits](RATE_LIMITS.md).
+
 ## 4. Invoke a bounded batch
 
 ```python

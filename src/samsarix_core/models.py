@@ -9,11 +9,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
+from math import isfinite
 from typing import Any, Literal, TypeAlias
 
 JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 TaskSupport: TypeAlias = Literal["forbidden", "optional", "required"]
+_MAX_EXACT_TOKEN_COUNT = (1 << 53) - 1
 
 
 class ToolStatus(str, Enum):
@@ -24,6 +26,7 @@ class ToolStatus(str, Enum):
     INVALID_ARGUMENTS = "invalid_arguments"
     DENIED = "denied"
     BUSY = "busy"
+    RATE_LIMITED = "rate_limited"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
     RUNTIME_CLOSED = "runtime_closed"
@@ -38,6 +41,7 @@ class ToolLifecycleStatus(str, Enum):
     INVALID_ARGUMENTS = "invalid_arguments"
     DENIED = "denied"
     BUSY = "busy"
+    RATE_LIMITED = "rate_limited"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
     RUNTIME_CLOSED = "runtime_closed"
@@ -117,6 +121,64 @@ class ToolCall:
     name: str
     arguments: Mapping[str, Any]
     timeout: float | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ToolRateLimit:
+    """One process-local token-bucket policy for a tool registration."""
+
+    calls: int
+    period_seconds: float
+    burst: int | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.calls, bool) or not isinstance(self.calls, int):
+            raise TypeError("calls must be an integer")
+        if self.calls <= 0:
+            raise ValueError("calls must be positive")
+        if self.calls > _MAX_EXACT_TOKEN_COUNT:
+            raise ValueError("calls exceeds the exact token-count limit")
+        if isinstance(self.period_seconds, bool) or not isinstance(
+            self.period_seconds, (int, float)
+        ):
+            raise TypeError("period_seconds must be a number")
+        try:
+            period_seconds = float(self.period_seconds)
+        except OverflowError as exc:
+            raise ValueError("period_seconds must be finite and positive") from exc
+        if period_seconds <= 0 or not isfinite(period_seconds):
+            raise ValueError("period_seconds must be finite and positive")
+        if self.burst is not None:
+            if isinstance(self.burst, bool) or not isinstance(self.burst, int):
+                raise TypeError("burst must be an integer or None")
+            if self.burst <= 0:
+                raise ValueError("burst must be positive")
+            if self.burst > _MAX_EXACT_TOKEN_COUNT:
+                raise ValueError("burst exceeds the exact token-count limit")
+        capacity = self.calls if self.burst is None else self.burst
+        finite_values = (
+            float(capacity),
+            self.calls / period_seconds,
+            (period_seconds / self.calls) * 1_000,
+        )
+        if any(value <= 0 or not isfinite(value) for value in finite_values):
+            raise ValueError("rate limit magnitude must be finite")
+        object.__setattr__(self, "period_seconds", period_seconds)
+
+    @property
+    def burst_capacity(self) -> int:
+        """Return the configured bucket capacity after applying its default."""
+
+        return self.calls if self.burst is None else self.burst
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the normalized deployment-local configuration."""
+
+        return {
+            "calls": self.calls,
+            "period_seconds": self.period_seconds,
+            "burst": self.burst_capacity,
+        }
 
 
 class ToolPolicyDecision(str, Enum):
@@ -214,6 +276,7 @@ class RuntimeMetrics:
     pending_invocations: int = 0
     peak_pending_invocations: int = 0
     lifecycle_handler_failures: int = 0
+    rate_limited: int = 0
 
     def to_dict(self) -> dict[str, int]:
         """Return the counters as a plain mapping."""
@@ -225,6 +288,7 @@ class RuntimeMetrics:
             "invalid_arguments": self.invalid_arguments,
             "denied": self.denied,
             "busy": self.busy,
+            "rate_limited": self.rate_limited,
             "timed_out": self.timed_out,
             "failed": self.failed,
             "runtime_closed": self.runtime_closed,

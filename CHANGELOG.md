@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- opt-in deployment-local per-tool token buckets with explicit sustained rate and
+  burst capacity, safe retry delays, content-free rejection metrics and lifecycle
+  events, and consistent direct, batch, MCP, and task behavior.
+
 ### Changed
 
 - recorded immutable `v2.0.0a5` release checksums, provenance, and clean installed-wheel

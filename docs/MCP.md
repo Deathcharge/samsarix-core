@@ -10,8 +10,8 @@ The supported server surface is intentionally narrow:
 - lifecycle initialization and version negotiation;
 - `ping`;
 - `tools/list` with JSON Schema Draft 2020-12 input and output contracts;
-- `tools/call` with Samsarix validation, timeouts, concurrency limits, and safe
-  structured errors, including optional host-policy denial;
+- `tools/call` with Samsarix validation, timeouts, concurrency and opt-in per-tool
+  rate limits, and safe structured errors, including optional host-policy denial;
 - requested `notifications/progress` updates from cooperative asynchronous tools;
 - opt-in `logging/setLevel` and content-free `notifications/message` operational
   events;
@@ -85,6 +85,20 @@ This is a programmatic host gate, not MCP authorization or a confirmation prompt
 MCP specification recommends that applications provide a human the ability to deny
 tool invocations, so clients should continue to show and approve sensitive actions:
 <https://modelcontextprotocol.io/specification/2025-11-25/server/tools>.
+
+## Bound calls to quota-constrained tools
+
+`ToolRuntime.register(..., rate_limit=ToolRateLimit(...))` applies the same process-local
+token bucket to direct calls, ordinary MCP calls, and task-augmented calls. When no token
+is available, an ordinary call returns `isError: true`, Samsarix status `rate_limited`,
+safe code `tool_rate_limited`, and `details.retry_after_ms`. A task reaches `failed` and
+`tasks/result` returns that same tool result. Core never reflects the call arguments in
+the error.
+
+The MCP tool security considerations require rate limiting, but this local bucket does
+not identify clients or coordinate multiple server processes. A network adapter still
+needs authenticated per-principal and distributed controls. See
+[per-tool rate limits](RATE_LIMITS.md) for configuration and token-accounting semantics.
 
 ## Structured output
 

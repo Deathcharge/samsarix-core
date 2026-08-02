@@ -12,8 +12,10 @@ from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
+from math import ceil
 from threading import Lock
 from typing import Any, cast
 from uuid import uuid4
@@ -30,6 +32,7 @@ from .models import (
     ToolPolicy,
     ToolPolicyContext,
     ToolPolicyDecision,
+    ToolRateLimit,
     ToolResult,
     ToolSpec,
     ToolStatus,
@@ -51,6 +54,50 @@ class _ToolPolicyDenied(Exception):
 
 class _ToolPolicyFailed(Exception):
     """Signal that a host policy failed closed."""
+
+
+class _ToolRateLimited(Exception):
+    """Signal that one tool registration has no immediately available token."""
+
+    def __init__(self, retry_after_ms: int) -> None:
+        super().__init__(retry_after_ms)
+        self.retry_after_ms = retry_after_ms
+
+
+@dataclass(slots=True)
+class _TokenBucket:
+    """Mutable event-loop-local token bucket for one exact registration."""
+
+    capacity: int
+    refill_per_second: float
+    milliseconds_per_token: float
+    tokens: float
+    updated_at: float
+
+    @classmethod
+    def from_limit(cls, limit: ToolRateLimit, *, now: float) -> _TokenBucket:
+        capacity = limit.burst_capacity
+        return cls(
+            capacity=capacity,
+            refill_per_second=limit.calls / limit.period_seconds,
+            milliseconds_per_token=(limit.period_seconds / limit.calls) * 1_000,
+            tokens=float(capacity),
+            updated_at=now,
+        )
+
+    def try_acquire(self, *, now: float) -> int | None:
+        """Consume one token or return a conservative retry delay in milliseconds."""
+
+        current = max(now, self.updated_at)
+        self.tokens = min(
+            float(self.capacity),
+            self.tokens + (current - self.updated_at) * self.refill_per_second,
+        )
+        self.updated_at = current
+        if self.tokens >= 1:
+            self.tokens -= 1
+            return None
+        return max(1, ceil((1 - self.tokens) * self.milliseconds_per_token))
 
 
 def _is_async_callable(value: object) -> bool:
@@ -130,6 +177,8 @@ class ToolRuntime:
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._policy_semaphore = asyncio.Semaphore(max_concurrency)
         self._tool_semaphores: dict[int, tuple[RegisteredTool, asyncio.Semaphore]] = {}
+        self._tool_rate_limiters: dict[int, tuple[RegisteredTool, _TokenBucket]] = {}
+        self._rate_limit_clock: Callable[[], float] = time.monotonic
         self._executor = ThreadPoolExecutor(
             max_workers=max_concurrency, thread_name_prefix="samsarix-tool"
         )
@@ -146,6 +195,7 @@ class ToolRuntime:
             "invalid_arguments": 0,
             "denied": 0,
             "busy": 0,
+            "rate_limited": 0,
             "timed_out": 0,
             "failed": 0,
             "runtime_closed": 0,
@@ -163,14 +213,17 @@ class ToolRuntime:
         *,
         replace: bool = False,
         max_concurrency: int | None = None,
+        rate_limit: ToolRateLimit | None = None,
     ) -> ToolSpec:
-        """Register a decorated callable with an optional execution bulkhead."""
+        """Register a callable with optional concurrency and sustained-rate controls."""
 
         if max_concurrency is not None:
             if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int):
                 raise TypeError("max_concurrency must be an integer or None")
             if max_concurrency <= 0:
                 raise ValueError("max_concurrency must be positive")
+        if rate_limit is not None and not isinstance(rate_limit, ToolRateLimit):
+            raise TypeError("rate_limit must be a ToolRateLimit or None")
 
         # Keep the callable registration and its deployment-local policy atomic
         # with respect to both direct registry mutation and invocation resolution.
@@ -188,6 +241,17 @@ class ToolRuntime:
                     asyncio.Semaphore(max_concurrency),
                 )
             self._tool_semaphores = tool_semaphores
+            tool_rate_limiters = {
+                key: entry
+                for key, entry in self._tool_rate_limiters.items()
+                if entry[0].spec.name != spec.name
+            }
+            if rate_limit is not None:
+                tool_rate_limiters[id(registered)] = (
+                    registered,
+                    _TokenBucket.from_limit(rate_limit, now=self._rate_limit_clock()),
+                )
+            self._tool_rate_limiters = tool_rate_limiters
         return spec
 
     async def invoke(
@@ -319,6 +383,12 @@ class ToolRuntime:
                     if tool_bulkhead is not None and tool_bulkhead[0] is registered
                     else None
                 )
+                tool_rate_limit = self._tool_rate_limiters.get(id(registered))
+                rate_limiter = (
+                    tool_rate_limit[1]
+                    if tool_rate_limit is not None and tool_rate_limit[0] is registered
+                    else None
+                )
         except ToolNotFoundError:
             self._increment("not_found")
             return self._result(
@@ -367,6 +437,7 @@ class ToolRuntime:
                 validated,
                 invocation_id=invocation_id,
                 tool_semaphore=tool_semaphore,
+                rate_limiter=rate_limiter,
             )
         )
         self._active.add(execution)
@@ -424,6 +495,21 @@ class ToolRuntime:
                 error=ToolError(
                     "tool_policy_failed",
                     "Tool invocation policy failed",
+                ),
+            )
+        except _ToolRateLimited as exc:
+            self._increment("rate_limited")
+            return self._result(
+                invocation_id,
+                name,
+                ToolStatus.RATE_LIMITED,
+                started_at,
+                started,
+                error=ToolError(
+                    "tool_rate_limited",
+                    "Tool invocation rate limit is temporarily exhausted",
+                    retryable=True,
+                    details={"retry_after_ms": exc.retry_after_ms},
                 ),
             )
         except ToolOutputError as exc:
@@ -563,12 +649,14 @@ class ToolRuntime:
         registered: RegisteredTool,
         arguments: dict[str, Any],
         tool_semaphore: asyncio.Semaphore | None,
+        rate_limiter: _TokenBucket | None,
     ) -> JSONValue:
         if registered.spec.is_async:
             if tool_semaphore is not None:
                 await tool_semaphore.acquire()
             try:
                 async with self._semaphore:
+                    self._require_rate_token(rate_limiter)
                     self._begin_execution()
                     try:
                         awaitable = cast(Awaitable[Any], registered.function(**arguments))
@@ -585,6 +673,13 @@ class ToolRuntime:
         try:
             await self._semaphore.acquire()
         except BaseException:
+            if tool_semaphore is not None:
+                tool_semaphore.release()
+            raise
+        try:
+            self._require_rate_token(rate_limiter)
+        except BaseException:
+            self._semaphore.release()
             if tool_semaphore is not None:
                 tool_semaphore.release()
             raise
@@ -615,6 +710,7 @@ class ToolRuntime:
         *,
         invocation_id: str,
         tool_semaphore: asyncio.Semaphore | None,
+        rate_limiter: _TokenBucket | None,
     ) -> JSONValue:
         """Fail closed on one bounded policy decision before tool execution."""
 
@@ -635,7 +731,16 @@ class ToolRuntime:
                 raise _ToolPolicyFailed
             if decision is ToolPolicyDecision.DENY:
                 raise _ToolPolicyDenied
-        return await self._execute(registered, arguments, tool_semaphore)
+        return await self._execute(registered, arguments, tool_semaphore, rate_limiter)
+
+    def _require_rate_token(self, rate_limiter: _TokenBucket | None) -> None:
+        """Consume one start token or raise a safe internal throttling signal."""
+
+        if rate_limiter is None:
+            return
+        retry_after_ms = rate_limiter.try_acquire(now=self._rate_limit_clock())
+        if retry_after_ms is not None:
+            raise _ToolRateLimited(retry_after_ms)
 
     def _run_sync(self, function: Callable[..., Any], arguments: dict[str, Any]) -> Any:
         """Run one sync callable while tracking its real thread lifetime."""

@@ -18,10 +18,11 @@ persistence, or an untrusted-code sandbox.
 - turns annotated sync or async functions into inspectable tool contracts;
 - emits JSON Schema Draft 2020-12 input and output schemas;
 - validates arguments and outputs without surprising scalar coercion;
-- returns structured success, validation, policy-denial, overload, timeout,
+- returns structured success, validation, policy-denial, overload, rate-limit, timeout,
   missing-tool, and failure results;
 - bounds pending invocations, registry growth, batches, value size/complexity,
-  global and per-tool concurrent work, and thread-pool use;
+  global and per-tool concurrent work, sustained per-tool request rate, and
+  thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - optionally requires a bounded host-owned policy decision after validation and
   before any tool code executes;
@@ -107,6 +108,8 @@ For a fail-closed request-local capability example, run
 `python examples/policy_gate.py`. A host policy receives a detached, validated call
 snapshot and returns `ToolPolicyDecision.ALLOW` or `DENY`; it is not an authentication
 service or a durable human-approval workflow.
+For a quota-constrained dependency with safe retry handling, run
+`python examples/rate_limited_api.py`.
 
 ## Connect an MCP client
 
@@ -208,8 +211,14 @@ them to the host's actual workload.
 Hosts can isolate a slow or quota-constrained dependency when registering its tool:
 
 ```python
+from samsarix_core import ToolRateLimit
+
 runtime = ToolRuntime(max_concurrency=8)
-runtime.register(query_warehouse, max_concurrency=2)
+runtime.register(
+    query_warehouse,
+    max_concurrency=2,
+    rate_limit=ToolRateLimit(calls=60, period_seconds=60, burst=5),
+)
 runtime.register(health_check)
 ```
 
@@ -218,6 +227,11 @@ calls cannot consume all eight slots and starve `health_check`. The same deploym
 limit covers direct, batch, MCP, and MCP task calls without becoming discoverable tool
 metadata. The invocation timeout includes bulkhead waiting, and the overall
 `max_pending_invocations` cap still bounds every waiter.
+The independent token bucket permits five immediate warehouse starts and refills at one
+call per second. An empty bucket returns retryable status `rate_limited` with a safe
+`retry_after_ms` hint and never runs the tool. The bucket is process-local deployment
+policy, not tenant fairness or a distributed quota service. See
+[per-tool rate limits](docs/RATE_LIMITS.md).
 
 Hosts can attach a synchronous `lifecycle_handler` to receive paired, immutable start
 and terminal events across direct, batch, MCP, and task calls. Events contain only
@@ -251,6 +265,7 @@ for delivery semantics, privacy/cardinality cautions, and a content-free OpenTel
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
 [architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),
 [lifecycle observability](docs/OBSERVABILITY.md), [best practices](docs/BEST_PRACTICES.md),
+[per-tool rate limits](docs/RATE_LIMITS.md),
 [benchmark guide](docs/BENCHMARKS.md),
 the [adoption record](docs/ADOPTION.md), and the [productization
 record](docs/PRODUCTIZATION.md).

@@ -186,6 +186,7 @@ def test_samsarix_names_are_canonical_and_legacy_names_remain_compatible() -> No
     assert helix_core.ToolRuntime is samsarix_core.ToolRuntime
     assert helix_core.ToolLifecycleEvent is samsarix_core.ToolLifecycleEvent
     assert helix_core.ToolLifecycleStatus is samsarix_core.ToolLifecycleStatus
+    assert helix_core.ToolRateLimit is samsarix_core.ToolRateLimit
     assert helix_core.__version__ == samsarix_core.__version__
 
 

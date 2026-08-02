@@ -55,11 +55,16 @@ Choose the limit from measured capacity and the dependency's quota. Samsarix acq
 this tool-specific slot before a global execution slot, preserving unrelated tool
 availability while the constrained tool queues.
 
-The per-tool limit is an in-process execution bulkhead, not a request-rate limit,
-tenant quota, circuit breaker, or process sandbox. Keep total admission finite, set
-downstream I/O deadlines, and add caller-aware controls at the hosting boundary.
+The per-tool concurrency limit is an in-process execution bulkhead, not a request-rate
+limit, tenant quota, circuit breaker, or process sandbox. When the dependency also has a
+sustained request quota, add `rate_limit=ToolRateLimit(...)`. The token bucket is checked
+immediately before tool start and returns a safe retry delay instead of waiting. Combine
+both controls: concurrency protects simultaneous downstream work while rate protects
+starts over time. Keep total admission finite and set downstream I/O deadlines.
 See the vendor-neutral [bulkhead pattern guidance](https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead)
 for the reliability trade-offs and complementary controls.
+See [per-tool rate limits](RATE_LIMITS.md) for token accounting, safe retry behavior,
+primary references, and process-local limitations.
 
 Choose the runtime-wide `max_concurrency` from aggregate downstream capacity, not CPU count alone. Set
 `max_pending_invocations` to the total policy/execution work one process can safely
@@ -85,9 +90,9 @@ TTL, and remember that the final result remains in memory until expiry. Local
 stdio does not expose `tasks.list`; a network adapter must bind get/result/cancel
 to authenticated requestor identity and add per-requestor quotas and rate limits.
 
-These limits are process-local; they are not tenant quotas or request-rate limits.
-A network host still needs authentication, per-principal admission, rate limits,
-and aggregate memory/connection limits.
+These controls are process-local. A network host still needs authentication,
+per-principal admission, shared tenant quotas, distributed rate limits when it has more
+than one process, and aggregate memory/connection limits.
 
 MCP recommends a client-side human confirmation surface for tool calls. Preserve that
 UI even when the server also uses a programmatic policy gate; annotations are hints and
@@ -98,9 +103,12 @@ server policy cannot prove that a person reviewed a call. See the official
 
 Branch on `ToolStatus`; do not infer success from a truthy output. A `busy` result is
 retryable because no tool or policy code ran, but use capped exponential backoff with
-jitter rather than retrying immediately. Other failures remain non-retryable because
-a timed-out sync function may still finish and cause its side effect. Apply any
-broader retry policy only when the tool's semantics make that safe.
+jitter rather than retrying immediately. A `rate_limited` result also means tool code
+did not run; wait at least `error.details["retry_after_ms"]`, add bounded jitter for
+competing callers, and remember that the hint does not reserve the next token. Other
+failures remain non-retryable because a timed-out sync function may still finish and
+cause its side effect. Apply any broader retry policy only when the tool's semantics
+make that safe.
 
 Let caller cancellation propagate. Use `async with ToolRuntime(...)` so resources
 close on success and failure. Context-manager close does not wait for a timed-out
