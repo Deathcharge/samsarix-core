@@ -13,9 +13,12 @@ Repository:
 | Evidence | Value |
 | --- | --- |
 | Core contract commit | `6f54bcdf428359f1eee654944b6abc8788575eab` |
+| Core package version | `2.0.0a1` |
 | Consumer merge commit | `7bd7fe4bf75de2c88db723be67e17f9ca7f5fc87` |
 | Consumer pull request | [samsarix-integration-examples#3](https://github.com/Deathcharge/samsarix-integration-examples/pull/3) |
 | Consumer package version | `0.2.0` |
+| Integration Guard provenance | [`samsarix-integration-guard`](https://github.com/Deathcharge/samsarix-integration-guard) `0.2.0` at `1aa711d89eaedcc396f0cd6eb416fb4253da3f5e` |
+| Orchestration provenance | [`samsarix-agent-orchestration`](https://github.com/Deathcharge/samsarix-agent-orchestration) `0.1.0` at `0dfc050cf9a4582c9fa8d34d74b1ca97d43c9005` |
 | Supported consumer Python | 3.11-3.13 |
 | Compatibility owner | Samsarix LLC |
 | Support level | Best effort; no SLA |
@@ -27,6 +30,14 @@ name one JSON file in a configured inbox and one artifact filename. It cannot
 supply an absolute path or path separator, linked files are rejected, conflicting
 artifacts are not replaced, and successful MCP results contain metadata rather
 than document content or local paths.
+
+The consumer's merged
+[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/7bd7fe4bf75de2c88db723be67e17f9ca7f5fc87/pyproject.toml)
+is the dependency manifest. It declares
+`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@6f54bcdf428359f1eee654944b6abc8788575eab`;
+the installed public package reports Core version `2.0.0a1`. The same manifest
+records the Guard and Orchestration commits above, and the compatibility test
+asserts all three installed package versions.
 
 ## Verified contract
 

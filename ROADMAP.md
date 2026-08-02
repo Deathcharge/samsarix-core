@@ -27,8 +27,9 @@ remain separate decisions.
 - External consumer: `samsarix-integration-examples` version 0.2.0 pins Core
   commit `6f54bcdf428359f1eee654944b6abc8788575eab` and proves a confined,
   privacy-first redaction workflow through the public MCP API.
-- Next: rerun the consumer matrix after GitHub Actions billing is restored, then
-  use its contract evidence to prioritize richer nested schema types.
+- Next: rerun the consumer matrix after GitHub Actions billing is restored. Use
+  observed consumer demand and confirmed contract gaps—not framework parity—to
+  prioritize richer nested schema types.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.
@@ -45,7 +46,9 @@ remain separate decisions.
 
 - Define a public API, event, schema, artifact, or deployment contract before connecting to Samsarix Unified.
 - [x] Add a consumer-owned local-process contract fixture covering privacy,
-  limits, safe errors, filesystem confinement, and version compatibility.
+  1 MiB source ingestion, safe errors, filesystem confinement, and version
+  compatibility. Consumer-owned timeout and bounded-quiescence evidence remains
+  pending.
 - Add authentication evidence only when an authenticated network transport is in
   scope; the supported stdio bridge delegates trust to the process launcher.
 - Make one implementation canonical; remove or freeze duplicate behavior only after parity and rollback are proven.

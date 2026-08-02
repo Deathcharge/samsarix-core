@@ -247,9 +247,11 @@ P2 framework/provider adapters, registry persistence, process isolation, and ric
 schema types remain deliberately deferred. They are not required for the first useful
 release. One independent repository now proves the MCP boundary without needing those
 features; subsequent surface area should follow concrete consumer demand. Core's own
-Python 3.10-3.14 hosted matrix is green. The consumer's Python 3.11-3.13 jobs could
-not start because GitHub reported an account billing/spending-limit problem, so its
-local 28-test and installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.
+[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30724220457)
+is green; Core's local suite has 59 tests and 94.08% branch coverage. The consumer's
+separate Python 3.11-3.13 jobs could not start because GitHub reported an account
+billing/spending-limit problem, so its local 28-test and installed-wheel evidence is
+recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
