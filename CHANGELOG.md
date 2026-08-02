@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a4 - 2026-08-02
+
 ### Added
 
 - deployment-local per-tool execution bulkheads through
