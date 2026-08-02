@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, TypeVar, overload
 
 from .errors import ToolDefinitionError
+from .models import TaskSupport
 from .schema import compile_tool_contract
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -33,6 +34,7 @@ class ToolConfig:
     destructive: bool
     idempotent: bool
     open_world: bool
+    task_support: TaskSupport
 
 
 @overload
@@ -54,6 +56,7 @@ def samsarix_tool(
     destructive: bool | None = None,
     idempotent: bool | None = None,
     open_world: bool = True,
+    task_support: TaskSupport = "forbidden",
 ) -> Callable[[F], F]: ...
 
 
@@ -71,6 +74,7 @@ def samsarix_tool(
     destructive: bool | None = None,
     idempotent: bool | None = None,
     open_world: bool = True,
+    task_support: TaskSupport = "forbidden",
 ) -> F | Callable[[F], F]:
     """Declare a typed sync or async function as a Samsarix tool."""
 
@@ -112,6 +116,10 @@ def samsarix_tool(
         )
         if invalid_option is not None:
             raise ToolDefinitionError(f"Tool option '{invalid_option}' must be a boolean")
+        if task_support not in ("forbidden", "optional", "required"):
+            raise ToolDefinitionError(
+                "Tool task_support must be 'forbidden', 'optional', or 'required'"
+            )
 
         destructive_hint = not read_only if destructive is None else destructive
         idempotent_hint = read_only if idempotent is None else idempotent
@@ -130,6 +138,7 @@ def samsarix_tool(
             destructive=destructive_hint,
             idempotent=idempotent_hint,
             open_world=open_world,
+            task_support=task_support,
         )
         setattr(candidate, _TOOL_CONFIG_ATTRIBUTE, config)
         return candidate

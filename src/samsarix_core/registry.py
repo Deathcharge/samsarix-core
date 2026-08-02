@@ -67,6 +67,7 @@ class ToolRegistry:
             destructive=config.destructive,
             idempotent=config.idempotent,
             open_world=config.open_world,
+            task_support=config.task_support,
         )
         registered = RegisteredTool(function=function, signature=signature, hints=hints, spec=spec)
         with self._lock:
