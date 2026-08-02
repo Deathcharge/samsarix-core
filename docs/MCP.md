@@ -12,10 +12,12 @@ The supported server surface is intentionally narrow:
 - `tools/list` with JSON Schema Draft 2020-12 input and output contracts;
 - `tools/call` with Samsarix validation, timeouts, concurrency limits, and safe
   structured errors;
-- newline-delimited stdio with a configurable message-size cap.
+- `notifications/cancelled` for active non-task tool calls;
+- newline-delimited stdio with configurable message-size and active-request caps.
 
-It does not implement MCP resources, prompts, sampling, tasks, HTTP transport,
-authentication, or authorization. Those remain host-application concerns.
+It does not implement MCP resources, prompts, sampling, progress notifications,
+tasks, HTTP transport, authentication, or authorization. Those remain
+host-application concerns.
 
 ## Run the example
 
@@ -90,6 +92,42 @@ Failures set `isError: true` and contain the safe `ToolError`; exception message
 remain redacted unless the runtime was explicitly created with
 `expose_exceptions=True`.
 
+## Cancellation and admission
+
+MCP clients can stop an active non-task call with a notification:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/cancelled",
+  "params": {
+    "requestId": "call-42",
+    "reason": "User stopped the operation"
+  }
+}
+```
+
+Core cancels the matching async request and sends no response for the cancelled
+call, as required by MCP. Unknown, completed, missing, or malformed request IDs
+are ignored. Cancellation reasons are not logged by Core. Host cancellation of
+the `handle()` coroutine still propagates as `asyncio.CancelledError`; it is not
+mistaken for an MCP client notification.
+
+`serve_stdio()` reads control messages while tool calls are active and serializes
+all responses through one writer lock. It admits at most
+`max_in_flight_requests=64` tool-call coroutines by default. This admission cap is
+separate from `ToolRuntime.max_concurrency`: the former bounds waiting protocol
+requests, while the latter bounds executing tools. Excess calls receive JSON-RPC
+server error `-32000` and are not executed. Normal input EOF drains calls that
+were already admitted.
+
+Async cancellation is cooperative. A synchronous Python function cannot be
+force-stopped; cancelling its MCP request stops the protocol wait while the
+runtime retains its real worker and concurrency slot until the function exits.
+This follows MCP's stable
+[cancellation utility](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation)
+without adopting the separate experimental Tasks surface.
+
 ## Embed without stdio
 
 Applications with an existing transport can call the protocol handler directly:
@@ -100,16 +138,22 @@ response = await server.handle(json_rpc_message)
 ```
 
 `handle()` accepts one parsed JSON-RPC object and returns a response object or
-`None` for notifications. HTTP authentication, MCP session headers, origin
-validation, request body limits, and rate limits must be implemented by the
-hosting HTTP layer.
+`None` for notifications and MCP-cancelled calls. A custom concurrent transport
+must deliver cancellation notifications while the corresponding `handle()` call
+is still active. HTTP authentication, MCP session headers, origin validation,
+request body limits, and rate limits must be implemented by the hosting HTTP
+layer.
 
 ## Operational boundaries
 
 - Registered functions remain trusted in-process application code.
 - Read-only and idempotent annotations do not make a function safe by themselves.
 - `serve_stdio()` caps individual requests and responses at 1 MiB by default.
+- `serve_stdio()` admits at most 64 active tool-call requests by default; tune the
+  cap with `max_in_flight_requests`.
 - Runtime timeouts and concurrency controls continue to apply to MCP calls.
+- Client cancellation emits no response, stops cooperative async tools, and does
+  not imply a running sync function has stopped.
 - A timed-out synchronous function retains its bounded worker slot until it stops.
 - `serve_stdio()` closes without waiting indefinitely for surviving sync work. A
   host that requires shutdown quiescence should set `close_runtime=False`, stop

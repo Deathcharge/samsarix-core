@@ -24,14 +24,16 @@ _METHOD_NOT_FOUND = -32601
 _INVALID_PARAMS = -32602
 _INTERNAL_ERROR = -32603
 _SERVER_NOT_INITIALIZED = -32002
+_SERVER_BUSY = -32000
 
 
 class MCPServer:
     """Expose a :class:`ToolRuntime` through MCP's JSON-RPC tool surface.
 
-    The server implements initialization, ping, ``tools/list``, and ``tools/call``.
-    Transport and authentication remain application concerns; :func:`serve_stdio`
-    provides a bounded local stdio transport for trusted process launchers.
+    The server implements initialization, ping, ``tools/list``, ``tools/call``,
+    and cancellation of active calls. Transport and authentication remain
+    application concerns; :func:`serve_stdio` provides a bounded local stdio
+    transport for trusted process launchers.
     """
 
     def __init__(
@@ -59,6 +61,8 @@ class MCPServer:
         self._initialize_responded = False
         self._initialized = False
         self._protocol_version: str | None = None
+        self._in_flight_requests: dict[str | int | float, asyncio.Task[Any]] = {}
+        self._client_cancelled_tasks: set[asyncio.Task[Any]] = set()
 
     async def handle(self, message: Mapping[str, Any]) -> dict[str, JSONValue] | None:
         """Handle one parsed JSON-RPC message and return a response if required."""
@@ -86,6 +90,8 @@ class MCPServer:
         if is_notification:
             if method == "notifications/initialized" and self._initialize_responded:
                 self._initialized = True
+            elif method == "notifications/cancelled":
+                self._cancel_request(params)
             return None
 
         try:
@@ -102,12 +108,41 @@ class MCPServer:
             if method == "tools/list":
                 return self._success(request_id, self._list_tools(params))
             if method == "tools/call":
-                return self._success(request_id, await self._call_tool(params))
+                active = asyncio.current_task()
+                if active is None:
+                    return self._error(request_id, _INTERNAL_ERROR, "Internal server error")
+                request_key = cast(str | int | float, request_id)
+                if request_key in self._in_flight_requests:
+                    return self._error(
+                        request_id,
+                        _INVALID_REQUEST,
+                        "Request id is already active",
+                    )
+                self._in_flight_requests[request_key] = active
+                try:
+                    return self._success(request_id, await self._call_tool(params))
+                except asyncio.CancelledError:
+                    if active in self._client_cancelled_tasks:
+                        return None
+                    raise
+                finally:
+                    self._client_cancelled_tasks.discard(active)
+                    if self._in_flight_requests.get(request_key) is active:
+                        del self._in_flight_requests[request_key]
             return self._error(request_id, _METHOD_NOT_FOUND, f"Unknown method '{method}'")
         except _InvalidParams as exc:
             return self._error(request_id, _INVALID_PARAMS, str(exc))
         except Exception:
             return self._error(request_id, _INTERNAL_ERROR, "Internal server error")
+
+    def _cancel_request(self, params: Mapping[str, Any]) -> None:
+        request_id = params.get("requestId")
+        if not _valid_request_id(request_id):
+            return
+        active = self._in_flight_requests.get(cast(str | int | float, request_id))
+        if active is not None:
+            self._client_cancelled_tasks.add(active)
+            active.cancel()
 
     def _initialize(self, params: Mapping[str, Any]) -> dict[str, JSONValue]:
         requested = params.get("protocolVersion")
@@ -236,60 +271,187 @@ async def serve_stdio(
     input_stream: BinaryIO | None = None,
     output_stream: TextIO | None = None,
     max_message_bytes: int = 1_048_576,
+    max_in_flight_requests: int = 64,
     close_runtime: bool = True,
 ) -> None:
     """Serve newline-delimited MCP JSON-RPC over trusted local stdio.
 
-    Protocol messages are the only data written to stdout. Applications should
-    send diagnostics to stderr and obtain credentials from their environment.
+    Tool calls run concurrently so control notifications remain responsive, with
+    admission bounded by ``max_in_flight_requests``. Protocol messages are the
+    only data written to stdout. Applications should send diagnostics to stderr
+    and obtain credentials from their environment.
     """
 
     if isinstance(max_message_bytes, bool) or not isinstance(max_message_bytes, int):
         raise TypeError("max_message_bytes must be an integer")
     if max_message_bytes < 256:
         raise ValueError("max_message_bytes must be at least 256")
+    if isinstance(max_in_flight_requests, bool) or not isinstance(max_in_flight_requests, int):
+        raise TypeError("max_in_flight_requests must be an integer")
+    if max_in_flight_requests <= 0:
+        raise ValueError("max_in_flight_requests must be positive")
 
     reader = input_stream if input_stream is not None else sys.stdin.buffer
     writer = output_stream
+    write_lock = asyncio.Lock()
+    in_flight: set[asyncio.Task[None]] = set()
+    task_errors: list[BaseException] = []
+
+    def request_finished(task: asyncio.Task[None]) -> None:
+        in_flight.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            task_errors.append(error)
+
     try:
         while True:
+            if task_errors:
+                raise task_errors.pop(0)
             line = await asyncio.to_thread(reader.readline, max_message_bytes + 1)
             if not line:
                 break
-            response: dict[str, JSONValue] | None
             if len(line) > max_message_bytes:
                 if not line.endswith(b"\n"):
                     await _discard_line(reader, max_message_bytes)
-                response = MCPServer._error(None, _INVALID_REQUEST, "MCP message exceeds limit")
-            else:
-                response = await _handle_json_line(server, line)
-            if response is not None:
-                encoded = _json_text(response)
-                if len(encoded.encode("utf-8")) > max_message_bytes:
-                    fallback_id = response.get("id")
-                    encoded = _json_text(
-                        MCPServer._error(fallback_id, _INTERNAL_ERROR, "MCP response exceeds limit")
+                await _write_response(
+                    MCPServer._error(None, _INVALID_REQUEST, "MCP message exceeds limit"),
+                    writer=writer,
+                    max_message_bytes=max_message_bytes,
+                    lock=write_lock,
+                )
+                continue
+
+            message, parse_error = _parse_json_line(line)
+            if parse_error is not None:
+                await _write_response(
+                    parse_error,
+                    writer=writer,
+                    max_message_bytes=max_message_bytes,
+                    lock=write_lock,
+                )
+                continue
+            if message is None:
+                await _write_response(
+                    MCPServer._error(None, _INTERNAL_ERROR, "Internal server error"),
+                    writer=writer,
+                    max_message_bytes=max_message_bytes,
+                    lock=write_lock,
+                )
+                continue
+
+            if _is_tool_call_request(message):
+                if len(in_flight) >= max_in_flight_requests:
+                    await _write_response(
+                        MCPServer._error(
+                            message["id"],
+                            _SERVER_BUSY,
+                            "Too many in-flight MCP requests",
+                        ),
+                        writer=writer,
+                        max_message_bytes=max_message_bytes,
+                        lock=write_lock,
                     )
-                if writer is None:
-                    sys.stdout.buffer.write((encoded + "\n").encode("utf-8"))
-                    sys.stdout.buffer.flush()
-                else:
-                    writer.write(encoded + "\n")
-                    writer.flush()
+                    continue
+                task = asyncio.create_task(
+                    _handle_and_write(
+                        server,
+                        message,
+                        writer=writer,
+                        max_message_bytes=max_message_bytes,
+                        lock=write_lock,
+                    )
+                )
+                in_flight.add(task)
+                task.add_done_callback(request_finished)
+                await asyncio.sleep(0)
+                continue
+
+            await _handle_and_write(
+                server,
+                message,
+                writer=writer,
+                max_message_bytes=max_message_bytes,
+                lock=write_lock,
+            )
+
+        if in_flight:
+            await asyncio.gather(*tuple(in_flight))
+        if task_errors:
+            raise task_errors.pop(0)
+    except asyncio.CancelledError:
+        for task in tuple(in_flight):
+            task.cancel()
+        if in_flight:
+            await asyncio.gather(*tuple(in_flight), return_exceptions=True)
+        raise
     finally:
         if close_runtime:
             await server.runtime.aclose()
 
 
 async def _handle_json_line(server: MCPServer, line: bytes) -> dict[str, JSONValue] | None:
+    message, error = _parse_json_line(line)
+    if error is not None:
+        return error
+    if message is None:
+        return MCPServer._error(None, _INTERNAL_ERROR, "Internal server error")
+    return await server.handle(message)
+
+
+def _parse_json_line(
+    line: bytes,
+) -> tuple[dict[str, Any] | None, dict[str, JSONValue] | None]:
     try:
         decoded = line.decode("utf-8")
         message = json.loads(decoded)
     except (UnicodeDecodeError, ValueError, RecursionError):
-        return MCPServer._error(None, -32700, "Parse error")
+        return None, MCPServer._error(None, -32700, "Parse error")
     if not isinstance(message, dict):
-        return MCPServer._error(None, _INVALID_REQUEST, "Invalid JSON-RPC request")
-    return await server.handle(message)
+        return None, MCPServer._error(None, _INVALID_REQUEST, "Invalid JSON-RPC request")
+    return cast(dict[str, Any], message), None
+
+
+def _is_tool_call_request(message: Mapping[str, Any]) -> bool:
+    return "id" in message and message.get("method") == "tools/call"
+
+
+async def _handle_and_write(
+    server: MCPServer,
+    message: Mapping[str, Any],
+    *,
+    writer: TextIO | None,
+    max_message_bytes: int,
+    lock: asyncio.Lock,
+) -> None:
+    response = await server.handle(message)
+    if response is not None:
+        await _write_response(
+            response,
+            writer=writer,
+            max_message_bytes=max_message_bytes,
+            lock=lock,
+        )
+
+
+async def _write_response(
+    response: dict[str, JSONValue],
+    *,
+    writer: TextIO | None,
+    max_message_bytes: int,
+    lock: asyncio.Lock,
+) -> None:
+    encoded = _json_text(response)
+    if len(encoded.encode("utf-8")) > max_message_bytes:
+        fallback_id = response.get("id")
+        encoded = _json_text(
+            MCPServer._error(fallback_id, _INTERNAL_ERROR, "MCP response exceeds limit")
+        )
+    async with lock:
+        if writer is None:
+            sys.stdout.buffer.write((encoded + "\n").encode("utf-8"))
+            sys.stdout.buffer.flush()
+        else:
+            writer.write(encoded + "\n")
+            writer.flush()
 
 
 async def _discard_line(reader: BinaryIO, chunk_size: int) -> None:

@@ -37,6 +37,8 @@ application-level admission control before accepting calls. Tune `max_batch_size
 `max_argument_bytes`, `max_output_bytes`, `max_value_depth`, and `max_value_nodes`
 below upstream transport limits, with enough headroom for legitimate contracts.
 Keep `ToolRegistry.max_tools` close to the catalog size you actually expose.
+For stdio MCP servers, also tune `max_in_flight_requests` to bound calls waiting
+behind the runtime's execution limit.
 
 These limits bound one runtime request; they are not tenant quotas or request-rate
 limits. A network host still needs authentication, admission control, rate limits,

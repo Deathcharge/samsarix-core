@@ -141,7 +141,8 @@ async def test_argument_validation_reports_all_top_level_problems() -> None:
     assert result.status is ToolStatus.INVALID_ARGUMENTS
     assert result.error is not None
     issue_codes = {
-        issue["code"] for issue in result.error.to_dict()["details"]["issues"]  # type: ignore[index,union-attr]
+        issue["code"]
+        for issue in result.error.to_dict()["details"]["issues"]  # type: ignore[index,union-attr]
     }
     assert issue_codes == {"type_mismatch", "unexpected_argument"}
     assert wrong_container.error is not None

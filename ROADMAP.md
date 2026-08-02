@@ -18,8 +18,9 @@ remain separate decisions.
 - Preserve the pre-productization default under a rollback ref before merging; do not delete legacy history.
 - The productization work is now committed, pushed, clean, and green in hosted checks.
 - MCP flagship adapter: implemented lifecycle negotiation, JSON Schema tool discovery,
-  structured invocation results, behavioral safety hints, and a bounded stdio
-  transport with an inventory example. Exact-head CI evidence remains required.
+  structured invocation results, behavioral safety hints, active-call
+  cancellation, and a message/admission-bounded concurrent stdio transport with
+  an inventory example. Exact-head CI evidence remains required.
 - Runtime input/output, batch, and registry resources are now capped and covered
   by adversarial tests.
 - Timed-out sync work now retains its real concurrency slot and in-flight gauge;

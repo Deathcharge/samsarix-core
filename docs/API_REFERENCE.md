@@ -112,10 +112,12 @@ MCPServer(
 - `await handle(message) -> dict | None`
 
 `handle()` accepts one parsed MCP JSON-RPC message. It supports lifecycle
-initialization, `ping`, `tools/list`, `tools/call`, and initialized notifications.
-It negotiates MCP `2025-11-25` and `2025-06-18`. Application-level tool failures
-are successful JSON-RPC responses with `isError: true`; malformed protocol calls
-use standard JSON-RPC error objects.
+initialization, `ping`, `tools/list`, `tools/call`, initialized notifications, and
+`notifications/cancelled` for active calls. It negotiates MCP `2025-11-25` and
+`2025-06-18`. Application-level tool failures are successful JSON-RPC responses
+with `isError: true`; malformed protocol calls use standard JSON-RPC error objects.
+An MCP-cancelled call returns `None` and emits no response. Direct host task
+cancellation continues to raise `asyncio.CancelledError`.
 
 ## `serve_stdio`
 
@@ -126,13 +128,17 @@ await serve_stdio(
     input_stream: BinaryIO | None = None,
     output_stream: TextIO | None = None,
     max_message_bytes: int = 1_048_576,
+    max_in_flight_requests: int = 64,
     close_runtime: bool = True,
 )
 ```
 
 Runs the server using newline-delimited MCP messages. The limit must be at least
-256 bytes and caps individual input and output messages. The default streams are
-binary stdin and UTF-8 binary stdout. Only protocol messages are written to stdout.
+256 bytes and caps individual input and output messages. Tool calls are dispatched
+concurrently so cancellation notifications remain responsive, with pending calls
+bounded separately by the positive `max_in_flight_requests` cap. Excess calls
+receive JSON-RPC server error `-32000`. The default streams are binary stdin and
+UTF-8 binary stdout. Only protocol messages are written to stdout.
 
 ## Data models
 

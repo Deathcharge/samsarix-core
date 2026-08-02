@@ -23,7 +23,8 @@ persistence, or an untrusted-code sandbox.
   thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - keeps metrics content-free and redacts exception messages by default;
-- exposes the same contracts through a dependency-free MCP stdio bridge.
+- exposes the same contracts through a dependency-free, cancellable, and
+  admission-bounded MCP stdio bridge.
 
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
 accounts, no API keys, no external service, and no hosted operating cost.
@@ -83,8 +84,10 @@ asyncio.run(main())
 ## Connect an MCP client
 
 Samsarix Core implements the stable MCP tool lifecycle, discovery, invocation,
-structured output, and behavioral annotations without adding an SDK dependency.
-A complete inventory server is included:
+structured output, behavioral annotations, and client cancellation without adding
+an SDK dependency. Concurrent stdio calls are separately admission-bounded so the
+runtime's execution queue cannot grow without a protocol-level cap. A complete
+inventory server is included:
 
 ```bash
 python examples/mcp_inventory_server.py
@@ -92,8 +95,8 @@ python examples/mcp_inventory_server.py
 
 Configure that command in a trusted local MCP client to discover and call the
 decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
-read/write/destructive annotations, scalar-output wrapping, stdio requirements,
-and security boundaries.
+read/write/destructive annotations, scalar-output wrapping, cancellation, stdio
+admission limits, and security boundaries.
 
 ## Proven external consumer
 
@@ -172,9 +175,10 @@ The release gate runs Black, Ruff, strict mypy, the test suite with at least 90%
 branch-aware coverage, a source/wheel build, and an isolated wheel import smoke
 test across supported Python versions where applicable.
 
-Run `python benchmarks/runtime_benchmark.py` for a machine-readable local
-microbenchmark. It is a comparison aid, not a universal performance claim or CI
-speed threshold.
+Run `python benchmarks/runtime_benchmark.py` or
+`python benchmarks/mcp_stdio_benchmark.py` for machine-readable local
+microbenchmarks. They are comparison aids, not universal performance claims or CI
+speed thresholds.
 
 ## Support and contact
 
