@@ -1,6 +1,7 @@
 # Contributing
 
-Samsarix Core `2.0.0a1` is intentionally narrow. Changes should strengthen typed
+Samsarix Core `2.0` is intentionally narrow while it is in alpha. Changes should
+strengthen typed
 local-tool declaration and invocation without silently turning the package into an
 agent framework, provider SDK, network service, or sandbox.
 

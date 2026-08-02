@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0a3 - 2026-08-02
+
+### Changed
+
+- made CI and release-wheel compatibility checks compare the `helix_core` namespace
+  against the built package version instead of a release-specific literal.
+
 ## 2.0.0a2 - 2026-08-02
 
 ### Added
@@ -7,6 +14,12 @@
 - bounded direct-runtime admission with fail-fast, retryable `runtime_busy` results,
   content-free current/peak/rejection metrics, batch-aware worker sizing, and MCP
   serialization coverage.
+
+### Release status
+
+- the immutable `v2.0.0a2` tag failed closed during wheel smoke testing before
+  attestation or publication; it has no GitHub release and is superseded by
+  `v2.0.0a3`.
 
 ### Changed
 

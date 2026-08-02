@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: Samsarix Core version
-      placeholder: 2.0.0a1 or commit SHA
+      placeholder: GitHub release tag or commit SHA (for example, v2.0.0a3)
     validations:
       required: true
   - type: input
