@@ -14,6 +14,8 @@ import pytest
 from samsarix_core import (
     MCPServer,
     ProgressHandlerError,
+    ToolLifecycleEvent,
+    ToolLifecycleStatus,
     ToolPolicyContext,
     ToolPolicyDecision,
     ToolRuntime,
@@ -103,6 +105,35 @@ async def test_mcp_lifecycle_and_version_negotiation() -> None:
     assert initialized["result"]["serverInfo"]["name"] == "samsarix-core"
     assert initialized["result"]["instructions"] == "Ask before write operations."
     assert ping == {"jsonrpc": "2.0", "id": 2, "result": {}}
+
+
+@pytest.mark.asyncio
+async def test_mcp_calls_emit_runtime_lifecycle_without_protocol_content() -> None:
+    events: list[ToolLifecycleEvent] = []
+    runtime = ToolRuntime(lifecycle_handler=events.append)
+    runtime.register(inventory)
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        response = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "inventory", "arguments": {"sku": "private-sku"}},
+            }
+        )
+    finally:
+        await runtime.aclose()
+
+    assert response is not None
+    assert response["result"]["structuredContent"] == {"sku": "private-sku", "available": 7}
+    assert [event.status for event in events] == [
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.SUCCESS,
+    ]
+    assert events[0].invocation_id == events[1].invocation_id
+    assert "private-sku" not in str([event.to_dict() for event in events])
 
 
 @pytest.mark.asyncio

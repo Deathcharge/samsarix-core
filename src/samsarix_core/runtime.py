@@ -24,6 +24,9 @@ from .models import (
     RuntimeMetrics,
     ToolCall,
     ToolError,
+    ToolLifecycleEvent,
+    ToolLifecycleHandler,
+    ToolLifecycleStatus,
     ToolPolicy,
     ToolPolicyContext,
     ToolPolicyDecision,
@@ -77,6 +80,7 @@ class ToolRuntime:
         default_timeout: float = 30.0,
         expose_exceptions: bool = False,
         policy: ToolPolicy | None = None,
+        lifecycle_handler: ToolLifecycleHandler | None = None,
     ) -> None:
         if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int):
             raise TypeError("max_concurrency must be an integer")
@@ -104,6 +108,10 @@ class ToolRuntime:
             raise ValueError("default_timeout must be a positive number")
         if policy is not None and not _is_async_callable(policy):
             raise TypeError("policy must be an async callable or None")
+        if lifecycle_handler is not None and (
+            not callable(lifecycle_handler) or _is_async_callable(lifecycle_handler)
+        ):
+            raise TypeError("lifecycle_handler must be a synchronous callable or None")
 
         self.registry = registry if registry is not None else ToolRegistry()
         self.max_concurrency = max_concurrency
@@ -118,6 +126,7 @@ class ToolRuntime:
         self.default_timeout = float(default_timeout)
         self.expose_exceptions = expose_exceptions
         self.policy = policy
+        self.lifecycle_handler = lifecycle_handler
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._policy_semaphore = asyncio.Semaphore(max_concurrency)
         self._tool_semaphores: dict[int, tuple[RegisteredTool, asyncio.Semaphore]] = {}
@@ -145,6 +154,7 @@ class ToolRuntime:
             "peak_pending_invocations": 0,
             "in_flight": 0,
             "peak_in_flight": 0,
+            "lifecycle_handler_failures": 0,
         }
 
     def register(
@@ -194,61 +204,98 @@ class ToolRuntime:
         started = time.perf_counter()
         invocation_id = uuid4().hex
         self._increment("calls_total")
+        self._emit_lifecycle(
+            invocation_id,
+            name,
+            ToolLifecycleStatus.STARTED,
+            occurred_at=started_at,
+        )
+        try:
+            if progress_handler is not None and not callable(progress_handler):
+                raise TypeError("progress_handler must be callable or None")
 
-        if progress_handler is not None and not callable(progress_handler):
-            raise TypeError("progress_handler must be callable or None")
-
-        if self._closed:
-            self._increment("runtime_closed")
-            return self._result(
+            if self._closed:
+                self._increment("runtime_closed")
+                result = self._result(
+                    invocation_id,
+                    name,
+                    ToolStatus.RUNTIME_CLOSED,
+                    started_at,
+                    started,
+                    error=ToolError("runtime_closed", "The tool runtime is closed"),
+                )
+            elif timeout is not None and (
+                isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
+            ):
+                self._increment("invalid_arguments")
+                result = self._result(
+                    invocation_id,
+                    name,
+                    ToolStatus.INVALID_ARGUMENTS,
+                    started_at,
+                    started,
+                    error=ToolError(
+                        "invalid_timeout", "Invocation timeout must be a positive number"
+                    ),
+                )
+            elif not self._try_admit():
+                self._increment("busy")
+                result = self._result(
+                    invocation_id,
+                    name,
+                    ToolStatus.BUSY,
+                    started_at,
+                    started,
+                    error=ToolError(
+                        "runtime_busy",
+                        "Runtime invocation capacity is full",
+                        retryable=True,
+                    ),
+                )
+            else:
+                try:
+                    result = await self._invoke_admitted(
+                        name,
+                        arguments,
+                        timeout=timeout,
+                        progress_handler=progress_handler,
+                        invocation_id=invocation_id,
+                        started_at=started_at,
+                        started=started,
+                    )
+                finally:
+                    self._release_admission()
+        except asyncio.CancelledError:
+            self._emit_lifecycle(
                 invocation_id,
                 name,
-                ToolStatus.RUNTIME_CLOSED,
-                started_at,
-                started,
-                error=ToolError("runtime_closed", "The tool runtime is closed"),
+                ToolLifecycleStatus.CANCELLED,
+                duration_ms=self._duration_ms(started),
             )
-
-        if timeout is not None and (
-            isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
-        ):
-            self._increment("invalid_arguments")
-            return self._result(
+            raise
+        except Exception:
+            self._emit_lifecycle(
                 invocation_id,
                 name,
-                ToolStatus.INVALID_ARGUMENTS,
-                started_at,
-                started,
-                error=ToolError("invalid_timeout", "Invocation timeout must be a positive number"),
+                ToolLifecycleStatus.ABORTED,
+                duration_ms=self._duration_ms(started),
             )
-
-        if not self._try_admit():
-            self._increment("busy")
-            return self._result(
-                invocation_id,
-                name,
-                ToolStatus.BUSY,
-                started_at,
-                started,
-                error=ToolError(
-                    "runtime_busy",
-                    "Runtime invocation capacity is full",
-                    retryable=True,
-                ),
-            )
+            raise
 
         try:
-            return await self._invoke_admitted(
+            lifecycle_status = ToolLifecycleStatus(result.status.value)
+        except ValueError:
+            # A future result status must not discard an already-computed result if
+            # lifecycle models have not yet been updated to match it.
+            self._increment("lifecycle_handler_failures")
+        else:
+            self._emit_lifecycle(
+                invocation_id,
                 name,
-                arguments,
-                timeout=timeout,
-                progress_handler=progress_handler,
-                invocation_id=invocation_id,
-                started_at=started_at,
-                started=started,
+                lifecycle_status,
+                duration_ms=result.duration_ms,
             )
-        finally:
-            self._release_admission()
+        return result
 
     async def _invoke_admitted(
         self,
@@ -716,6 +763,64 @@ class ToolRuntime:
         with self._metrics_lock:
             self._counters[name] += 1
 
+    def _emit_lifecycle(
+        self,
+        invocation_id: str,
+        tool_name: str,
+        status: ToolLifecycleStatus,
+        *,
+        occurred_at: str | None = None,
+        duration_ms: float | None = None,
+    ) -> None:
+        """Deliver one best-effort content-free lifecycle event inline."""
+
+        if self.lifecycle_handler is None:
+            return
+        event = ToolLifecycleEvent(
+            invocation_id=invocation_id,
+            tool_name=tool_name,
+            status=status,
+            occurred_at=occurred_at or datetime.now(timezone.utc).isoformat(),
+            duration_ms=duration_ms,
+        )
+        try:
+            returned = self.lifecycle_handler(event)
+            if inspect.isawaitable(returned):
+                self._dispose_lifecycle_awaitable(returned)
+                raise TypeError("lifecycle_handler returned an awaitable")
+        except Exception:
+            self._increment("lifecycle_handler_failures")
+
+    @staticmethod
+    def _dispose_lifecycle_awaitable(returned: object) -> None:
+        """Best-effort cleanup without awaiting or scheduling handler output."""
+
+        if isinstance(returned, asyncio.Future):
+            if returned.done():
+                ToolRuntime._consume_lifecycle_future(returned)
+            else:
+                returned.add_done_callback(ToolRuntime._consume_lifecycle_future)
+                returned.cancel()
+            return
+
+        for method_name in ("cancel", "close"):
+            cleanup = getattr(returned, method_name, None)
+            if callable(cleanup):
+                cleanup()
+                return
+
+    @staticmethod
+    def _consume_lifecycle_future(completed: asyncio.Future[Any]) -> None:
+        """Retrieve a completed handler Future failure to avoid late warnings."""
+
+        if not completed.cancelled():
+            with suppress(BaseException):
+                completed.exception()
+
+    @staticmethod
+    def _duration_ms(started: float) -> float:
+        return round((time.perf_counter() - started) * 1000, 3)
+
     @staticmethod
     def _result(
         invocation_id: str,
@@ -732,7 +837,7 @@ class ToolRuntime:
             tool_name=tool_name,
             status=status,
             started_at=started_at,
-            duration_ms=round((time.perf_counter() - started) * 1000, 3),
+            duration_ms=ToolRuntime._duration_ms(started),
             output=output,
             error=error,
         )

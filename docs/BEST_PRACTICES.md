@@ -34,6 +34,14 @@ contain only status, duration, invocation ID, and an application-approved tool
 identifier. If the host adds other logging or tracing, redact inputs, outputs,
 exception messages, paths, tenant identifiers, and authorization material by default.
 
+For per-invocation traces or service-level indicators, opt in with
+`ToolRuntime(lifecycle_handler=...)`. The immutable events omit call content, but tool
+names disclose application structure, invocation IDs are correlatable, and an unknown
+requested name can be attacker-controlled. Keep the synchronous callback non-blocking,
+allowlist metric labels, and hand network export to a bounded/batched host processor.
+See the [lifecycle observability guide](OBSERVABILITY.md) for an OpenTelemetry adapter
+that deliberately omits sensitive argument and result attributes.
+
 ## Bound every external dependency
 
 The runtime timeout bounds how long the caller waits. A sync function's thread

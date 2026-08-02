@@ -7,6 +7,12 @@ validated local invocation path. It measures sync and async variants of:
 - mean, p50, and p95 end-to-end invocation latency; and
 - one ordered batch's duration and calls per second.
 
+It also repeats the asynchronous sequential path with a constant-time lifecycle
+handler, verifies exactly two events per measured/warm-up invocation, and reports that
+path separately as `async_sequential_noop_lifecycle`. Compare it with
+`async_sequential` on the same run to estimate event construction and callback overhead;
+it does not model network export.
+
 Run it from an installed development checkout:
 
 ```bash

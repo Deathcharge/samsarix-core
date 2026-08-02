@@ -16,6 +16,8 @@ import pytest
 from samsarix_core import (
     ProgressHandlerError,
     ToolCall,
+    ToolLifecycleEvent,
+    ToolLifecycleStatus,
     ToolPolicyContext,
     ToolPolicyDecision,
     ToolProgress,
@@ -1234,6 +1236,207 @@ async def test_cancellation_propagates_and_updates_content_free_metrics() -> Non
 
 
 @pytest.mark.asyncio
+async def test_lifecycle_events_are_paired_content_free_and_result_correlated() -> None:
+    events: list[ToolLifecycleEvent] = []
+    runtime = populated_runtime(lifecycle_handler=events.append)
+    try:
+        result = await runtime.invoke("fail", {"secret": "do-not-observe"})
+    finally:
+        await runtime.aclose()
+
+    assert result.status is ToolStatus.FAILED
+    assert [event.status for event in events] == [
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.FAILED,
+    ]
+    assert all(event.invocation_id == result.invocation_id for event in events)
+    assert all(event.tool_name == "fail" for event in events)
+    assert events[0].duration_ms is None
+    assert events[1].duration_ms == result.duration_ms
+    assert set(events[1].to_dict()) == {
+        "invocation_id",
+        "tool_name",
+        "status",
+        "occurred_at",
+        "duration_ms",
+    }
+    serialized = str([event.to_dict() for event in events])
+    assert "do-not-observe" not in serialized
+    assert "sensitive" not in serialized
+    assert "output" not in serialized
+    assert "error" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_reports_cancellation_and_host_abort() -> None:
+    events: list[ToolLifecycleEvent] = []
+    runtime = populated_runtime(lifecycle_handler=events.append)
+    invocation = asyncio.create_task(runtime.invoke("slow", {"delay": 1}, timeout=2))
+    await asyncio.sleep(0)
+    invocation.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+        with pytest.raises(TypeError, match="progress_handler"):
+            await runtime.invoke("add", {"left": 1}, progress_handler=True)  # type: ignore[arg-type]
+    finally:
+        await runtime.aclose()
+
+    assert [event.status for event in events] == [
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.CANCELLED,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.ABORTED,
+    ]
+    for started, terminal in ((events[0], events[1]), (events[2], events[3])):
+        assert started.invocation_id == terminal.invocation_id
+        assert started.duration_ms is None
+        assert terminal.duration_ms is not None
+        assert terminal.duration_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_handler_failures_never_replace_tool_results() -> None:
+    def broken_handler(event: ToolLifecycleEvent) -> None:
+        raise OSError("telemetry exporter unavailable")
+
+    runtime = populated_runtime(lifecycle_handler=broken_handler)
+    try:
+        result = await runtime.invoke("add", {"left": 2})
+    finally:
+        await runtime.aclose()
+
+    assert result.success
+    assert result.output == 3
+    assert runtime.metrics().lifecycle_handler_failures == 2
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_handler_rejects_async_callables_and_closes_coroutines() -> None:
+    async def async_handler(event: ToolLifecycleEvent) -> None:
+        return None
+
+    with pytest.raises(TypeError, match="synchronous callable"):
+        ToolRuntime(lifecycle_handler=async_handler)
+
+    def disguised_async_handler(event: ToolLifecycleEvent) -> None:
+        return async_handler(event)  # type: ignore[return-value]
+
+    runtime = populated_runtime(lifecycle_handler=disguised_async_handler)
+    try:
+        result = await runtime.invoke("add", {"left": 4})
+    finally:
+        await runtime.aclose()
+
+    assert result.success
+    assert runtime.metrics().lifecycle_handler_failures == 2
+    assert {status.value for status in ToolStatus} < {
+        status.value for status in ToolLifecycleStatus
+    }
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_handler_cancels_futures_and_tasks() -> None:
+    futures: list[asyncio.Future[None]] = []
+
+    def future_handler(event: ToolLifecycleEvent) -> None:
+        pending: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        futures.append(pending)
+        return pending  # type: ignore[return-value]
+
+    future_runtime = populated_runtime(lifecycle_handler=future_handler)
+    try:
+        assert (await future_runtime.invoke("add", {"left": 5})).success
+    finally:
+        await future_runtime.aclose()
+
+    assert len(futures) == 2
+    assert all(future.cancelled() for future in futures)
+    assert future_runtime.metrics().lifecycle_handler_failures == 2
+
+    tasks: list[asyncio.Task[None]] = []
+
+    async def pending_work() -> None:
+        await asyncio.Event().wait()
+
+    def task_handler(event: ToolLifecycleEvent) -> None:
+        task = asyncio.create_task(pending_work())
+        tasks.append(task)
+        return task  # type: ignore[return-value]
+
+    task_runtime = populated_runtime(lifecycle_handler=task_handler)
+    try:
+        assert (await task_runtime.invoke("add", {"left": 6})).success
+        await asyncio.sleep(0)
+    finally:
+        await task_runtime.aclose()
+
+    assert len(tasks) == 2
+    assert all(task.cancelled() for task in tasks)
+    assert task_runtime.metrics().lifecycle_handler_failures == 2
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_handler_closes_custom_awaitables_when_supported() -> None:
+    class CustomAwaitable:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __await__(self):  # type: ignore[no-untyped-def]
+            yield
+
+        def close(self) -> None:
+            self.closed = True
+
+    returned: list[CustomAwaitable] = []
+
+    def custom_handler(event: ToolLifecycleEvent) -> None:
+        awaitable = CustomAwaitable()
+        returned.append(awaitable)
+        return awaitable  # type: ignore[return-value]
+
+    runtime = populated_runtime(lifecycle_handler=custom_handler)
+    try:
+        assert (await runtime.invoke("add", {"left": 7})).success
+    finally:
+        await runtime.aclose()
+
+    assert len(returned) == 2
+    assert all(awaitable.closed for awaitable in returned)
+    assert runtime.metrics().lifecycle_handler_failures == 2
+
+
+@pytest.mark.asyncio
+async def test_future_result_status_mismatch_never_discards_a_result() -> None:
+    class FutureStatus:
+        value = "future_status"
+
+    events: list[ToolLifecycleEvent] = []
+    runtime = populated_runtime(lifecycle_handler=events.append)
+
+    async def future_result(*args: object, **kwargs: object) -> ToolResult:
+        return ToolResult(
+            invocation_id=str(kwargs["invocation_id"]),
+            tool_name=str(args[0]),
+            status=FutureStatus(),  # type: ignore[arg-type]
+            started_at=str(kwargs["started_at"]),
+            duration_ms=1.0,
+            output=8,
+        )
+
+    runtime._invoke_admitted = future_result  # type: ignore[method-assign]
+    try:
+        result = await runtime.invoke("add", {"left": 7})
+    finally:
+        await runtime.aclose()
+
+    assert result.output == 8
+    assert result.status.value == "future_status"
+    assert [event.status for event in events] == [ToolLifecycleStatus.STARTED]
+    assert runtime.metrics().lifecycle_handler_failures == 1
+
+
+@pytest.mark.asyncio
 async def test_cancellation_closes_progress_before_tool_cleanup() -> None:
     started = asyncio.Event()
     never_release = asyncio.Event()
@@ -1517,6 +1720,7 @@ async def test_async_context_manager_closes_the_runtime() -> None:
         ({"max_value_nodes": True}, TypeError),
         ({"max_progress_updates": 0}, ValueError),
         ({"max_progress_message_bytes": True}, TypeError),
+        ({"lifecycle_handler": True}, TypeError),
     ],
 )
 def test_runtime_configuration_is_validated(
