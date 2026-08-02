@@ -8,6 +8,7 @@ from .decorators import helix_tool, samsarix_tool
 from .errors import (
     DuplicateToolError,
     HelixError,
+    ProgressHandlerError,
     RegistryCapacityError,
     SamsarixError,
     ToolDefinitionError,
@@ -15,6 +16,7 @@ from .errors import (
 )
 from .mcp import MCPServer, serve_stdio
 from .models import RuntimeMetrics, ToolCall, ToolError, ToolResult, ToolSpec, ToolStatus
+from .progress import ProgressHandler, ToolProgress, report_progress
 from .registry import ToolRegistry
 from .runtime import ToolRuntime
 
@@ -22,6 +24,8 @@ __all__ = [
     "DuplicateToolError",
     "HelixError",
     "MCPServer",
+    "ProgressHandler",
+    "ProgressHandlerError",
     "RegistryCapacityError",
     "RuntimeMetrics",
     "SamsarixError",
@@ -29,6 +33,7 @@ __all__ = [
     "ToolDefinitionError",
     "ToolError",
     "ToolNotFoundError",
+    "ToolProgress",
     "ToolRegistry",
     "ToolResult",
     "ToolRuntime",
@@ -36,6 +41,7 @@ __all__ = [
     "ToolStatus",
     "__version__",
     "helix_tool",
+    "report_progress",
     "samsarix_tool",
     "serve_stdio",
 ]

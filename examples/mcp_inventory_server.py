@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
-from samsarix_core import MCPServer, ToolRuntime, samsarix_tool, serve_stdio
+from samsarix_core import MCPServer, ToolRuntime, report_progress, samsarix_tool, serve_stdio
 
 
 @samsarix_tool(
@@ -39,10 +39,32 @@ def reserve_inventory(sku: str, quantity: int, request_id: str) -> dict[str, int
     return {"sku": sku, "quantity": quantity, "request_id": request_id, "status": "preview"}
 
 
+@samsarix_tool(
+    title="Audit inventory",
+    tags=("inventory", "read", "progress"),
+    read_only=True,
+    open_world=False,
+)
+async def audit_inventory(skus: list[str]) -> dict[str, int]:
+    """Count known inventory records while reporting completed work."""
+
+    catalog = {"cable-usb-c": 18, "keyboard-compact": 4}
+    known = 0
+    for position, sku in enumerate(skus, start=1):
+        known += int(sku in catalog)
+        await report_progress(
+            position,
+            total=len(skus),
+            message=f"Checked {position} of {len(skus)} inventory records",
+        )
+    return {"checked": len(skus), "known": known}
+
+
 async def main() -> None:
     runtime = ToolRuntime(max_concurrency=4, default_timeout=10)
     runtime.register(check_inventory)
     runtime.register(reserve_inventory)
+    runtime.register(audit_inventory)
     server = MCPServer(
         runtime,
         name="samsarix-inventory-example",

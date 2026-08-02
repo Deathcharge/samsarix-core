@@ -16,14 +16,21 @@ python benchmarks/runtime_benchmark.py --iterations 2000 --batch-size 256
 `benchmarks/mcp_stdio_benchmark.py` measures aggregate throughput for the complete
 in-memory newline parse, MCP dispatch, validation, async tool, and response
 serialization path. It validates every structured response and fails if the
-configured admission cap rejects a call:
+configured admission cap rejects a call. Its optional progress mode also validates
+the expected notification count and measures the complete progress write path:
 
 ```bash
 python benchmarks/mcp_stdio_benchmark.py \
   --iterations 2000 \
   --max-concurrency 8 \
-  --max-in-flight-requests 64
+  --max-in-flight-requests 64 \
+  --progress-updates-per-call 0
 ```
+
+Use `--progress-updates-per-call 2` for a progress-enabled comparison against the
+zero-update baseline. Throughput includes every generated notification and
+terminal response. The benchmark accepts at most 1,000 updates per call, matching
+the runtime cap it configures.
 
 The command emits JSON with the Python, platform, and Samsarix Core versions so
 runs can be retained and compared. Use the same machine, Python build, power mode,

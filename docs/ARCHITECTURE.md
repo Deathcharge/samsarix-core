@@ -11,6 +11,7 @@ typed function
     -> iterative argument resource preflight
     -> ToolRuntime argument validation
     -> bounded async or thread-pool execution
+    -> optional invocation-scoped progress handler
     -> output validation and resource preflight
     -> ToolResult
 ```
@@ -25,8 +26,11 @@ typed function
   thread-safe map.
 - `runtime.py` owns concurrency, the sync thread pool, timeouts, cancellation,
   exception redaction, batch workers, lifecycle, and content-free counters.
+- `progress.py` owns invocation-scoped async progress validation, ordering,
+  resource caps, and lifecycle closure.
 - `mcp.py` owns protocol lifecycle, schema/result translation, active request
-  correlation, client cancellation, and bounded concurrent stdio dispatch.
+  correlation, progress-token translation, client cancellation, and bounded
+  concurrent stdio dispatch.
 - `models.py` and `errors.py` define the public boundary types.
 
 ## Trust boundaries
@@ -55,6 +59,12 @@ depth, and node limits bound validation work. The stdio adapter separately caps
 admitted tool-call coroutines so cancellation can remain responsive without
 creating an unbounded wait queue. These controls do not replace host-level rate
 limits or tenant quotas.
+
+Async tool progress uses a context variable scoped to the runtime execution task,
+so it does not alter the callable's schema. Each scope serializes updates, enforces
+strictly increasing finite values, caps update count and message bytes, and closes
+before the invocation returns. Context copied into a detached child task sees the
+closed scope after its parent call completes and cannot emit a late notification.
 
 Async cancellation is cooperative. Python cannot safely kill a running thread, so
 a timed-out or client-cancelled sync function may outlive its protocol result. Its

@@ -23,6 +23,10 @@ This is a replacement alpha rather than a compatibility release.
   invocation, structured results, behavioral annotations, and bounded stdio;
 - MCP client cancellation for active tool calls, concurrent stdio dispatch, and
   configurable in-flight request admission;
+- invocation-scoped async progress reporting with strict ordering, resource caps,
+  MCP progress-token correlation, and notification-before-response delivery;
+- formatter, linter, and strict type-check coverage for the shipped examples and
+  benchmark programs;
 - real behavioral tests, strict typing/linting, package smoke tests, and accurate docs;
 - a dependency-free JSON runtime microbenchmark for repeatable local comparisons.
 - a dependency-free MCP stdio microbenchmark covering parsing, dispatch,
