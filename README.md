@@ -34,9 +34,22 @@ persistence, or an untrusted-code sandbox.
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
 accounts, no API keys, no external service, and no hosted operating cost.
 
-## Install from this repository
+## Install
 
 Python 3.10 or newer is required.
+
+The immutable [`v2.0.0a1` GitHub prerelease](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a1)
+contains an installable wheel, source distribution, SHA-256 manifest, and verifiable
+GitHub Actions build provenance. A compact verified-wheel path is:
+
+```bash
+gh release download v2.0.0a1 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a1-py3-none-any.whl \
+  --repo Deathcharge/samsarix-core
+python -m pip install samsarix_core-2.0.0a1-py3-none-any.whl
+```
+
+For a source checkout instead:
 
 ```bash
 python -m pip install .
@@ -51,7 +64,7 @@ python -m pip install -e ".[dev]"
 The project is not represented here as a published PyPI release. Approved version tags
 use a fail-closed GitHub release workflow with strict metadata checks, clean-wheel smoke
 tests, SHA-256 manifests, provenance attestations, and immutable assets. See the
-[release process](docs/RELEASING.md).
+[release process and evidence](docs/RELEASING.md).
 
 ## One complete example
 

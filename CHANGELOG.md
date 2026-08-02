@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- recorded the immutable `v2.0.0a1` GitHub prerelease, published artifact digests,
+  build-provenance verification, and clean release-wheel installation evidence.
+
 ## 2.0.0a1 - 2026-08-02
 
 This is a replacement alpha rather than a compatibility release.

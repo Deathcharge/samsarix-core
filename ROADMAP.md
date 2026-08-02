@@ -61,7 +61,8 @@ remain separate decisions.
 
 - [x] Build and install the wheel in a clean environment.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.
-- [ ] Publish only after package-name ownership, licensing, provenance, and rollback are recorded.
+- [x] Publish immutable GitHub prerelease `v2.0.0a1` after package identity, licensing,
+  provenance, verification, and rollback are recorded. PyPI remains a separate gate.
 
 ## Samsarix adoption
 
