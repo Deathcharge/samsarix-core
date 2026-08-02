@@ -29,23 +29,25 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.5 pins Core
+- External consumer: `samsarix-integration-examples` version 0.2.6 pins Core
   commit `04cf5ba7ca7eb2defcb946f538d62291762db109` and proves a confined,
   privacy-first redaction workflow, exact typed result discovery, and
   response-free asynchronous cancellation through the public MCP API. It also
   proves progress-token correlation, monotonic content-free updates, notification
   ordering, cancellation cutoff, artifact privacy, client-selected operational-log
   filtering, content-free terminal events, retained sync-worker capacity after timeout,
-  and bounded shutdown quiescence.
-- Next: exercise the contract from an independently operated desktop client and
-  rerun the consumer matrix after GitHub Actions billing is restored. Use observed
+  and bounded shutdown quiescence. Its portable Visual Studio Code workspace is
+  configuration-discovered by VS Code 1.131.0, while official MCP Inspector 0.21.2
+  independently proves installed-wheel discovery and invocation.
+- Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
+  the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.
 - Review priority: keep resource defaults aligned with adopter evidence.
-- Review priority: exercise the contract from an independently operated desktop client.
+- Review priority: complete signed-in Visual Studio Code trust and invocation acceptance.
 
 ## Release candidate
 
