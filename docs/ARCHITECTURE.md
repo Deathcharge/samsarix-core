@@ -84,8 +84,11 @@ runtime-wide capacity. The bulkhead is bound to the exact internal registration 
 not exported in the portable schema or MCP catalog; replacing a registration cannot
 inherit stale operational policy. Async functions run on the event loop. Sync functions
 run in a private `ThreadPoolExecutor` whose worker count equals
-`max_concurrency`. `invoke_many` uses a bounded worker set rather than one task per
-call. Registry and batch caps bound catalog and fan-out growth; per-value byte,
+`max_concurrency`. `invoke_many` bounds its worker set by pending admission capacity;
+global and per-tool semaphores still bound execution. This prevents workers queued on
+one constrained tool from head-of-line blocking unrelated calls that fit within the
+batch's available pending capacity.
+Registry and batch caps bound catalog and fan-out growth; per-value byte,
 depth, and node limits bound validation work. The stdio adapter separately caps
 admitted tool-call and blocking task-result coroutines so cancellation can remain
 responsive without creating an unbounded wait queue. The task store independently

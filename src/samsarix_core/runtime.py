@@ -422,7 +422,7 @@ class ToolRuntime:
             await _close_progress(progress_scope, progress_token)
 
     async def invoke_many(self, calls: Sequence[ToolCall]) -> list[ToolResult]:
-        """Invoke a batch in input order with a bounded number of worker tasks."""
+        """Invoke a batch in input order with pending-capacity-bounded workers."""
 
         if not calls:
             return []
@@ -437,7 +437,10 @@ class ToolRuntime:
                     call.name, dict(call.arguments), timeout=call.timeout
                 )
 
-        worker_count = min(self.max_concurrency, self.max_pending_invocations, len(calls))
+        # Execution remains globally and per-tool bounded inside ``invoke``. Using
+        # pending capacity here prevents workers waiting on one tool's bulkhead
+        # from head-of-line blocking unrelated calls later in a mixed batch.
+        worker_count = min(self.max_pending_invocations, len(calls))
         workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
         await asyncio.gather(*workers)
         return [cast(ToolResult, result) for result in results]

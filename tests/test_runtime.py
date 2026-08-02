@@ -625,6 +625,55 @@ async def test_batch_calls_respect_the_registered_tool_bulkhead() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mixed_batch_avoids_cross_tool_head_of_line_blocking() -> None:
+    constrained_started = asyncio.Event()
+    independent_started = asyncio.Event()
+    release = asyncio.Event()
+
+    @helix_tool
+    async def batch_constrained(value: int) -> int:
+        """Wait behind one constrained batch dependency."""
+
+        constrained_started.set()
+        await release.wait()
+        return value
+
+    @helix_tool
+    async def batch_independent() -> str:
+        """Complete while constrained batch calls remain queued."""
+
+        independent_started.set()
+        return "available"
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime.register(batch_constrained, max_concurrency=1)
+    runtime.register(batch_independent)
+    batch = asyncio.create_task(
+        runtime.invoke_many(
+            [
+                ToolCall("batch_constrained", {"value": 1}),
+                ToolCall("batch_constrained", {"value": 2}),
+                ToolCall("batch_independent", {}),
+            ]
+        )
+    )
+    try:
+        await asyncio.wait_for(constrained_started.wait(), timeout=1)
+        await asyncio.wait_for(independent_started.wait(), timeout=0.2)
+        assert not batch.done()
+
+        release.set()
+        results = await batch
+    finally:
+        release.set()
+        batch.cancel()
+        await asyncio.gather(batch, return_exceptions=True)
+        await runtime.aclose()
+
+    assert [result.output for result in results] == [1, 2, "available"]
+
+
+@pytest.mark.asyncio
 async def test_cancelling_a_tool_bulkhead_waiter_does_not_leak_capacity() -> None:
     started = asyncio.Event()
     release = asyncio.Event()

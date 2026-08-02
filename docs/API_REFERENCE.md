@@ -89,9 +89,12 @@ result, including validation, policy, execution-slot waiting, and execution. Cal
 beyond the cap fail fast with status `busy`, safe code `runtime_busy`, and
 `retryable=True`; their arguments are not retained in runtime metrics or errors.
 `RuntimeMetrics.busy`, `pending_invocations`, and `peak_pending_invocations` expose
-content-free saturation signals. Batch workers are capped by both concurrency and
-pending capacity so an isolated batch processes every accepted item rather than
-self-shedding. This process-local limit is not a request-rate or per-tenant quota.
+content-free saturation signals. Batch workers are capped by pending capacity and
+execution remains bounded by the global and per-tool semaphores. This lets an unrelated
+call later in a mixed batch reach free execution capacity when it fits within available
+pending capacity, instead of waiting behind workers queued on one constrained tool. An
+isolated batch still processes every accepted item rather than self-shedding. This
+process-local limit is not a request-rate or per-tenant quota.
 
 `register(..., max_concurrency=N)` gives that exact tool registration its own positive
 execution limit. Calls acquire the per-tool semaphore before the runtime-wide semaphore,
