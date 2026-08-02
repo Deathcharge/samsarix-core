@@ -270,10 +270,11 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded
   shutdown quiescence, official MCP Inspector invocation, and Visual Studio Code
-  configuration discovery from `samsarix-integration-examples`; version 0.2.7 at merge
-  commit `51cc3fb3f1fb4bd484ebef58d2c9ab22acc24623` pins Core commit
-  `1558624ba294f47d59ea1713ac5609ef3122239e` and additionally proves the bounded
-  experimental task lifecycle on the real redaction workflow.
+  configuration discovery from `samsarix-integration-examples`; version 0.2.8 at merge
+  commit `c59ed468fc126eecb0a61559423ab7854ddacb87` pins Core commit
+  `33f2baa9c81d4437c0e4746355eda7b4d0df0cbd` and additionally proves the bounded
+  experimental task lifecycle plus the allow/deny invocation-policy contract on the
+  real redaction adapter.
 
 ## Deferred work and rationale
 
@@ -282,13 +283,12 @@ isolation, and richer schema types remain deliberately deferred. Experimental MC
 tasks retain bounded results only inside one server process and do not satisfy durable
 persistence or restart recovery. Those features are not required for the first useful
 release. One independent repository now proves both the stable MCP boundary and the
-experimental task lifecycle. Subsequent surface area should follow concrete consumer
-demand. Core's own post-merge
-[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30735632274)
-is green with 98 tests and 94.28% branch coverage. The consumer's separate Python
-3.11-3.13 jobs could not start because GitHub reported an account
-billing/spending-limit problem, so its local 33-test installed-wheel evidence is
-recorded separately in `docs/ADOPTION.md`.
+experimental task lifecycle and the bounded policy gate. Subsequent surface area should
+follow concrete consumer demand. Core's policy post-merge
+[Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30738258486)
+is green. The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
+reported an account billing/spending-limit problem, so its local 34-test installed-wheel
+evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 

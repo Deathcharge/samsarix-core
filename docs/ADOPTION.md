@@ -12,11 +12,11 @@ Repository:
 
 | Evidence | Value |
 | --- | --- |
-| Core contract commit | `1558624ba294f47d59ea1713ac5609ef3122239e` |
+| Core contract commit | `33f2baa9c81d4437c0e4746355eda7b4d0df0cbd` |
 | Core package version | `2.0.0a1` |
-| Consumer merge commit | `51cc3fb3f1fb4bd484ebef58d2c9ab22acc24623` |
-| Consumer pull request | [samsarix-integration-examples#10](https://github.com/Deathcharge/samsarix-integration-examples/pull/10) |
-| Consumer package version | `0.2.7` |
+| Consumer merge commit | `c59ed468fc126eecb0a61559423ab7854ddacb87` |
+| Consumer pull request | [samsarix-integration-examples#11](https://github.com/Deathcharge/samsarix-integration-examples/pull/11) |
+| Consumer package version | `0.2.8` |
 | Integration Guard provenance | [`samsarix-integration-guard`](https://github.com/Deathcharge/samsarix-integration-guard) `0.2.0` at `1aa711d89eaedcc396f0cd6eb416fb4253da3f5e` |
 | Orchestration provenance | [`samsarix-agent-orchestration`](https://github.com/Deathcharge/samsarix-agent-orchestration) `0.1.0` at `0dfc050cf9a4582c9fa8d34d74b1ca97d43c9005` |
 | Declared consumer Python | 3.11-3.13 |
@@ -46,6 +46,15 @@ logging defaults to `warning`, so a successful event is suppressed until the cli
 selects `info`. The accepted event contains only the public tool name, invocation ID,
 status, and duration; it follows both progress phases and precedes the response. A
 cancelled call emits no terminal log.
+
+The consumer adapter now installs a fail-closed host policy through Core's public
+`ToolPolicyContext` and `ToolPolicyDecision` API. It admits only the exact redaction
+name, version, tags, task mode, safety annotations, and default-filled argument set.
+The consumer independently registers a destructive, open-world test tool and proves
+that an MCP call reaches status `denied` without executing the tool or reflecting its
+private argument. Ordinary and task-augmented redaction journeys still succeed, proving
+the policy receives Core's validated, default-filled contract. This is defense in depth,
+not caller authentication or evidence of human approval.
 
 The same consumer redaction tool advertises task support as optional, preserving the
 ordinary call and older-client contract. A task-aware MCP `2025-11-25` client receives
@@ -78,9 +87,9 @@ was signed out of Copilot, so no trust prompt or VS Code tool call was accepted.
 desktop configuration-discovery evidence, not a completed desktop-agent journey.
 
 The consumer's merged
-[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/51cc3fb3f1fb4bd484ebef58d2c9ab22acc24623/pyproject.toml)
+[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/c59ed468fc126eecb0a61559423ab7854ddacb87/pyproject.toml)
 is the dependency manifest. It declares
-`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@1558624ba294f47d59ea1713ac5609ef3122239e`;
+`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@33f2baa9c81d4437c0e4746355eda7b4d0df0cbd`;
 the installed public package reports Core version `2.0.0a1`. The same manifest
 records the Guard and Orchestration commits above, and the compatibility test
 asserts all three installed package versions.
@@ -93,7 +102,7 @@ The installed-wheel consumer contract checks completed locally on Windows with P
 ```text
 python -m ruff check .       -> passed
 python -m mypy               -> passed, strict mode
-python -m pytest             -> 33 passed, 90.85% branch coverage from installed wheel
+python -m pytest             -> 34 passed, 91.00% branch coverage from installed wheel
 python -m bandit -q -r src   -> passed
 ```
 
@@ -104,31 +113,28 @@ python -m build                    -> isolated wheel and sdist passed
 python -m twine check <artifacts> -> wheel and sdist passed
 ```
 
-A fresh virtual environment installed the consumer wheel with dependencies
-resolved from their exact public Git commits. Import metadata resolved to `0.2.7`
-and retained the exact Core commit requirement. Outside the source checkout, the
-installed `samsarix-redaction-mcp` CLI completed a real task-augmented redaction over
-stdio: initialize, discovery, immediate task creation, blocking result retrieval, and
-terminal status. It published a sanitized artifact, emitted exactly two related-task
-progress notifications, and exposed neither the three seeded secrets nor the resolved
-workspace path in protocol output. Both installed CLIs also passed their help journeys.
-The source-tree development run on Python 3.14.6 separately completed the same 33 tests
-at 91.47% branch coverage. Python 3.12 and 3.13 remain declared consumer support, but
-their hosted jobs did not execute in this record because the account billing gate stopped
-the matrix before checkout.
+A fresh virtual environment installed the consumer wheel with dependencies resolved
+from their exact public Git commits. Import metadata resolved to `0.2.8`, and pip cloned
+Core and resolved commit `33f2baa9c81d4437c0e4746355eda7b4d0df0cbd`.
+Outside the source checkout, the installed consumer suite proved both the permitted real
+redaction path and safe denial of the out-of-contract tool. Both installed CLIs also
+passed their help journeys. The source-tree development run on Python 3.14.6 separately
+completed the same 34 tests at 91.61% branch coverage. Python 3.12 and 3.13 remain
+declared consumer support, but their hosted jobs did not execute in this record because
+the account billing gate stopped the matrix before checkout.
 
 Final local artifacts were:
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `samsarix_integration_examples-0.2.7-py3-none-any.whl` | 18,303 | `1c538ac89b2ea878b1ef0cd8ee0628cef6bcc4745efc39cb42927018d1770896` |
-| `samsarix_integration_examples-0.2.7.tar.gz` | 36,469 | `807f33bd857ec7918e4b0a0747472638120a618ea977323c86d4808d3ffd4cf5` |
+| `samsarix_integration_examples-0.2.8-py3-none-any.whl` | 18,628 | `576c0a9b1b896f6c3289e4b825d8ec13bee977ff196483ce1a5bb7c19072547f` |
+| `samsarix_integration_examples-0.2.8.tar.gz` | 37,426 | `7b4390e3e0ddae78d6756762433d3c5426f127d915fe5cead10003a6fc1cb6c4` |
 
 CodeRabbit attached a green high-level status, but its free-plan notice says the pass
 provides only a summary and walkthrough; it is not counted as independent line-level
 review evidence. The consumer's
-[pull-request](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30736315532)
-and [post-merge](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30736368378)
+[pull-request](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30738779310)
+and [post-merge](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30738829352)
 GitHub Actions runs
 did not start their jobs: GitHub attached an account
 billing/spending-limit failure before checkout, leaving zero executed steps and

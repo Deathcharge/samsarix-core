@@ -114,7 +114,7 @@ progress and logging, bounded task retention, admission limits, and security bou
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.7 pins Core commit `1558624ba294f47d59ea1713ac5609ef3122239e`
+version 0.2.8 pins Core commit `33f2baa9c81d4437c0e4746355eda7b4d0df0cbd`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
@@ -126,6 +126,9 @@ synchronous timeout/quiescence accounting, package installation, and CLI entry p
 It also proves the experimental task lifecycle on the real redaction workflow:
 immediate private task state, status polling, blocking result retrieval, related-task
 progress, safe cancellation, bounded retention, and unavailable unauthenticated listing.
+Its fail-closed host policy also admits only the exact validated redaction contract and
+denies an independently registered destructive, open-world tool before execution without
+reflecting that tool's private argument.
 The preceding v0.2.6 contract was also discovered and invoked through official MCP
 Inspector 0.21.2; a portable VS Code workspace is configuration-discovered, with
 signed-in trust and tool approval still awaiting operator acceptance.
