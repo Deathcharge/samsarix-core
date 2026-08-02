@@ -269,6 +269,9 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Added host-configured per-tool execution bulkheads that acquire before global runtime
   capacity, preserve unrelated tool availability, and retain their slot for surviving
   synchronous work after timeout or cancellation.
+- Added provider-neutral lifecycle observability with immutable content-free event
+  models, paired logical start/terminal signals, cancellation and host-abort coverage,
+  non-interfering handler failure accounting, and documented OpenTelemetry mapping.
 - Proved the public MCP API, exact typed result discovery, response-free
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded

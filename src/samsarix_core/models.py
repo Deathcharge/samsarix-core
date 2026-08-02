@@ -29,6 +29,22 @@ class ToolStatus(str, Enum):
     RUNTIME_CLOSED = "runtime_closed"
 
 
+class ToolLifecycleStatus(str, Enum):
+    """Content-free lifecycle states emitted around attempted invocations."""
+
+    STARTED = "started"
+    SUCCESS = "success"
+    NOT_FOUND = "not_found"
+    INVALID_ARGUMENTS = "invalid_arguments"
+    DENIED = "denied"
+    BUSY = "busy"
+    TIMED_OUT = "timed_out"
+    FAILED = "failed"
+    RUNTIME_CLOSED = "runtime_closed"
+    CANCELLED = "cancelled"
+    ABORTED = "aborted"
+
+
 @dataclass(frozen=True, slots=True)
 class ToolError:
     """A safe error suitable for serialization across an application boundary."""
@@ -155,6 +171,31 @@ class ToolResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolLifecycleEvent:
+    """One content-free start or terminal signal for an attempted invocation."""
+
+    invocation_id: str
+    tool_name: str
+    status: ToolLifecycleStatus
+    occurred_at: str
+    duration_ms: float | None = None
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return a JSON-compatible representation without call content."""
+
+        return {
+            "invocation_id": self.invocation_id,
+            "tool_name": self.tool_name,
+            "status": self.status.value,
+            "occurred_at": self.occurred_at,
+            "duration_ms": self.duration_ms,
+        }
+
+
+ToolLifecycleHandler: TypeAlias = Callable[[ToolLifecycleEvent], None]
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeMetrics:
     """Content-free counters for runtime health checks."""
 
@@ -172,6 +213,7 @@ class RuntimeMetrics:
     busy: int = 0
     pending_invocations: int = 0
     peak_pending_invocations: int = 0
+    lifecycle_handler_failures: int = 0
 
     def to_dict(self) -> dict[str, int]:
         """Return the counters as a plain mapping."""
@@ -191,4 +233,5 @@ class RuntimeMetrics:
             "peak_pending_invocations": self.peak_pending_invocations,
             "in_flight": self.in_flight,
             "peak_in_flight": self.peak_in_flight,
+            "lifecycle_handler_failures": self.lifecycle_handler_failures,
         }

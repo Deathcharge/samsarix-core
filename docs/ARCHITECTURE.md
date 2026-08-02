@@ -10,6 +10,7 @@ definition: typed function
     -> JSON Schema catalog
 
 invocation: incoming call
+    -> optional content-free lifecycle start signal
     -> fail-fast bounded runtime admission
     -> registered tool resolution
     -> iterative argument resource preflight
@@ -20,6 +21,7 @@ invocation: incoming call
     -> optional invocation-scoped progress handler
     -> output validation and resource preflight
     -> ToolResult
+    -> optional content-free lifecycle terminal signal
 ```
 
 ## Components
@@ -64,6 +66,10 @@ arguments, outputs, or errors. The successful output is intentionally returned t
 the caller and must be treated according to the host application's data policy.
 Opt-in MCP operational events reuse the public tool name and result metadata but
 never copy call arguments, outputs, exception text, or validation details.
+Opt-in runtime lifecycle events apply the same content-free boundary to direct,
+batch, MCP, and task calls. Their requested tool name and invocation ID are still
+application metadata and correlatable identifiers, so handlers belong at a trusted
+host boundary and must control label cardinality and retention.
 Opt-in MCP tasks necessarily retain the final tool result in memory until expiry.
 They use cryptographically random IDs and expose no unauthenticated listing, but a
 valid ID grants get/result/cancel access within that logical server session. A
@@ -114,6 +120,12 @@ timeouts from filling an unbounded executor queue. `pending_sync_calls` exposes
 this state. `wait_for_sync()` and the opt-in waiting form of `aclose()` provide
 bounded quiescence checks; the default close remains non-blocking. Blocking sync
 tools must still set their own socket/database/subprocess deadlines.
+
+Lifecycle callbacks run synchronously at the logical call boundary and must be
+non-blocking. Ordinary callback failures cannot replace call behavior and are counted.
+Core owns no exporter queue or telemetry worker; a host integrates a bounded/batched
+processor. A timeout or cancellation closes the logical lifecycle even when a surviving
+synchronous worker keeps physical in-flight capacity occupied.
 
 ## Deliberate exclusions
 

@@ -14,7 +14,13 @@ import statistics
 import time
 from typing import Any
 
-from samsarix_core import ToolCall, ToolRuntime, __version__, samsarix_tool
+from samsarix_core import (
+    ToolCall,
+    ToolLifecycleEvent,
+    ToolRuntime,
+    __version__,
+    samsarix_tool,
+)
 
 
 @samsarix_tool(read_only=True)
@@ -57,6 +63,31 @@ async def benchmark(iterations: int, batch_size: int) -> dict[str, Any]:
     finally:
         await runtime.aclose()
 
+    lifecycle_events = 0
+
+    def count_lifecycle(event: ToolLifecycleEvent) -> None:
+        nonlocal lifecycle_events
+        lifecycle_events += 1
+
+    observed_runtime = ToolRuntime(
+        max_batch_size=batch_size,
+        lifecycle_handler=count_lifecycle,
+    )
+    observed_runtime.register(increment)
+    lifecycle_warmup = min(iterations, 100)
+    try:
+        for value in range(lifecycle_warmup):
+            await observed_runtime.invoke("increment", {"value": value})
+        async_observed = await measure_sequential(observed_runtime, "increment", iterations)
+    finally:
+        await observed_runtime.aclose()
+
+    expected_lifecycle_events = 2 * (lifecycle_warmup + iterations)
+    if lifecycle_events != expected_lifecycle_events:
+        raise RuntimeError(
+            f"expected {expected_lifecycle_events} lifecycle events, saw {lifecycle_events}"
+        )
+
     return {
         "environment": {
             "implementation": platform.python_implementation(),
@@ -66,6 +97,8 @@ async def benchmark(iterations: int, batch_size: int) -> dict[str, Any]:
         },
         "settings": {"batch_size": batch_size, "iterations": iterations},
         "async_sequential": async_sequential,
+        "async_sequential_noop_lifecycle": async_observed,
+        "lifecycle_events_observed": lifecycle_events,
         "sync_sequential": sync_sequential,
         "async_single_batch": async_batch,
         "sync_single_batch": sync_batch,

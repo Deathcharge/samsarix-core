@@ -90,8 +90,10 @@ calls = [ToolCall("greet", {"name": name}) for name in ("Ada", "Grace", "Linus")
 results = await runtime.invoke_many(calls)
 ```
 
-Results keep input order. The runtime creates at most `max_concurrency` workers,
-and sync functions share a thread pool of the same maximum size.
+Results keep input order. The runtime creates at most `max_pending_invocations` batch
+workers so calls queued on one per-tool bulkhead do not block unrelated tools; global
+and per-tool limits still bound execution, and sync functions share a thread pool of
+`max_concurrency` workers.
 
 ## 5. Add a host policy when calls need central admission control
 
@@ -115,7 +117,29 @@ snapshot is detached from execution, but may contain sensitive input. A denial r
 a normal structured result without running tool code. See
 [`examples/policy_gate.py`](../examples/policy_gate.py) for request-local scopes.
 
-## 6. Handle boundaries explicitly
+## 6. Add content-free lifecycle signals when needed
+
+```python
+from queue import Queue
+
+from samsarix_core import ToolLifecycleEvent, ToolRuntime
+
+telemetry_queue: Queue[ToolLifecycleEvent] = Queue(maxsize=1_024)
+
+
+def observe(event: ToolLifecycleEvent) -> None:
+    telemetry_queue.put_nowait(event)
+
+
+runtime = ToolRuntime(lifecycle_handler=observe)
+```
+
+The synchronous callback receives paired start and terminal events but no arguments,
+outputs, or exception text. Keep it non-blocking and bound the application-owned
+export path. See the [lifecycle observability guide](OBSERVABILITY.md) for privacy,
+cancellation, and OpenTelemetry semantics.
+
+## 7. Handle boundaries explicitly
 
 - Use `async with` or call `await runtime.aclose()`.
 - Treat tool functions as trusted in-process code.

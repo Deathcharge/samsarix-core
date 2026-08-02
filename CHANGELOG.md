@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- opt-in provider-neutral lifecycle observability with paired immutable start/terminal
+  events, explicit cancellation/abort states, content-free payloads, isolated handler
+  failures, and an OpenTelemetry `execute_tool` adapter.
+
 ### Changed
 
 - recorded immutable `v2.0.0a4` release checksums, provenance, and clean installed-wheel

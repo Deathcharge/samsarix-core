@@ -1,6 +1,6 @@
 # API reference
 
-This page describes the complete supported API for `2.0.0a4`. Imports not exposed
+This page describes the complete supported API on `main` after `2.0.0a4`. Imports not exposed
 from `samsarix_core.__all__` are internal.
 
 ## `samsarix_tool`
@@ -68,6 +68,7 @@ ToolRuntime(
     default_timeout: float = 30.0,
     expose_exceptions: bool = False,
     policy: ToolPolicy | None = None,
+    lifecycle_handler: ToolLifecycleHandler | None = None,
 )
 ```
 
@@ -127,6 +128,16 @@ cancels active async waits, cancels sync work that has not started, and returns
 whether submitted sync work is quiescent. Its default does not wait; pass
 `wait_for_sync=True` with a finite timeout when shutdown needs bounded quiescence.
 Calling it again is safe. The async context manager uses the non-waiting default.
+
+`lifecycle_handler` is an optional synchronous callable receiving an immutable,
+content-free `ToolLifecycleEvent` at logical invocation start and termination. Normal
+terminal values mirror `ToolStatus`; caller cancellation emits `cancelled`, while an
+exception crossing the host boundary emits `aborted`. Events include only invocation
+ID, requested tool name, status, UTC occurrence time, and terminal duration. Handler
+exceptions and accidental awaitable returns are isolated and counted by
+`RuntimeMetrics.lifecycle_handler_failures`; declared async handlers are rejected.
+Delivery is inline, so handlers must remain non-blocking and hand off network export to
+a bounded application-owned processor. See [Lifecycle observability](OBSERVABILITY.md).
 
 `policy` must be an async callable that receives one `ToolPolicyContext` after the
 tool exists and its arguments pass schema/resource validation. The context contains the
@@ -233,6 +244,11 @@ All public models are frozen, slotted dataclasses.
 - `ToolPolicy`: async policy callable type alias.
 - `ToolResult`: invocation ID, tool name, status, UTC start time, duration, output,
   and optional structured error. `success` is a convenience property.
+- `ToolLifecycleEvent`: immutable content-free runtime start/terminal signal with a
+  JSON-compatible `to_dict()` representation.
+- `ToolLifecycleStatus`: `started`, every returned result status, `cancelled`, and
+  `aborted`.
+- `ToolLifecycleHandler`: synchronous lifecycle callback type alias.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
 - `ToolProgress`: numeric progress, optional total, and optional human-readable message.
 - `RuntimeMetrics`: content-free counters only, including policy denials and runtime
@@ -241,7 +257,8 @@ All public models are frozen, slotted dataclasses.
   `timed_out`, `failed`, and `runtime_closed`.
 - `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.
 
-`ToolSpec`, `ToolResult`, `ToolError`, and `RuntimeMetrics` provide `to_dict()`.
+`ToolSpec`, `ToolResult`, `ToolError`, `ToolLifecycleEvent`, and `RuntimeMetrics`
+provide `to_dict()`.
 
 ## Supported annotations
 

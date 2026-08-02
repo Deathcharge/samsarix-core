@@ -26,6 +26,8 @@ persistence, or an untrusted-code sandbox.
 - optionally requires a bounded host-owned policy decision after validation and
   before any tool code executes;
 - keeps metrics content-free and redacts exception messages by default;
+- optionally emits provider-neutral, content-free invocation lifecycle events for
+  tracing and service-level indicators;
 - exposes the same contracts through a dependency-free, cancellable,
   progress-aware, operationally observable, and admission-bounded MCP stdio bridge;
 - optionally exposes long-running tools through the experimental MCP task lifecycle
@@ -213,6 +215,14 @@ limit covers direct, batch, MCP, and MCP task calls without becoming discoverabl
 metadata. The invocation timeout includes bulkhead waiting, and the overall
 `max_pending_invocations` cap still bounds every waiter.
 
+Hosts can attach a synchronous `lifecycle_handler` to receive paired, immutable start
+and terminal events across direct, batch, MCP, and task calls. Events contain only
+invocation ID, requested tool name, status, UTC time, and terminal duration; arguments,
+outputs, exception text, policy context, and progress text are never copied. Exporter
+failures are isolated and counted. See [Lifecycle observability](docs/OBSERVABILITY.md)
+for delivery semantics, privacy/cardinality cautions, and a content-free OpenTelemetry
+`execute_tool` adapter.
+
 ## Important boundaries
 
 - Registered functions are trusted application code and run in the current process.
@@ -236,7 +246,8 @@ metadata. The invocation timeout includes bulkhead waiting, and the overall
 
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
 [architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),
-[best practices](docs/BEST_PRACTICES.md), [benchmark guide](docs/BENCHMARKS.md),
+[lifecycle observability](docs/OBSERVABILITY.md), [best practices](docs/BEST_PRACTICES.md),
+[benchmark guide](docs/BENCHMARKS.md),
 the [adoption record](docs/ADOPTION.md), and the [productization
 record](docs/PRODUCTIZATION.md).
 
