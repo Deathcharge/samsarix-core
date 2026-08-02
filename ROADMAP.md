@@ -20,7 +20,8 @@ remain separate decisions.
 - MCP flagship adapter: implemented lifecycle negotiation, JSON Schema tool discovery,
   structured invocation results, behavioral safety hints, active-call
   cancellation, bounded progress notifications, opt-in content-free operational
-  logging, and a message/admission-bounded concurrent stdio transport with an
+  logging, opt-in experimental task-augmented execution with finite in-memory
+  retention, and a message/admission-bounded concurrent stdio transport with an
   inventory example. Exact-head CI evidence remains required.
 - Runtime input/output, batch, and registry resources are now capped and covered
   by adversarial tests.
@@ -39,7 +40,8 @@ remain separate decisions.
   and bounded shutdown quiescence. Its portable Visual Studio Code workspace is
   configuration-discovered by VS Code 1.131.0, while official MCP Inspector 0.21.2
   independently proves installed-wheel discovery and invocation.
-- Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
+- Next: prove the task lifecycle from the independently packaged redaction consumer,
+  complete the signed-in Visual Studio Code trust/tool-approval journey, and rerun
   the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.

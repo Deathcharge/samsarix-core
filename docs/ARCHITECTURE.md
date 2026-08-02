@@ -28,9 +28,12 @@ typed function
   exception redaction, batch workers, lifecycle, and content-free counters.
 - `progress.py` owns invocation-scoped async progress validation, ordering,
   resource caps, and lifecycle closure.
+- `_mcp_tasks.py` owns finite in-memory task retention, secure identifiers, TTL
+  cleanup, terminal state transitions, result waits, and cancellation.
 - `mcp.py` owns protocol lifecycle, schema/result translation, active request
   correlation, progress-token translation, client-selected content-free operational
-  logging, client cancellation, and bounded concurrent stdio dispatch.
+  logging, optional task negotiation, client cancellation, and bounded concurrent
+  stdio dispatch.
 - `models.py` and `errors.py` define the public boundary types.
 
 ## Trust boundaries
@@ -50,6 +53,10 @@ arguments, outputs, or errors. The successful output is intentionally returned t
 the caller and must be treated according to the host application's data policy.
 Opt-in MCP operational events reuse the public tool name and result metadata but
 never copy call arguments, outputs, exception text, or validation details.
+Opt-in MCP tasks necessarily retain the final tool result in memory until expiry.
+They use cryptographically random IDs and expose no unauthenticated listing, but a
+valid ID grants get/result/cancel access within that logical server session. A
+network adapter must bind that access to an authenticated requestor.
 
 ## Concurrency and timeout semantics
 
@@ -58,8 +65,9 @@ functions run in a private `ThreadPoolExecutor` whose worker count equals
 `max_concurrency`. `invoke_many` uses a bounded worker set rather than one task per
 call. Registry and batch caps bound catalog and fan-out growth; per-value byte,
 depth, and node limits bound validation work. The stdio adapter separately caps
-admitted tool-call coroutines so cancellation can remain responsive without
-creating an unbounded wait queue. These controls do not replace host-level rate
+admitted tool-call and blocking task-result coroutines so cancellation can remain
+responsive without creating an unbounded wait queue. The task store independently
+caps retained entries and TTL. These controls do not replace host-level rate
 limits or tenant quotas.
 
 Async tool progress uses a context variable scoped to the runtime execution task,
@@ -79,10 +87,10 @@ tools must still set their own socket/database/subprocess deadlines.
 
 ## Deliberate exclusions
 
-The alpha has no provider SDK, network server, subprocess executor, persistent
-queue, retry policy, auth layer, tracing backend, plugin loader, or distributed
-coordination. Those concerns belong in adapters or later releases backed by real
-use cases and operational ownership.
+The alpha has no provider SDK, network server, subprocess executor, cross-process
+task persistence, retry policy, auth layer, tracing backend, plugin loader, or
+distributed coordination. Those concerns belong in adapters or later releases
+backed by real use cases and operational ownership.
 
 The repository's earlier broad prototypes are preserved under `legacy/` but are
 not packaged or supported.

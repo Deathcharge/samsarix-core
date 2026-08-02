@@ -17,6 +17,7 @@ from `samsarix_core.__all__` are internal.
     destructive: bool | None = None,
     idempotent: bool | None = None,
     open_world: bool = True,
+    task_support: TaskSupport = "forbidden",
 )
 ```
 
@@ -24,9 +25,13 @@ Works as `@samsarix_tool` or `@samsarix_tool(...)` on standalone sync and async 
 Names use `[A-Za-z][A-Za-z0-9_-]{0,63}`. Descriptions fall back to the first
 docstring line. Unsupported types, unresolved annotations, generators, positional-
 only parameters, `*args`, and `**kwargs` raise `ToolDefinitionError`.
-The final five options produce MCP display and behavioral annotations. Read-only
+The title and four behavioral options produce MCP display and behavioral
+annotations. Read-only
 tools infer `destructive=False` and `idempotent=True`; other tools retain MCP's
 conservative destructive/non-idempotent defaults unless explicitly annotated.
+`task_support` accepts `"forbidden"`, `"optional"`, or `"required"` and controls
+experimental MCP task augmentation only when the server and `2025-11-25` client
+negotiate that capability. It does not alter direct runtime invocation.
 
 ## `ToolRegistry`
 
@@ -120,10 +125,16 @@ MCPServer(
     instructions: str | None = None,
     enable_logging: bool = False,
     default_log_level: str = "warning",
+    enable_tasks: bool = False,
+    max_retained_tasks: int = 64,
+    default_task_ttl_ms: int = 300_000,
+    max_task_ttl_ms: int = 3_600_000,
+    task_poll_interval_ms: int = 500,
 )
 ```
 
 - `await handle(message, *, notification_sender=None) -> dict | None`
+- `await aclose(*, close_runtime=True) -> None`
 
 `handle()` accepts one parsed MCP JSON-RPC message. It supports lifecycle
 initialization, `ping`, `tools/list`, `tools/call`, initialized notifications, and
@@ -136,6 +147,17 @@ MCP `2025-11-25` and `2025-06-18`. Application-level tool failures are successfu
 JSON-RPC responses with `isError: true`; malformed protocol calls use standard
 JSON-RPC error objects. An MCP-cancelled call returns `None` and emits no response.
 Direct host task cancellation continues to raise `asyncio.CancelledError`.
+
+With `enable_tasks=True` and MCP `2025-11-25`, `handle()` also advertises
+task-augmented `tools/call` plus cancellation, emits per-tool `execution.taskSupport`,
+and handles `tasks/get`, blocking `tasks/result`, and `tasks/cancel`. Requested TTLs
+are positive finite milliseconds and are clamped to `max_task_ttl_ms`. Retained
+state and results are in memory, bounded by `max_retained_tasks`, and removed after
+their TTL. `tasks.list` is intentionally unavailable without a requestor identity.
+Task IDs are cryptographically random; possession still grants access within that
+server session, so a network adapter must bind task operations to authenticated
+authorization context. `aclose()` cancels retained task executions before it
+optionally closes the runtime.
 
 ## `serve_stdio`
 
@@ -152,9 +174,10 @@ await serve_stdio(
 ```
 
 Runs the server using newline-delimited MCP messages. `max_message_bytes` must be
-at least 256 and caps individual input and output messages. Tool calls are
-dispatched concurrently so cancellation notifications remain responsive, with
-pending calls bounded separately by the positive `max_in_flight_requests` cap.
+at least 256 and caps individual input and output messages. Tool calls and blocking
+task-result waits are dispatched concurrently so cancellation notifications remain
+responsive, with pending requests bounded separately by the positive
+`max_in_flight_requests` cap.
 Excess calls receive JSON-RPC server error `-32000`. The default streams are
 binary stdin and UTF-8 binary stdout. Only protocol messages are written to
 stdout.
@@ -164,7 +187,8 @@ stdout.
 All public models are frozen, slotted dataclasses.
 
 - `ToolSpec`: name, description, input/output schemas, timeout, version, tags,
-  async state, optional title, and read-only/destructive/idempotent/open-world hints.
+  async state, optional title, read-only/destructive/idempotent/open-world hints,
+  and MCP task-support mode.
 - `ToolCall`: name, arguments, and optional timeout override.
 - `ToolResult`: invocation ID, tool name, status, UTC start time, duration, output,
   and optional structured error. `success` is a convenience property.
@@ -173,6 +197,7 @@ All public models are frozen, slotted dataclasses.
 - `RuntimeMetrics`: content-free counters only.
 - `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `timed_out`, `failed`,
   and `runtime_closed`.
+- `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.
 
 `ToolSpec`, `ToolResult`, `ToolError`, and `RuntimeMetrics` provide `to_dict()`.
 

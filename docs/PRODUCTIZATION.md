@@ -246,6 +246,10 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Added the stable MCP 2025-11-25 tool lifecycle, structured output, behavioral
   annotations, client cancellation, and bounded concurrent local stdio transport
   without a runtime dependency.
+- Added opt-in experimental MCP task augmentation for long-running local jobs, with
+  per-tool negotiation, secure IDs, finite in-memory retention, polling, blocking
+  result retrieval, cancellation, and conservative omission of unauthenticated
+  task listing.
 - Added stable MCP progress notifications with invocation-scoped async reporting,
   strict monotonicity, update and UTF-8 message caps, cancellation cutoff, and
   custom-transport failure propagation.
@@ -261,12 +265,16 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 
 ## Deferred work and rationale
 
-P2 framework/provider adapters, registry persistence, process isolation, and richer
-schema types remain deliberately deferred. They are not required for the first useful
-release. One independent repository now proves the MCP boundary without needing those
-features; subsequent surface area should follow concrete consumer demand. Core's own
+P2 framework/provider adapters, durable registry/invocation persistence, process
+isolation, and richer schema types remain deliberately deferred. Experimental MCP
+tasks retain bounded results only inside one server process and do not satisfy durable
+persistence or restart recovery. Those features are not required for the first useful
+release. One independent repository now proves the stable MCP boundary; task lifecycle
+evidence is the next consumer increment. Subsequent surface area should follow concrete
+consumer demand. Core's own
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30731486471)
-is green; Core's local Python 3.11 suite has 90 tests and 94.28% branch coverage.
+is green; the task-execution branch's local Python 3.11 suite has 98 tests and
+94.26% branch coverage. Exact hosted evidence remains required before merge.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
 reported an account billing/spending-limit problem, so its local 31-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.
@@ -295,6 +303,10 @@ installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.
   remote host must apply those controls before invocation.
 - Public package-index publication still requires owner-controlled credentials and
   an explicit release decision.
+- Experimental task results are retained in process until a finite TTL. Task IDs are
+  secure random values and stdio does not expose listing, but possession grants
+  get/result/cancel access within that logical session; a network host must bind task
+  operations to authenticated requestor identity.
 
 ## Distribution and sustainability model
 
