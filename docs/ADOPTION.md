@@ -47,7 +47,7 @@ selects `info`. The accepted event contains only the public tool name, invocatio
 status, and duration; it follows both progress phases and precedes the response. A
 cancelled call emits no terminal log.
 
-The production adapter now installs a fail-closed host policy through Core's public
+The consumer adapter now installs a fail-closed host policy through Core's public
 `ToolPolicyContext` and `ToolPolicyDecision` API. It admits only the exact redaction
 name, version, tags, task mode, safety annotations, and default-filled argument set.
 The consumer independently registers a destructive, open-world test tool and proves
