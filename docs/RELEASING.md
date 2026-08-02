@@ -86,6 +86,46 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a4
+
+The per-tool bulkhead alpha was published on 2026-08-02 as an immutable GitHub
+prerelease:
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a4`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a4) |
+| Tagged commit | `27c871942b0e90d8303d212b438d5251cb28d43f` |
+| Annotated tag object | `ff2ce612186ed60f27f5de027c67db7d8a1d335e` |
+| Release workflow | [run `30744216376`](https://github.com/Deathcharge/samsarix-core/actions/runs/30744216376) |
+| Build-only dry run | [run `30744149615`](https://github.com/Deathcharge/samsarix-core/actions/runs/30744149615) |
+| Exact-main CI | [run `30744070502`](https://github.com/Deathcharge/samsarix-core/actions/runs/30744070502) |
+| Release state | published, prerelease, immutable |
+
+Published assets are:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a4-py3-none-any.whl` | 45,262 | `25c91cb597728db18c822da9494de5c64e4747d86519ee5d8eedae01b2570e0d` |
+| `samsarix_core-2.0.0a4.tar.gz` | 107,730 | `b215462cc741f7c7da4d487e6e00768ca4cb44862c20e78f7708121a5e4aa40f` |
+| `SHA256SUMS` | 200 | `45c818e9be236d845b4c909d2b843bd56bf03ab189429f83c4d20f053de3e83e` |
+
+`gh release verify` confirmed the immutable release, and `gh release verify-asset`
+confirmed all three downloaded assets. The downloaded manifest independently matched
+the wheel and source-distribution digests. `gh attestation verify` validated one SLSA
+provenance statement covering both distributions. Its certificate and predicate bind
+the public repository, `.github/workflows/release.yml`, tag `v2.0.0a4`, GitHub-hosted
+run `30744216376`, and source commit `27c871942b0e90d8303d212b438d5251cb28d43f`;
+the signature has a public Sigstore transparency-log timestamp.
+
+A fresh Python 3.11.9 environment installed the downloaded wheel without dependencies
+and reported no broken requirements. An installed-package behavioral probe registered
+one tool with `max_concurrency=1`, queued a second call to it, and completed an unrelated
+tool through the remaining global slot. All three calls succeeded in input order, both
+public namespaces reported `2.0.0a4`, and final pending/in-flight metrics were zero.
+This is GitHub distribution and provenance evidence, not PyPI publication, a stable-API
+declaration, a security audit, third-party production adoption, or an SLA. The independent
+consumer remains pinned to `2.0.0a3`; consumers can roll back to that verified release.
+
 ## Published evidence: v2.0.0a3
 
 The runtime-admission alpha was published on 2026-08-02 as an immutable GitHub

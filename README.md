@@ -21,7 +21,7 @@ persistence, or an untrusted-code sandbox.
 - returns structured success, validation, policy-denial, overload, timeout,
   missing-tool, and failure results;
 - bounds pending invocations, registry growth, batches, value size/complexity,
-  concurrent work, and thread-pool use;
+  global and per-tool concurrent work, and thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - optionally requires a bounded host-owned policy decision after validation and
   before any tool code executes;
@@ -38,15 +38,15 @@ accounts, no API keys, no external service, and no hosted operating cost.
 
 Python 3.10 or newer is required.
 
-The immutable [`v2.0.0a3` GitHub prerelease](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a3)
+The immutable [`v2.0.0a4` GitHub prerelease](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a4)
 contains an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a3 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a3-py3-none-any.whl \
+gh release download v2.0.0a4 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a4-py3-none-any.whl \
   --repo Deathcharge/samsarix-core
-python -m pip install samsarix_core-2.0.0a3-py3-none-any.whl
+python -m pip install samsarix_core-2.0.0a4-py3-none-any.whl
 ```
 
 For a source checkout instead:

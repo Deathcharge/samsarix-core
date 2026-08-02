@@ -68,6 +68,9 @@ remain separate decisions.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.
 - [x] Publish immutable GitHub prerelease `v2.0.0a1` after package identity, licensing,
   provenance, verification, and rollback are recorded. PyPI remains a separate gate.
+- [x] Publish immutable GitHub prerelease `v2.0.0a4` with per-tool bulkhead,
+  concurrent-registration, mixed-batch fairness, clean-install, checksum, and SLSA
+  provenance evidence.
 
 ## Samsarix adoption
 

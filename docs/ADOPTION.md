@@ -5,6 +5,10 @@ claims. Samsarix Core has a merged independent repository consumer; it does not
 yet have a documented third-party production deployment, paid customer, usage
 volume, or service-level commitment.
 
+The latest `2.0.0a4` prerelease has independently verified artifacts and installed-wheel
+bulkhead behavior, but the repository consumer below intentionally remains pinned to
+`2.0.0a3`. Release verification is not presented as consumer-adoption evidence.
+
 ## Privacy-first redaction MCP consumer
 
 Repository:

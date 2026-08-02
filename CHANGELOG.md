@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a4` release checksums, provenance, and clean installed-wheel
+  bulkhead evidence.
+
 ## 2.0.0a4 - 2026-08-02
 
 ### Added
