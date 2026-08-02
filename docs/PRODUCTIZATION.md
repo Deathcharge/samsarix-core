@@ -274,7 +274,7 @@ evidence is the next consumer increment. Subsequent surface area should follow c
 consumer demand. Core's own
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30731486471)
 is green; the task-execution branch's local Python 3.11 suite has 98 tests and
-94.26% branch coverage. Exact hosted evidence remains required before merge.
+94.28% branch coverage. Exact hosted evidence remains required before merge.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
 reported an account billing/spending-limit problem, so its local 31-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.

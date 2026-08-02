@@ -153,7 +153,8 @@ task-augmented `tools/call` plus cancellation, emits per-tool `execution.taskSup
 and handles `tasks/get`, blocking `tasks/result`, and `tasks/cancel`. Requested TTLs
 are positive finite milliseconds and are clamped to `max_task_ttl_ms`. Retained
 state and results are in memory, bounded by `max_retained_tasks`, and removed after
-their TTL. `tasks.list` is intentionally unavailable without a requestor identity.
+their TTL. Arguments pass the runtime's resource preflight before being detached
+for background execution. `tasks.list` is intentionally unavailable without a requestor identity.
 Task IDs are cryptographically random; possession still grants access within that
 server session, so a network adapter must bind task operations to authenticated
 authorization context. `aclose()` cancels retained task executions before it

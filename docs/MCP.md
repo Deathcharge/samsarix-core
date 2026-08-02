@@ -215,10 +215,11 @@ progress update, and operational event carries
 
 Retention is in memory and scoped to one `MCPServer` session. Requested TTLs are
 clamped to `max_task_ttl_ms`; expired tasks and results are removed, and capacity
-is reclaimed. At `max_retained_tasks`, new task requests receive server-busy error
-`-32000`. Task cancellation is cooperative: async work is cancelled, while a
-running synchronous function can retain its runtime worker until it actually
-stops.
+is reclaimed. Arguments must pass the runtime's byte, depth, node, cycle, and JSON
+compatibility preflight before the server detaches them for background execution.
+At `max_retained_tasks`, new task requests receive server-busy error `-32000`.
+Task cancellation is cooperative: async work is cancelled, while a running
+synchronous function can retain its runtime worker until it actually stops.
 
 Core deliberately does not advertise `tasks.list` on unauthenticated stdio. MCP's
 task security guidance warns that listing can expose task metadata when requestor

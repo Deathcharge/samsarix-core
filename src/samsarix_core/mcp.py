@@ -20,10 +20,11 @@ from ._mcp_tasks import (
     TaskTerminalError,
 )
 from ._version import __version__
-from .errors import ProgressHandlerError, ToolNotFoundError
+from .errors import ProgressHandlerError, ToolArgumentError, ToolNotFoundError
 from .models import JSONValue, ToolResult, ToolSpec
 from .progress import ProgressHandler, ToolProgress
 from .runtime import ToolRuntime
+from .schema import enforce_value_limits
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 SUPPORTED_PROTOCOL_VERSIONS = (MCP_PROTOCOL_VERSION, "2025-06-18")
@@ -298,7 +299,7 @@ class MCPServer:
         if not self._tasks_available:
             return await self._call_tool(params, notification_sender=notification_sender)
 
-        name, _ = self._tool_call_parts(params)
+        name, arguments = self._tool_call_parts(params)
         task_requested = "task" in params
         try:
             spec = self.runtime.registry.get(name)
@@ -318,7 +319,24 @@ class MCPServer:
         if not isinstance(task_options, Mapping):
             raise _InvalidParams("tools/call task must be an object")
         requested_ttl_ms = self._requested_task_ttl(task_options)
-        detached_params = cast(Mapping[str, Any], deepcopy(dict(params)))
+        try:
+            enforce_value_limits(
+                arguments,
+                max_bytes=self.runtime.max_argument_bytes,
+                max_depth=self.runtime.max_value_depth,
+                max_nodes=self.runtime.max_value_nodes,
+            )
+        except ToolArgumentError:
+            raise _InvalidParams(
+                "Task arguments exceed configured resource limits or are not JSON-compatible"
+            ) from None
+        detached_params: dict[str, Any] = {
+            "name": name,
+            "arguments": deepcopy(arguments),
+        }
+        progress_token = _request_progress_token(params)
+        if progress_token is not None:
+            detached_params["_meta"] = {"progressToken": progress_token}
         retained = self._task_store.create(
             lambda task_id: self._call_tool(
                 detached_params,

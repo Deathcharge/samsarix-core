@@ -339,6 +339,14 @@ async def test_task_capacity_expiry_and_invalid_requests_are_bounded() -> None:
             "tools/call",
             {"name": "bounded_job", "arguments": {}, "task": None},
         )
+        cyclic: dict = {}
+        cyclic["self"] = cyclic
+        unsafe = await request(
+            server,
+            "unsafe",
+            "tools/call",
+            {"name": "bounded_job", "arguments": cyclic, "task": {}},
+        )
         unknown = await request(
             server,
             "unknown",
@@ -374,6 +382,7 @@ async def test_task_capacity_expiry_and_invalid_requests_are_bounded() -> None:
 
     assert all(item["error"]["code"] == -32602 for item in invalid_ttls)
     assert malformed["error"]["code"] == -32602
+    assert unsafe["error"]["code"] == -32602
     assert unknown["error"]["code"] == -32601
     assert full["error"] == {"code": -32000, "message": "Retained MCP task capacity reached"}
     assert expired_result["error"]["code"] == -32602
