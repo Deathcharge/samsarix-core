@@ -246,9 +246,11 @@ outbound messages and deliver cancellation notifications while the corresponding
 validation, request body limits, and rate limits must be implemented by the
 hosting HTTP layer.
 
-A failing notification sender raises `ProgressHandlerError` with the original
-transport exception chained as its cause. It is not converted into an `isError`
-tool result.
+A notification-sender failure while delivering requested progress raises
+`ProgressHandlerError` with the original transport exception chained as its cause;
+it is not converted into an `isError` tool result. Operational-log delivery is
+separately best effort, so its sender failures are suppressed and the already-computed
+tool result remains unchanged.
 
 ## Operational boundaries
 

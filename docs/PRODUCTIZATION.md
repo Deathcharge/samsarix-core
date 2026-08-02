@@ -264,7 +264,7 @@ schema types remain deliberately deferred. They are not required for the first u
 release. One independent repository now proves the MCP boundary without needing those
 features; subsequent surface area should follow concrete consumer demand. Core's own
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30727341629)
-is green; Core's local Python 3.11 suite has 89 tests and 94.26% branch coverage.
+is green; Core's local Python 3.11 suite has 90 tests and 94.28% branch coverage.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
 reported an account billing/spending-limit problem, so its local 29-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.

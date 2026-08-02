@@ -14,7 +14,7 @@ from copy import deepcopy
 from typing import Any, BinaryIO, TextIO, cast
 
 from ._version import __version__
-from .errors import ProgressHandlerError
+from .errors import ProgressHandlerError, ToolNotFoundError
 from .models import JSONValue, ToolResult, ToolSpec
 from .progress import ProgressHandler, ToolProgress
 from .runtime import ToolRuntime
@@ -286,6 +286,10 @@ class MCPServer:
         if _LOG_LEVEL_ORDER[level] < _LOG_LEVEL_ORDER[self._minimum_log_level]:
             return False
         try:
+            registered_name = self.runtime.registry.get(result.tool_name).name
+        except ToolNotFoundError:
+            return False
+        try:
             await notification_sender(
                 {
                     "jsonrpc": "2.0",
@@ -295,7 +299,7 @@ class MCPServer:
                         "logger": self.name,
                         "data": {
                             "event": "tool_invocation",
-                            "tool": result.tool_name,
+                            "tool": registered_name,
                             "invocationId": result.invocation_id,
                             "status": result.status.value,
                             "durationMs": result.duration_ms,

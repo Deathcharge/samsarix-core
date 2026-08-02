@@ -26,7 +26,8 @@ This is a replacement alpha rather than a compatibility release.
 - invocation-scoped async progress reporting with strict ordering, resource caps,
   MCP progress-token correlation, and notification-before-response delivery;
 - opt-in MCP operational logging with capability negotiation, client-selected
-  minimum levels, one content-free terminal event per call, and best-effort delivery;
+  minimum levels, one content-free terminal event per non-cancelled call, and
+  best-effort delivery;
 - formatter, linter, and strict type-check coverage for the shipped examples and
   benchmark programs;
 - independently packaged consumer evidence for progress-token correlation,
@@ -48,6 +49,7 @@ This is a replacement alpha rather than a compatibility release.
   orchestration, reasoning, UCF, or provider platform.
 - structurally invalid but JSON-compatible outputs now report a declared-return-type
   mismatch rather than a generic JSON-compatibility message.
+- missing-tool results no longer echo the caller-supplied unknown name.
 
 ### Removed from the supported surface
 

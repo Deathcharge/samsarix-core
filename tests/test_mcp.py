@@ -235,6 +235,34 @@ async def test_mcp_logging_rejects_bad_levels_and_does_not_replace_tool_results(
     assert result is not None and result["result"]["isError"] is False
 
 
+@pytest.mark.asyncio
+async def test_mcp_logging_does_not_emit_an_unregistered_caller_supplied_name() -> None:
+    runtime = mcp_runtime()
+    server = MCPServer(runtime, enable_logging=True)
+    notifications: list[dict] = []
+
+    async def collect(notification: dict) -> None:
+        notifications.append(notification)
+
+    try:
+        await initialize(server)
+        response = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "unknown-private-token", "arguments": {}},
+            },
+            notification_sender=collect,
+        )
+    finally:
+        await runtime.aclose()
+
+    assert response is not None and response["result"]["isError"] is True
+    assert "unknown-private-token" not in json.dumps(response)
+    assert notifications == []
+
+
 @pytest.mark.parametrize(
     ("kwargs", "error_type"),
     [
