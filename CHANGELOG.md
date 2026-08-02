@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- recorded immutable `v2.0.0a3` release provenance and independent consumer `0.2.9`
+  adoption evidence for the bounded runtime-admission contract.
+
 ## 2.0.0a3 - 2026-08-02
 
 ### Changed

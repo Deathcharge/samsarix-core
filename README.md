@@ -38,15 +38,15 @@ accounts, no API keys, no external service, and no hosted operating cost.
 
 Python 3.10 or newer is required.
 
-The immutable [`v2.0.0a1` GitHub prerelease](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a1)
+The immutable [`v2.0.0a3` GitHub prerelease](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a3)
 contains an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a1 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a1-py3-none-any.whl \
+gh release download v2.0.0a3 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a3-py3-none-any.whl \
   --repo Deathcharge/samsarix-core
-python -m pip install samsarix_core-2.0.0a1-py3-none-any.whl
+python -m pip install samsarix_core-2.0.0a3-py3-none-any.whl
 ```
 
 For a source checkout instead:
@@ -130,7 +130,7 @@ progress and logging, bounded task retention, admission limits, and security bou
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.8 pins Core commit `33f2baa9c81d4437c0e4746355eda7b4d0df0cbd`
+version 0.2.9 pins Core commit `8e3d9460709a21b84934bc64e975824ca1882046`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
@@ -145,6 +145,9 @@ progress, safe cancellation, bounded retention, and unavailable unauthenticated 
 Its fail-closed host policy also admits only the exact validated redaction contract and
 denies an independently registered destructive, open-world tool before execution without
 reflecting that tool's private argument.
+It separately saturates Core's direct-runtime admission cap and proves MCP returns a
+retryable, content-free overload result without another policy evaluation, tool
+execution, retained private arguments, or an output artifact.
 The preceding v0.2.6 contract was also discovered and invoked through official MCP
 Inspector 0.21.2; a portable VS Code workspace is configuration-discovered, with
 signed-in trust and tool approval still awaiting operator acceptance.
@@ -173,6 +176,7 @@ exception. It returns a `ToolResult` with one of these states:
 - `not_found`
 - `invalid_arguments`
 - `denied`
+- `busy`
 - `timed_out`
 - `failed`
 - `runtime_closed`

@@ -49,8 +49,9 @@ stays outside the narrowly scoped workflow token.
 From a clean, current `main` checkout, create and push one annotated tag:
 
 ```bash
-git tag -a v2.0.0a1 -m "Samsarix Core 2.0.0a1"
-git push origin v2.0.0a1
+RELEASE_VERSION="<next-version>"
+git tag -a "v${RELEASE_VERSION}" -m "Samsarix Core ${RELEASE_VERSION}"
+git push origin "v${RELEASE_VERSION}"
 ```
 
 The push is the publication authorization. Do not reuse or force-move a released tag.
@@ -63,14 +64,15 @@ Download into a new directory and verify the release, exact assets, checksums, a
 provenance:
 
 ```bash
-gh release verify v2.0.0a1 --repo Deathcharge/samsarix-core
-gh release download v2.0.0a1 --repo Deathcharge/samsarix-core
-gh release verify-asset v2.0.0a1 samsarix_core-2.0.0a1-py3-none-any.whl \
+RELEASE_VERSION="<published-version>"
+gh release verify "v${RELEASE_VERSION}" --repo Deathcharge/samsarix-core
+gh release download "v${RELEASE_VERSION}" --repo Deathcharge/samsarix-core
+gh release verify-asset "v${RELEASE_VERSION}" "samsarix_core-${RELEASE_VERSION}-py3-none-any.whl" \
   --repo Deathcharge/samsarix-core
 sha256sum --check SHA256SUMS
-gh attestation verify samsarix_core-2.0.0a1-py3-none-any.whl \
+gh attestation verify "samsarix_core-${RELEASE_VERSION}-py3-none-any.whl" \
   --repo Deathcharge/samsarix-core
-gh attestation verify samsarix_core-2.0.0a1.tar.gz \
+gh attestation verify "samsarix_core-${RELEASE_VERSION}.tar.gz" \
   --repo Deathcharge/samsarix-core
 ```
 
@@ -83,6 +85,49 @@ An immutable release is intentionally not edited in place. If a published artifa
 contract is wrong, document the issue, prepare a new version, rerun the complete gate,
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
+
+## Published evidence: v2.0.0a3
+
+The runtime-admission alpha was published on 2026-08-02 as an immutable GitHub
+prerelease:
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a3`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a3) |
+| Tagged commit | `8e3d9460709a21b84934bc64e975824ca1882046` |
+| Release workflow | [run `30741229489`](https://github.com/Deathcharge/samsarix-core/actions/runs/30741229489) |
+| Build-only dry run | [run `30741086085`](https://github.com/Deathcharge/samsarix-core/actions/runs/30741086085) |
+| Release state | published, prerelease, immutable |
+
+Published assets are:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a3-py3-none-any.whl` | 44,424 | `dc32cf61d806668ad8528ca7b19beabbd125a1f98de56f527052433e2cb43c34` |
+| `samsarix_core-2.0.0a3.tar.gz` | 102,420 | `198ab9be86659a45d9ba8007aa4a1ab68408e9d89e583b52a070db8422c01432` |
+| `SHA256SUMS` | 200 | `e82f75c0c5a6f9fca7d34fc2fe3ccde70ca23c32201f11dd199ec32866e59e17` |
+
+`gh release verify` confirmed the immutable release attestation, while
+`gh release verify-asset` confirmed every downloaded asset. `gh attestation verify`
+validated SLSA provenance covering the wheel and source distribution. The verified
+identity names `Deathcharge/samsarix-core/.github/workflows/release.yml`, tag
+`v2.0.0a3`, GitHub-hosted run `30741229489`, and source commit
+`8e3d9460709a21b84934bc64e975824ca1882046`; the signature has a public Sigstore
+transparency-log timestamp. The tag and local `main` resolved to the same commit.
+
+A fresh Python 3.11.9 environment installed the downloaded wheel without dependencies,
+reported no broken requirements, and confirmed the public and legacy namespaces report
+`2.0.0a3` plus the `busy` status. This is a GitHub distribution and provenance record,
+not a PyPI publication, stable-API declaration, security audit, production-adoption
+claim, or service-level commitment.
+
+The preceding immutable `v2.0.0a2` tag failed closed during wheel smoke testing because
+the release workflow contained a stale legacy-namespace version literal. Run
+[`30740957122`](https://github.com/Deathcharge/samsarix-core/actions/runs/30740957122)
+stopped before tag/version validation, attestation, or publication, and no GitHub release
+exists for that tag. The smoke test now compares both namespaces dynamically; its
+build-only run passed before `v2.0.0a3` was created. The failed tag was not moved or
+deleted.
 
 ## Published evidence: v2.0.0a1
 
