@@ -292,6 +292,13 @@ evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
+The immutable GitHub prerelease `v2.0.0a1` is published from commit
+`5f09432ebdb3d2b113b8fdb53112e39680ca5c25` with verified checksums and GitHub Actions
+build provenance. The exact assets, workflow runs, verification, installation evidence,
+and recovery model are recorded in `docs/RELEASING.md`. This passes the GitHub release
+gate only; it does not pass the PyPI, stable API, or third-party production-adoption
+gates.
+
 - Decide whether commercial licensing, paid support, or a service-level agreement
   will be offered separately from the MPL-2.0 community distribution. None is
   promised by this repository.
