@@ -276,11 +276,12 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded
   shutdown quiescence, official MCP Inspector invocation, and Visual Studio Code
-  configuration discovery from `samsarix-integration-examples`; version 0.2.9 at merge
-  commit `688c629b25829df88adb21367f9d8e7a15243f16` pins Core commit
-  `8e3d9460709a21b84934bc64e975824ca1882046` and additionally proves the bounded
-  experimental task lifecycle, allow/deny invocation policy, and fail-fast runtime
-  admission on the real redaction adapter.
+  configuration discovery from `samsarix-integration-examples`; version 0.2.10 at merge
+  commit `0455b7a16e0309ba295c0ddd8ad3776d709ea782` pins Core commit
+  `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90` and additionally proves the bounded
+  experimental task lifecycle, allow/deny invocation policy, fail-fast runtime
+  admission, and paired content-free lifecycle observation on the real redaction
+  adapter.
 
 ## Deferred work and rationale
 
@@ -289,11 +290,12 @@ isolation, and richer schema types remain deliberately deferred. Experimental MC
 tasks retain bounded results only inside one server process and do not satisfy durable
 persistence or restart recovery. Those features are not required for the first useful
 release. One independent repository now proves the stable MCP boundary, experimental
-task lifecycle, bounded policy gate, and fail-fast runtime admission. Subsequent surface
+task lifecycle, bounded policy gate, fail-fast runtime admission, and privacy-safe
+lifecycle observation. Subsequent surface
 area should follow concrete consumer demand. Core's admission release post-merge
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30741198541)
 is green. The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
-reported an account billing/spending-limit problem, so its local 35-test installed-wheel
+reported an account billing/spending-limit problem, so its local 36-test installed-wheel
 evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
@@ -308,8 +310,8 @@ gates.
 - Decide whether commercial licensing, paid support, or a service-level agreement
   will be offered separately from the MPL-2.0 community distribution. None is
   promised by this repository.
-- Publishing to PyPI, signing a release, creating accounts, or deploying any service
-  requires explicit owner authorization and is out of scope for this local pass.
+- PyPI publication, account creation, and service deployment remain separate owner
+  decisions. The owner has authorized this repository's verified GitHub prerelease.
 
 ## Known risks
 

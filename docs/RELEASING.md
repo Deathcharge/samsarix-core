@@ -124,7 +124,8 @@ tool through the remaining global slot. All three calls succeeded in input order
 public namespaces reported `2.0.0a4`, and final pending/in-flight metrics were zero.
 This is GitHub distribution and provenance evidence, not PyPI publication, a stable-API
 declaration, a security audit, third-party production adoption, or an SLA. The independent
-consumer remains pinned to `2.0.0a3`; consumers can roll back to that verified release.
+consumer now pins the post-release lifecycle commit while its installed metadata remains
+`2.0.0a4`; consumers can roll back to this verified release.
 
 ## Published evidence: v2.0.0a3
 

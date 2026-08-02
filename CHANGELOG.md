@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a5 - 2026-08-02
+
 ### Added
 
 - opt-in provider-neutral lifecycle observability with paired immutable start/terminal
@@ -10,6 +12,8 @@
 
 ### Changed
 
+- recorded independent consumer `0.2.10` adoption evidence for the content-free
+  lifecycle-observability contract.
 - recorded immutable `v2.0.0a4` release checksums, provenance, and clean installed-wheel
   bulkhead evidence.
 
