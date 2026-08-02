@@ -19,9 +19,9 @@ remain separate decisions.
 - The productization work is now committed, pushed, clean, and green in hosted checks.
 - MCP flagship adapter: implemented lifecycle negotiation, JSON Schema tool discovery,
   structured invocation results, behavioral safety hints, active-call
-  cancellation, bounded progress notifications, and a message/admission-bounded
-  concurrent stdio transport with an inventory example. Exact-head CI evidence
-  remains required.
+  cancellation, bounded progress notifications, opt-in content-free operational
+  logging, and a message/admission-bounded concurrent stdio transport with an
+  inventory example. Exact-head CI evidence remains required.
 - Runtime input/output, batch, and registry resources are now capped and covered
   by adversarial tests.
 - Timed-out sync work now retains its real concurrency slot and in-flight gauge;
@@ -36,9 +36,10 @@ remain separate decisions.
   proves progress-token correlation, monotonic content-free updates, notification
   ordering, cancellation cutoff, and artifact privacy.
 - Next: exercise the contract from an independently operated desktop client and
-  rerun the consumer matrix after GitHub Actions billing is restored. Use observed
-  demand and confirmed contract gaps—not framework parity—to prioritize broader
-  schema support.
+  prove operational-log filtering, notification ordering, and payload privacy in
+  the independent consumer. Rerun the consumer matrix after GitHub Actions billing
+  is restored. Use observed demand and confirmed contract gaps—not framework
+  parity—to prioritize broader schema support.
 - Review priority: Capture all 101 dirty/untracked paths.
 - Review priority: split legacy relocation.
 - Review priority: resolve license identity.

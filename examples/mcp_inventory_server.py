@@ -70,6 +70,7 @@ async def main() -> None:
         name="samsarix-inventory-example",
         title="Samsarix Inventory Example",
         instructions="Confirm with the user before calling tools that are not read-only.",
+        enable_logging=True,
     )
     await serve_stdio(server)
 

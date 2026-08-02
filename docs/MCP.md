@@ -13,6 +13,8 @@ The supported server surface is intentionally narrow:
 - `tools/call` with Samsarix validation, timeouts, concurrency limits, and safe
   structured errors;
 - requested `notifications/progress` updates from cooperative asynchronous tools;
+- opt-in `logging/setLevel` and content-free `notifications/message` operational
+  events;
 - `notifications/cancelled` for active non-task tool calls;
 - newline-delimited stdio with configurable message-size and active-request caps.
 
@@ -153,6 +155,39 @@ document content, tenant identifiers, or other sensitive values. Core enforces
 the MCP stable [progress utility](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress)
 without adopting experimental Tasks.
 
+## Operational logging
+
+Enable the stable MCP logging capability when a client needs runtime health events:
+
+```python
+server = MCPServer(
+    runtime,
+    enable_logging=True,
+    default_log_level="warning",
+)
+```
+
+The client can select any syslog-compatible MCP minimum level with
+`logging/setLevel`: `debug`, `info`, `notice`, `warning`, `error`, `critical`,
+`alert`, or `emergency`. Core emits at most one `notifications/message` event for
+each non-cancelled tool call: successful results use `info` and failures use
+`error`. The default `warning` threshold therefore suppresses successful-call
+events until the client requests `info` or `debug`.
+
+Each event contains only the already-public tool name, invocation ID, terminal
+status, and duration. Core never copies arguments, outputs, exception text,
+validation details, cancellation reasons, or progress messages into operational
+logs. Delivery is best effort: a failing log notification sender does not replace
+an already-computed tool result. `serve_stdio()` serializes an accepted log before
+the terminal response and drops an oversized notification with a generic stderr
+diagnostic.
+
+Logging is disabled by default, is advertised only when enabled, and remains
+bounded to one event per call. A network host still needs connection-level rate
+limits and access control. This implements the stable MCP
+[logging utility](https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/logging)
+with a deliberately content-free data shape.
+
 ## Cancellation and admission
 
 MCP clients can stop an active non-task call with a notification:
@@ -203,7 +238,9 @@ response = await server.handle(
 
 `handle()` accepts one parsed JSON-RPC object and returns a response object or
 `None` for notifications and MCP-cancelled calls. The optional async sender is
-required for progress delivery. A custom concurrent transport must serialize its
+required for progress and operational-log delivery. An `MCPServer` instance is one
+logical MCP connection/session; create separate instances for independently
+negotiated clients. A custom concurrent transport must serialize its
 outbound messages and deliver cancellation notifications while the corresponding
 `handle()` call is still active. HTTP authentication, MCP session headers, origin
 validation, request body limits, and rate limits must be implemented by the
