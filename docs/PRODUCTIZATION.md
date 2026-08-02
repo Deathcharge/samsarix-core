@@ -254,8 +254,9 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
 - Proved the public MCP API, exact typed result discovery, response-free
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded
-  shutdown quiescence from `samsarix-integration-examples` 0.2.5 at merge commit
-  `f1bcbe1157865e99332caae3c302a2b25d0ed1ed`; the consumer pins Core commit
+  shutdown quiescence, official MCP Inspector invocation, and Visual Studio Code
+  configuration discovery from `samsarix-integration-examples` 0.2.6 at merge commit
+  `6fd45f7f36ad57ad5a9ceb372af5b73193739624`; the consumer pins Core commit
   `04cf5ba7ca7eb2defcb946f538d62291762db109`.
 
 ## Deferred work and rationale
@@ -267,7 +268,7 @@ features; subsequent surface area should follow concrete consumer demand. Core's
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30731486471)
 is green; Core's local Python 3.11 suite has 90 tests and 94.28% branch coverage.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
-reported an account billing/spending-limit problem, so its local 30-test and
+reported an account billing/spending-limit problem, so its local 31-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
