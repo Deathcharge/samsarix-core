@@ -14,7 +14,7 @@ from copy import deepcopy
 from typing import Any, BinaryIO, TextIO, cast
 
 from ._version import __version__
-from .errors import ProgressHandlerError
+from .errors import ProgressHandlerError, ToolNotFoundError
 from .models import JSONValue, ToolResult, ToolSpec
 from .progress import ProgressHandler, ToolProgress
 from .runtime import ToolRuntime
@@ -31,14 +31,27 @@ _SERVER_BUSY = -32000
 
 NotificationSender = Callable[[dict[str, JSONValue]], Awaitable[None]]
 
+_LOG_LEVELS = (
+    "debug",
+    "info",
+    "notice",
+    "warning",
+    "error",
+    "critical",
+    "alert",
+    "emergency",
+)
+_LOG_LEVEL_ORDER = {level: position for position, level in enumerate(_LOG_LEVELS)}
+
 
 class MCPServer:
     """Expose a :class:`ToolRuntime` through MCP's JSON-RPC tool surface.
 
     The server implements initialization, ping, ``tools/list``, ``tools/call``,
-    progress reporting, and cancellation of active calls. Transport and
-    authentication remain application concerns; :func:`serve_stdio` provides a
-    bounded local stdio transport for trusted process launchers.
+    progress reporting, optional content-free operational logging, and
+    cancellation of active calls. Transport and authentication remain application
+    concerns; :func:`serve_stdio` provides a bounded local stdio transport for
+    trusted process launchers.
     """
 
     def __init__(
@@ -49,6 +62,8 @@ class MCPServer:
         title: str = "Samsarix Core",
         version: str = __version__,
         instructions: str | None = None,
+        enable_logging: bool = False,
+        default_log_level: str = "warning",
     ) -> None:
         for field_name, value in (("name", name), ("title", title), ("version", version)):
             if not isinstance(value, str) or not value.strip():
@@ -57,12 +72,21 @@ class MCPServer:
             not isinstance(instructions, str) or not instructions.strip()
         ):
             raise ValueError("MCP server instructions must be a non-empty string")
+        if not isinstance(enable_logging, bool):
+            raise TypeError("enable_logging must be a boolean")
+        if not isinstance(default_log_level, str):
+            raise TypeError("default_log_level must be a string")
+        if default_log_level not in _LOG_LEVEL_ORDER:
+            raise ValueError(f"default_log_level must be one of {', '.join(_LOG_LEVELS)}")
 
         self.runtime = runtime
         self.name = name.strip()
         self.title = title.strip()
         self.version = version.strip()
         self.instructions = instructions.strip() if instructions is not None else None
+        self._logging_enabled = enable_logging
+        self._default_log_level = default_log_level
+        self._minimum_log_level = default_log_level
         self._initialize_responded = False
         self._initialized = False
         self._protocol_version: str | None = None
@@ -119,6 +143,8 @@ class MCPServer:
                     _SERVER_NOT_INITIALIZED,
                     "Server has not completed MCP initialization",
                 )
+            if method == "logging/setLevel" and self._logging_enabled:
+                return self._success(request_id, self._set_log_level(params))
             if method == "tools/list":
                 return self._success(request_id, self._list_tools(params))
             if method == "tools/call":
@@ -181,9 +207,13 @@ class MCPServer:
         self._initialize_responded = True
         self._initialized = False
         self._protocol_version = negotiated
+        self._minimum_log_level = self._default_log_level
+        capabilities: dict[str, JSONValue] = {"tools": {"listChanged": False}}
+        if self._logging_enabled:
+            capabilities["logging"] = {}
         result: dict[str, JSONValue] = {
             "protocolVersion": negotiated,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": capabilities,
             "serverInfo": {
                 "name": self.name,
                 "title": self.title,
@@ -194,6 +224,13 @@ class MCPServer:
         if self.instructions is not None:
             result["instructions"] = self.instructions
         return result
+
+    def _set_log_level(self, params: Mapping[str, Any]) -> dict[str, JSONValue]:
+        level = params.get("level")
+        if not isinstance(level, str) or level not in _LOG_LEVEL_ORDER:
+            raise _InvalidParams(f"logging level must be one of {', '.join(_LOG_LEVELS)}")
+        self._minimum_log_level = level
+        return {}
 
     def _list_tools(self, params: Mapping[str, Any]) -> dict[str, JSONValue]:
         cursor = params.get("cursor")
@@ -230,10 +267,50 @@ class MCPServer:
                 cast(dict[str, Any], arguments),
                 progress_handler=progress_handler,
             )
+            await self._send_operational_log(result, notification_sender)
             return self._tool_result(result)
         finally:
             if active_progress_token is not None:
                 self._active_progress_tokens.discard(active_progress_token)
+
+    async def _send_operational_log(
+        self,
+        result: ToolResult,
+        notification_sender: NotificationSender | None,
+    ) -> bool:
+        """Best-effort one content-free terminal event for an invocation."""
+
+        if not self._logging_enabled or notification_sender is None:
+            return False
+        level = "info" if result.success else "error"
+        if _LOG_LEVEL_ORDER[level] < _LOG_LEVEL_ORDER[self._minimum_log_level]:
+            return False
+        try:
+            registered_name = self.runtime.registry.get(result.tool_name).name
+        except ToolNotFoundError:
+            return False
+        try:
+            await notification_sender(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/message",
+                    "params": {
+                        "level": level,
+                        "logger": self.name,
+                        "data": {
+                            "event": "tool_invocation",
+                            "tool": registered_name,
+                            "invocationId": result.invocation_id,
+                            "status": result.status.value,
+                            "durationMs": result.duration_ms,
+                        },
+                    },
+                }
+            )
+        except Exception:
+            # Operational diagnostics must not replace an already-computed tool result.
+            return False
+        return True
 
     @staticmethod
     def _progress_handler(
@@ -461,7 +538,12 @@ async def serve_stdio(
             )
 
         if in_flight:
-            await asyncio.gather(*tuple(in_flight))
+            outcomes = await asyncio.gather(*tuple(in_flight), return_exceptions=True)
+            if task_errors:
+                raise task_errors.pop(0)
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    raise outcome
         if task_errors:
             raise task_errors.pop(0)
     except BaseException:

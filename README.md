@@ -24,7 +24,7 @@ persistence, or an untrusted-code sandbox.
 - supports ordered batch invocation and cooperative async cancellation;
 - keeps metrics content-free and redacts exception messages by default;
 - exposes the same contracts through a dependency-free, cancellable,
-  progress-aware, and admission-bounded MCP stdio bridge.
+  progress-aware, operationally observable, and admission-bounded MCP stdio bridge.
 
 Samsarix Core is local and provider-neutral. It has no runtime dependencies, no
 accounts, no API keys, no external service, and no hosted operating cost.
@@ -85,7 +85,8 @@ asyncio.run(main())
 
 Samsarix Core implements the stable MCP tool lifecycle, discovery, invocation,
 structured output, behavioral annotations, progress notifications, and client
-cancellation without adding an SDK dependency. Concurrent stdio calls are
+cancellation without adding an SDK dependency. Opt-in operational logging emits
+content-free terminal events at the minimum level selected by the client. Concurrent stdio calls are
 separately admission-bounded so the runtime's execution queue cannot grow without
 a protocol-level cap. A complete inventory server is included:
 
@@ -96,19 +97,19 @@ python examples/mcp_inventory_server.py
 Configure that command in a trusted local MCP client to discover and call the
 decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
 read/write/destructive annotations, scalar-output wrapping, cancellation, stdio
-progress, admission limits, and security boundaries.
+progress and logging, admission limits, and security boundaries.
 
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.2 pins Core commit `37a996bf0af4b5277990f3db6a7607ea70e14349`
+version 0.2.3 pins Core commit `beda0affe0dcc54c1a4e224bed26fbcd85e9184c`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
 structured results, privacy boundaries, path traversal and linked-file refusal,
 artifact conflict handling, exact `TypedDict` output discovery, client
 cancellation without an output artifact or response, continued protocol service,
-package installation, and CLI entry points.
+token-correlated content-free progress, package installation, and CLI entry points.
 
 This is compatibility evidence, not a claim of third-party production adoption.
 See the [adoption record](docs/ADOPTION.md) for exact commits, commands, artifact

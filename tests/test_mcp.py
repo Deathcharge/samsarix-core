@@ -104,6 +104,186 @@ async def test_mcp_lifecycle_and_version_negotiation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp_operational_logging_is_opt_in_filtered_and_content_free() -> None:
+    runtime = mcp_runtime()
+    server = MCPServer(runtime, enable_logging=True)
+    notifications: list[dict] = []
+
+    async def collect(notification: dict) -> None:
+        notifications.append(notification)
+
+    try:
+        initialized = await initialize(server)
+        filtered = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "inventory", "arguments": {"sku": "private-sku"}},
+            },
+            notification_sender=collect,
+        )
+        changed = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "logging/setLevel",
+                "params": {"level": "info"},
+            }
+        )
+        succeeded = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {"name": "inventory", "arguments": {"sku": "private-sku"}},
+            },
+            notification_sender=collect,
+        )
+        failed = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {"name": "explode", "arguments": {"secret": "private-secret"}},
+            },
+            notification_sender=collect,
+        )
+    finally:
+        await runtime.aclose()
+
+    assert initialized["result"]["capabilities"] == {
+        "tools": {"listChanged": False},
+        "logging": {},
+    }
+    assert filtered is not None and filtered["result"]["isError"] is False
+    assert changed == {"jsonrpc": "2.0", "id": 3, "result": {}}
+    assert succeeded is not None and succeeded["result"]["isError"] is False
+    assert failed is not None and failed["result"]["isError"] is True
+    assert [message["params"]["level"] for message in notifications] == ["info", "error"]
+    assert [message["params"]["data"]["status"] for message in notifications] == [
+        "success",
+        "failed",
+    ]
+    for message in notifications:
+        assert message["jsonrpc"] == "2.0"
+        assert message["method"] == "notifications/message"
+        assert message["params"]["logger"] == "samsarix-core"
+        assert message["params"]["data"]["event"] == "tool_invocation"
+        assert isinstance(message["params"]["data"]["invocationId"], str)
+        assert isinstance(message["params"]["data"]["durationMs"], float)
+    encoded = json.dumps(notifications)
+    assert "private-sku" not in encoded
+    assert "private-secret" not in encoded
+    assert "do-not-expose" not in encoded
+
+
+@pytest.mark.asyncio
+async def test_mcp_logging_rejects_bad_levels_and_does_not_replace_tool_results() -> None:
+    runtime = mcp_runtime()
+    disabled = MCPServer(runtime)
+    enabled = MCPServer(runtime, enable_logging=True)
+
+    async def broken_sender(notification: dict) -> None:
+        raise OSError("transport unavailable")
+
+    try:
+        await initialize(disabled)
+        unsupported = await disabled.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "logging/setLevel",
+                "params": {"level": "info"},
+            }
+        )
+        await initialize(enabled)
+        missing = await enabled.handle(
+            {"jsonrpc": "2.0", "id": 3, "method": "logging/setLevel", "params": {}}
+        )
+        invalid = await enabled.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "logging/setLevel",
+                "params": {"level": "verbose"},
+            }
+        )
+        await enabled.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "logging/setLevel",
+                "params": {"level": "info"},
+            }
+        )
+        result = await enabled.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {"name": "inventory", "arguments": {"sku": "A-1"}},
+            },
+            notification_sender=broken_sender,
+        )
+    finally:
+        await runtime.aclose()
+
+    assert unsupported is not None and unsupported["error"]["code"] == -32601
+    assert missing is not None and missing["error"]["code"] == -32602
+    assert invalid is not None and invalid["error"]["code"] == -32602
+    assert result is not None and result["result"]["isError"] is False
+
+
+@pytest.mark.asyncio
+async def test_mcp_logging_does_not_emit_an_unregistered_caller_supplied_name() -> None:
+    runtime = mcp_runtime()
+    server = MCPServer(runtime, enable_logging=True)
+    notifications: list[dict] = []
+
+    async def collect(notification: dict) -> None:
+        notifications.append(notification)
+
+    try:
+        await initialize(server)
+        response = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "unknown-private-token", "arguments": {}},
+            },
+            notification_sender=collect,
+        )
+    finally:
+        await runtime.aclose()
+
+    assert response is not None and response["result"]["isError"] is True
+    assert "unknown-private-token" not in json.dumps(response)
+    assert notifications == []
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_type"),
+    [
+        ({"enable_logging": 1}, TypeError),
+        ({"default_log_level": 1}, TypeError),
+        ({"default_log_level": "verbose"}, ValueError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_mcp_logging_configuration_is_validated(
+    kwargs: dict, error_type: type[Exception]
+) -> None:
+    runtime = ToolRuntime()
+    try:
+        with pytest.raises(error_type):
+            MCPServer(runtime, **kwargs)
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
 async def test_mcp_tool_catalog_has_schemas_annotations_and_metadata() -> None:
     runtime = mcp_runtime()
     server = MCPServer(runtime)
@@ -494,6 +674,58 @@ async def test_stdio_transport_is_bounded_and_emits_only_protocol_messages() -> 
     assert responses[1]["result"]["tools"][0]["name"] == "explode"
     assert runtime.metrics().in_flight == 0
     assert (await runtime.invoke("inventory", {"sku": "A-1"})).error.code == "runtime_closed"
+
+
+@pytest.mark.asyncio
+async def test_stdio_emits_operational_log_before_the_tool_response() -> None:
+    initialize_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "logging-test", "version": "1"},
+        },
+    }
+    messages = [
+        initialize_request,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "logging/setLevel",
+            "params": {"level": "info"},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "inventory", "arguments": {"sku": "A-1"}},
+        },
+    ]
+    reader = io.BytesIO(("\n".join(json.dumps(item) for item in messages) + "\n").encode())
+    writer = io.StringIO()
+    runtime = mcp_runtime()
+
+    await serve_stdio(
+        MCPServer(runtime, enable_logging=True),
+        input_stream=reader,
+        output_stream=writer,
+    )
+
+    output = [json.loads(line) for line in writer.getvalue().splitlines()]
+    assert [message.get("id") for message in output] == [1, 2, None, 3]
+    notification = output[2]
+    assert notification["method"] == "notifications/message"
+    assert notification["params"]["level"] == "info"
+    assert notification["params"]["logger"] == "samsarix-core"
+    data = notification["params"]["data"]
+    assert set(data) == {"event", "tool", "invocationId", "status", "durationMs"}
+    assert data["event"] == "tool_invocation"
+    assert data["tool"] == "inventory"
+    assert data["status"] == "success"
+    assert output[3]["result"]["isError"] is False
 
 
 @pytest.mark.asyncio
@@ -909,6 +1141,7 @@ async def test_stdio_drains_an_admitted_call_at_normal_eof() -> None:
 @pytest.mark.asyncio
 async def test_stdio_cancels_and_joins_siblings_after_background_write_failure() -> None:
     started = Event()
+    eof_read = Event()
     stopped = asyncio.Event()
     never_release = asyncio.Event()
 
@@ -927,6 +1160,7 @@ async def test_stdio_cancels_and_joins_siblings_after_background_write_failure()
     async def fast_operation() -> str:
         """Complete so its response exercises a broken writer."""
 
+        assert await asyncio.to_thread(eof_read.wait, 1.0)
         return "done"
 
     runtime = ToolRuntime(max_concurrency=2)
@@ -954,6 +1188,8 @@ async def test_stdio_cancels_and_joins_siblings_after_background_write_failure()
 
         def readline(self, size: int = -1) -> bytes:
             line = super().readline(size)
+            if not line:
+                eof_read.set()
             message = json.loads(line) if line else {}
             if message.get("id") == "fast":
                 self.gated = True

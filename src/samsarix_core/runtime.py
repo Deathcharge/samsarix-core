@@ -163,7 +163,7 @@ class ToolRuntime:
                 ToolStatus.NOT_FOUND,
                 started_at,
                 started,
-                error=ToolError("tool_not_found", f"Tool '{name}' is not registered"),
+                error=ToolError("tool_not_found", "Tool is not registered"),
             )
 
         try:

@@ -21,9 +21,10 @@ Leave `expose_exceptions=False` in shared environments. Do not place credentials
 tool descriptions, tags, defaults, arguments sent to a model, outputs returned to
 an untrusted caller, or external logs.
 
-Samsarix Core itself does not log call content. If the host adds logging or tracing,
-record status, duration, and an application-approved tool identifier; redact inputs,
-outputs, exception messages, and authorization material by default.
+Samsarix Core itself does not log call content. Its opt-in MCP operational events
+contain only status, duration, invocation ID, and an application-approved tool
+identifier. If the host adds other logging or tracing, redact inputs, outputs,
+exception messages, paths, tenant identifiers, and authorization material by default.
 
 ## Bound every external dependency
 

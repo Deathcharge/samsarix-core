@@ -251,10 +251,11 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   custom-transport failure propagation.
 - Added registry, batch, value-complexity, argument, and output resource budgets,
   plus observable bounded shutdown quiescence for timed-out synchronous work.
-- Proved the public MCP API, exact typed result discovery, and response-free
-  asynchronous cancellation from `samsarix-integration-examples` 0.2.2 at merge
-  commit `dd7bfb84a40537522fbe964fb1ce0d2267586854`; the consumer pins Core commit
-  `37a996bf0af4b5277990f3db6a7607ea70e14349`.
+- Proved the public MCP API, exact typed result discovery, response-free
+  asynchronous cancellation, and bounded content-free progress from
+  `samsarix-integration-examples` 0.2.3 at merge commit
+  `d8bf9c2b74a1b69ae39de16d449e674a66da7f44`; the consumer pins Core commit
+  `beda0affe0dcc54c1a4e224bed26fbcd85e9184c`.
 
 ## Deferred work and rationale
 
@@ -263,7 +264,7 @@ schema types remain deliberately deferred. They are not required for the first u
 release. One independent repository now proves the MCP boundary without needing those
 features; subsequent surface area should follow concrete consumer demand. Core's own
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/30727341629)
-is green; Core's local Python 3.11 suite has 83 tests and 94.35% branch coverage.
+is green; Core's local Python 3.11 suite has 90 tests and 94.28% branch coverage.
 The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
 reported an account billing/spending-limit problem, so its local 29-test and
 installed-wheel evidence is recorded separately in `docs/ADOPTION.md`.

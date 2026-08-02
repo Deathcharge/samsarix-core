@@ -118,6 +118,8 @@ MCPServer(
     title: str = "Samsarix Core",
     version: str = __version__,
     instructions: str | None = None,
+    enable_logging: bool = False,
+    default_log_level: str = "warning",
 )
 ```
 
@@ -125,7 +127,9 @@ MCPServer(
 
 `handle()` accepts one parsed MCP JSON-RPC message. It supports lifecycle
 initialization, `ping`, `tools/list`, `tools/call`, initialized notifications, and
-`notifications/cancelled` for active calls. A request with
+`notifications/cancelled` for active calls. With logging enabled, it advertises the
+MCP logging capability, accepts `logging/setLevel`, and can emit one content-free
+terminal `notifications/message` event per non-cancelled call. A request with
 `_meta.progressToken` can receive `notifications/progress` through the optional
 async `notification_sender`; duplicate active tokens are rejected. It negotiates
 MCP `2025-11-25` and `2025-06-18`. Application-level tool failures are successful

@@ -29,8 +29,8 @@ typed function
 - `progress.py` owns invocation-scoped async progress validation, ordering,
   resource caps, and lifecycle closure.
 - `mcp.py` owns protocol lifecycle, schema/result translation, active request
-  correlation, progress-token translation, client cancellation, and bounded
-  concurrent stdio dispatch.
+  correlation, progress-token translation, client-selected content-free operational
+  logging, client cancellation, and bounded concurrent stdio dispatch.
 - `models.py` and `errors.py` define the public boundary types.
 
 ## Trust boundaries
@@ -48,6 +48,8 @@ and business rules.
 Exception messages are redacted by default and metrics never retain tool names,
 arguments, outputs, or errors. The successful output is intentionally returned to
 the caller and must be treated according to the host application's data policy.
+Opt-in MCP operational events reuse the public tool name and result metadata but
+never copy call arguments, outputs, exception text, or validation details.
 
 ## Concurrency and timeout semantics
 
