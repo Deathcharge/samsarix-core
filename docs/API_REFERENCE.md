@@ -39,7 +39,7 @@ negotiate that capability. It does not alter direct runtime invocation.
 ToolRegistry(*, max_tools: int = 256)
 ```
 
-- `register(function, *, replace=False, max_concurrency=None) -> ToolSpec`
+- `register(function, *, replace=False) -> ToolSpec`
 - `unregister(name) -> ToolSpec`
 - `get(name) -> ToolSpec`
 - `list() -> tuple[ToolSpec, ...]`
@@ -71,7 +71,7 @@ ToolRuntime(
 )
 ```
 
-- `register(function, *, replace=False) -> ToolSpec`
+- `register(function, *, replace=False, max_concurrency=None) -> ToolSpec`
 - `await invoke(name, arguments=None, *, timeout=None, progress_handler=None) -> ToolResult`
 - `await invoke_many(calls) -> list[ToolResult]`
 - `metrics() -> RuntimeMetrics`

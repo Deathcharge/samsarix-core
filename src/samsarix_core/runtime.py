@@ -162,18 +162,22 @@ class ToolRuntime:
             if max_concurrency <= 0:
                 raise ValueError("max_concurrency must be positive")
 
-        spec = self.registry.register(function, replace=replace)
-        registered = self.registry._resolve(spec.name)
-        self._tool_semaphores = {
-            key: entry
-            for key, entry in self._tool_semaphores.items()
-            if entry[0].spec.name != spec.name
-        }
-        if max_concurrency is not None:
-            self._tool_semaphores[id(registered)] = (
-                registered,
-                asyncio.Semaphore(max_concurrency),
-            )
+        # Keep the callable registration and its deployment-local policy atomic
+        # with respect to both direct registry mutation and invocation resolution.
+        with self.registry._lock:
+            spec = self.registry.register(function, replace=replace)
+            registered = self.registry._resolve(spec.name)
+            tool_semaphores = {
+                key: entry
+                for key, entry in self._tool_semaphores.items()
+                if entry[0].spec.name != spec.name
+            }
+            if max_concurrency is not None:
+                tool_semaphores[id(registered)] = (
+                    registered,
+                    asyncio.Semaphore(max_concurrency),
+                )
+            self._tool_semaphores = tool_semaphores
         return spec
 
     async def invoke(
@@ -260,7 +264,14 @@ class ToolRuntime:
         """Resolve, validate, authorize, and execute one admitted invocation."""
 
         try:
-            registered = self.registry._resolve(name)
+            with self.registry._lock:
+                registered = self.registry._resolve(name)
+                tool_bulkhead = self._tool_semaphores.get(id(registered))
+                tool_semaphore = (
+                    tool_bulkhead[1]
+                    if tool_bulkhead is not None and tool_bulkhead[0] is registered
+                    else None
+                )
         except ToolNotFoundError:
             self._increment("not_found")
             return self._result(
@@ -271,13 +282,6 @@ class ToolRuntime:
                 started,
                 error=ToolError("tool_not_found", "Tool is not registered"),
             )
-        tool_bulkhead = self._tool_semaphores.get(id(registered))
-        tool_semaphore = (
-            tool_bulkhead[1]
-            if tool_bulkhead is not None and tool_bulkhead[0] is registered
-            else None
-        )
-
         try:
             supplied_arguments = arguments if arguments is not None else {}
             enforce_value_limits(

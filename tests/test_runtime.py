@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import Literal, TypedDict
 
@@ -721,6 +723,49 @@ async def test_replacing_a_tool_does_not_inherit_its_previous_bulkhead() -> None
 
     assert [result.output for result in results] == [1, 2]
     assert peak == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_registrations_publish_every_tool_bulkhead() -> None:
+    tool_count = 16
+    active = [0] * tool_count
+    peaks = [0] * tool_count
+
+    def build_tool(index: int) -> Callable[[], Awaitable[int]]:
+        @helix_tool(name=f"concurrent_{index}")
+        async def concurrent_tool() -> int:
+            """Track one concurrently registered tool's execution limit."""
+
+            active[index] += 1
+            peaks[index] = max(peaks[index], active[index])
+            try:
+                await asyncio.sleep(0.01)
+                return index
+            finally:
+                active[index] -= 1
+
+        return concurrent_tool
+
+    runtime = ToolRuntime(max_concurrency=tool_count * 2)
+    functions = [build_tool(index) for index in range(tool_count)]
+    try:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            registrations = [
+                executor.submit(runtime.register, function, max_concurrency=1)
+                for function in functions
+            ]
+            assert {future.result().name for future in registrations} == {
+                f"concurrent_{index}" for index in range(tool_count)
+            }
+
+        results = await runtime.invoke_many(
+            [ToolCall(f"concurrent_{index}", {}) for index in range(tool_count) for _ in range(2)]
+        )
+    finally:
+        await runtime.aclose()
+
+    assert all(result.success for result in results)
+    assert peaks == [1] * tool_count
 
 
 @pytest.mark.asyncio
