@@ -268,8 +268,8 @@ All public models are frozen, slotted dataclasses.
 - `ToolLifecycleHandler`: synchronous lifecycle callback type alias.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
 - `ToolProgress`: numeric progress, optional total, and optional human-readable message.
-- `RuntimeMetrics`: content-free counters only, including policy denials, per-tool
-  throttling, and runtime saturation.
+- `RuntimeMetrics`: content-free counters only, including policy denials, aggregate
+  process-wide rate-limit rejections, and runtime saturation.
 - `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `denied`, `busy`,
   `rate_limited`, `timed_out`, `failed`, and `runtime_closed`.
 - `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.

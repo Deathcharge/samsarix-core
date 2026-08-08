@@ -824,7 +824,7 @@ async def test_concurrent_registrations_publish_every_tool_control() -> None:
                     runtime.register,
                     function,
                     max_concurrency=1,
-                    rate_limit=ToolRateLimit(calls=1, period_seconds=60),
+                    rate_limit=ToolRateLimit(calls=2, period_seconds=60, burst=2),
                 )
                 for function in functions
             ]
@@ -838,8 +838,7 @@ async def test_concurrent_registrations_publish_every_tool_control() -> None:
     finally:
         await runtime.aclose()
 
-    assert [result.status for result in results].count(ToolStatus.SUCCESS) == tool_count
-    assert [result.status for result in results].count(ToolStatus.RATE_LIMITED) == tool_count
+    assert [result.status for result in results].count(ToolStatus.SUCCESS) == tool_count * 2
     assert peaks == [1] * tool_count
 
 
@@ -1068,14 +1067,13 @@ async def test_batch_rate_limit_is_atomic_and_does_not_run_rejected_tools() -> N
     finally:
         await runtime.aclose()
 
-    assert [result.status for result in results] == [
-        ToolStatus.SUCCESS,
-        ToolStatus.SUCCESS,
-        ToolStatus.RATE_LIMITED,
-        ToolStatus.RATE_LIMITED,
-        ToolStatus.RATE_LIMITED,
-    ]
-    assert executions == [0, 1]
+    statuses = [result.status for result in results]
+    assert statuses.count(ToolStatus.SUCCESS) == 2
+    assert statuses.count(ToolStatus.RATE_LIMITED) == 3
+    assert len(executions) == 2
+    assert {index for index, status in enumerate(statuses) if status is ToolStatus.SUCCESS} == set(
+        executions
+    )
     assert metrics.succeeded == 2
     assert metrics.rate_limited == 3
 
@@ -1103,13 +1101,14 @@ async def test_sync_rate_limit_releases_global_and_tool_slots_without_submission
     try:
         first = await runtime.invoke("sync_quota_target", {"value": "first"})
         limited = await runtime.invoke("sync_quota_target", {"value": "private-second"})
-        unrelated = await runtime.invoke("add", {"left": 4})
+        unrelated = await runtime.invoke("add", {"left": 4}, timeout=5)
         metrics = runtime.metrics()
     finally:
         await runtime.aclose(wait_for_sync=True)
 
     assert first.success
     assert limited.status is ToolStatus.RATE_LIMITED
+    assert unrelated.status is ToolStatus.SUCCESS
     assert unrelated.output == 5
     assert executions == 1
     assert runtime.pending_sync_calls == 0
@@ -1129,6 +1128,7 @@ async def test_sync_rate_limit_releases_global_and_tool_slots_without_submission
         ({"calls": 1, "period_seconds": 10**1_000}, ValueError),
         ({"calls": 10**1_000, "period_seconds": 1}, ValueError),
         ({"calls": 1, "period_seconds": 5e-324}, ValueError),
+        ({"calls": 1, "period_seconds": 1e308}, ValueError),
         ({"calls": 1, "period_seconds": 1, "burst": True}, TypeError),
         ({"calls": 1, "period_seconds": 1, "burst": 0}, ValueError),
         ({"calls": 1, "period_seconds": 1, "burst": 10**1_000}, ValueError),

@@ -4,7 +4,7 @@
 
 ### Added
 
-- opt-in deployment-local per-tool token buckets with explicit sustained rate and
+- opt-in process-local per-tool token buckets with explicit sustained rate and
   burst capacity, safe retry delays, content-free rejection metrics and lifecycle
   events, and consistent direct, batch, MCP, and task behavior.
 

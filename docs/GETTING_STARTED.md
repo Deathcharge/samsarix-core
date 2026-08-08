@@ -87,12 +87,13 @@ configure the exact registration rather than slowing unrelated tools:
 ```python
 from samsarix_core import ToolRateLimit
 
-quota_runtime = ToolRuntime(max_concurrency=8)
-quota_runtime.register(
-    greet,
-    max_concurrency=2,
-    rate_limit=ToolRateLimit(calls=30, period_seconds=60, burst=3),
-)
+async with ToolRuntime(max_concurrency=8) as quota_runtime:
+    quota_runtime.register(
+        greet,
+        max_concurrency=2,
+        rate_limit=ToolRateLimit(calls=30, period_seconds=60, burst=3),
+    )
+    result = await quota_runtime.invoke("greet", {"name": "Ada"})
 ```
 
 An empty bucket returns the retryable `rate_limited` result without running the tool.

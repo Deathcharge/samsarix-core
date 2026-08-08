@@ -186,6 +186,7 @@ exception. It returns a `ToolResult` with one of these states:
 - `invalid_arguments`
 - `denied`
 - `busy`
+- `rate_limited`
 - `timed_out`
 - `failed`
 - `runtime_closed`
