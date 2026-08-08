@@ -228,10 +228,11 @@ calls cannot consume all eight slots and starve `health_check`. The same deploym
 limit covers direct, batch, MCP, and MCP task calls without becoming discoverable tool
 metadata. The invocation timeout includes bulkhead waiting, and the overall
 `max_pending_invocations` cap still bounds every waiter.
-The independent token bucket permits five immediate warehouse starts and refills at one
-call per second. An empty bucket returns retryable status `rate_limited` with a safe
-`retry_after_ms` hint and never runs the tool. The bucket is process-local deployment
-policy, not tenant fairness or a distributed quota service. See
+The independent token bucket admits five warehouse starts before any refill is needed
+and then refills at one call per second; `max_concurrency=2` still permits at most two
+warehouse calls to execute concurrently. An empty bucket returns retryable status
+`rate_limited` with a safe `retry_after_ms` hint and never runs the tool. The bucket is
+process-local deployment policy, not tenant fairness or a distributed quota service. See
 [per-tool rate limits](docs/RATE_LIMITS.md).
 
 Hosts can attach a synchronous `lifecycle_handler` to receive paired, immutable start
