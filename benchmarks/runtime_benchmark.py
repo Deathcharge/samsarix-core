@@ -17,6 +17,7 @@ from typing import Any
 from samsarix_core import (
     ToolCall,
     ToolLifecycleEvent,
+    ToolRateLimit,
     ToolRuntime,
     __version__,
     samsarix_tool,
@@ -88,6 +89,26 @@ async def benchmark(iterations: int, batch_size: int) -> dict[str, Any]:
             f"expected {expected_lifecycle_events} lifecycle events, saw {lifecycle_events}"
         )
 
+    rate_warmup = min(iterations, 100)
+    rate_capacity = rate_warmup + iterations
+    rate_runtime = ToolRuntime(max_batch_size=batch_size)
+    rate_runtime.register(
+        increment,
+        rate_limit=ToolRateLimit(
+            calls=rate_capacity,
+            period_seconds=1,
+            burst=rate_capacity,
+        ),
+    )
+    try:
+        for value in range(rate_warmup):
+            await rate_runtime.invoke("increment", {"value": value})
+        async_rate_controlled = await measure_sequential(rate_runtime, "increment", iterations)
+        if rate_runtime.metrics().rate_limited:
+            raise RuntimeError("full token bucket unexpectedly rejected a benchmark call")
+    finally:
+        await rate_runtime.aclose()
+
     return {
         "environment": {
             "implementation": platform.python_implementation(),
@@ -98,6 +119,7 @@ async def benchmark(iterations: int, batch_size: int) -> dict[str, Any]:
         "settings": {"batch_size": batch_size, "iterations": iterations},
         "async_sequential": async_sequential,
         "async_sequential_noop_lifecycle": async_observed,
+        "async_sequential_full_rate_bucket": async_rate_controlled,
         "lifecycle_events_observed": lifecycle_events,
         "sync_sequential": sync_sequential,
         "async_single_batch": async_batch,

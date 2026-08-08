@@ -1,6 +1,6 @@
 # API reference
 
-This page describes the complete supported API in the `2.0.0a5` alpha. Imports not exposed
+This page describes the complete supported API on `main` after `2.0.0a5`. Imports not exposed
 from `samsarix_core.__all__` are internal.
 
 ## `samsarix_tool`
@@ -72,7 +72,7 @@ ToolRuntime(
 )
 ```
 
-- `register(function, *, replace=False, max_concurrency=None) -> ToolSpec`
+- `register(function, *, replace=False, max_concurrency=None, rate_limit=None) -> ToolSpec`
 - `await invoke(name, arguments=None, *, timeout=None, progress_handler=None) -> ToolResult`
 - `await invoke_many(calls) -> list[ToolResult]`
 - `metrics() -> RuntimeMetrics`
@@ -107,6 +107,20 @@ its waiters are covered by `max_pending_invocations`. Replacing a tool without s
 a limit makes the replacement unbounded apart from the runtime-wide cap. Booleans and
 non-integers raise `TypeError`; non-positive integers raise `ValueError` before the tool
 is registered.
+
+`register(..., rate_limit=ToolRateLimit(calls=N, period_seconds=S, burst=B))` adds a
+process-local token bucket to the exact registration. `calls / period_seconds` is the
+sustained refill rate; `burst` is the bucket capacity and defaults to `calls`. Core
+checks the bucket immediately before a tool starts, after policy and concurrency-slot
+acquisition, and never waits for a token. An empty bucket returns status `rate_limited`,
+safe retryable code `tool_rate_limited`, and numeric `details.retry_after_ms`; no tool
+code runs. Invalid arguments, missing tools, and policy denials do not consume tokens.
+Replacement resets the operational policy and removes the limit unless a new one is
+supplied. The same bucket covers direct, batch, MCP, and task-augmented calls but is not
+part of `ToolSpec` or discovery. It is not a distributed, durable, per-client, or
+per-tenant quota. Token counts are positive integers no larger than `2**53 - 1`; the
+period and derived refill/retry magnitudes must be positive and finite. See
+[Per-tool rate limits](RATE_LIMITS.md).
 
 Argument and output sizes are the UTF-8 byte length of compact JSON. The root is
 depth zero; every child increments depth. Each container and scalar is one node,
@@ -238,6 +252,9 @@ All public models are frozen, slotted dataclasses.
   async state, optional title, read-only/destructive/idempotent/open-world hints,
   and MCP task-support mode.
 - `ToolCall`: name, arguments, and optional timeout override.
+- `ToolRateLimit`: positive token allocation, finite refill period, and optional burst
+  capacity. `burst_capacity` resolves the default and `to_dict()` returns normalized
+  deployment-local configuration.
 - `ToolPolicyContext`: invocation ID plus detached validated arguments and tool spec;
   unlike result models, it intentionally has no serialization helper.
 - `ToolPolicyDecision`: explicit `allow` or `deny` policy outcome.
@@ -251,14 +268,14 @@ All public models are frozen, slotted dataclasses.
 - `ToolLifecycleHandler`: synchronous lifecycle callback type alias.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
 - `ToolProgress`: numeric progress, optional total, and optional human-readable message.
-- `RuntimeMetrics`: content-free counters only, including policy denials and runtime
-  saturation.
+- `RuntimeMetrics`: content-free counters only, including policy denials, aggregate
+  process-wide rate-limit rejections, and runtime saturation.
 - `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `denied`, `busy`,
-  `timed_out`, `failed`, and `runtime_closed`.
+  `rate_limited`, `timed_out`, `failed`, and `runtime_closed`.
 - `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.
 
-`ToolSpec`, `ToolResult`, `ToolError`, `ToolLifecycleEvent`, and `RuntimeMetrics`
-provide `to_dict()`.
+`ToolSpec`, `ToolRateLimit`, `ToolResult`, `ToolError`, `ToolLifecycleEvent`, and
+`RuntimeMetrics` provide `to_dict()`.
 
 ## Supported annotations
 

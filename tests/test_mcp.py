@@ -18,6 +18,7 @@ from samsarix_core import (
     ToolLifecycleStatus,
     ToolPolicyContext,
     ToolPolicyDecision,
+    ToolRateLimit,
     ToolRuntime,
     report_progress,
     samsarix_tool,
@@ -531,6 +532,64 @@ async def test_mcp_exposes_safe_retryable_runtime_overload() -> None:
     assert completed.output == "first"
     assert runtime.metrics().busy == 1
     assert "private-overload-value" not in json.dumps(response)
+
+
+@pytest.mark.asyncio
+async def test_mcp_exposes_safe_retryable_per_tool_rate_limit() -> None:
+    executions: list[str] = []
+
+    @samsarix_tool
+    async def quota_target(value: str) -> str:
+        """Represent one call to a rate-constrained API."""
+
+        executions.append(value)
+        return value
+
+    runtime = ToolRuntime()
+    runtime._rate_limit_clock = lambda: 25.0
+    runtime.register(
+        quota_target,
+        rate_limit=ToolRateLimit(calls=1, period_seconds=30),
+    )
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        first = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "first-quota-call",
+                "method": "tools/call",
+                "params": {"name": "quota_target", "arguments": {"value": "first"}},
+            }
+        )
+        limited = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "limited-quota-call",
+                "method": "tools/call",
+                "params": {
+                    "name": "quota_target",
+                    "arguments": {"value": "private-rate-limit-value"},
+                },
+            }
+        )
+    finally:
+        await server.aclose()
+
+    assert first is not None and first["result"]["isError"] is False
+    assert limited is not None and limited["result"]["isError"] is True
+    assert limited["result"]["_meta"]["com.samsarix/status"] == "rate_limited"
+    assert json.loads(limited["result"]["content"][0]["text"]) == {
+        "error": {
+            "code": "tool_rate_limited",
+            "message": "Tool invocation rate limit is temporarily exhausted",
+            "retryable": True,
+            "details": {"retry_after_ms": 30000},
+        }
+    }
+    assert executions == ["first"]
+    assert runtime.metrics().rate_limited == 1
+    assert "private-rate-limit-value" not in json.dumps(limited)
 
 
 @pytest.mark.asyncio

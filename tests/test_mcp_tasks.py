@@ -13,6 +13,7 @@ from samsarix_core import (
     MCPServer,
     ToolPolicyContext,
     ToolPolicyDecision,
+    ToolRateLimit,
     ToolRuntime,
     report_progress,
     samsarix_tool,
@@ -543,6 +544,81 @@ async def test_task_policy_denial_retains_only_a_safe_failed_result() -> None:
     assert executed is False
     assert runtime.metrics().denied == 1
     assert "private-record" not in json.dumps([created, state, result])
+
+
+@pytest.mark.asyncio
+async def test_task_rate_limit_retains_retryable_safe_terminal_result() -> None:
+    executions: list[str] = []
+
+    @samsarix_tool(task_support="optional")
+    async def quota_job(value: str) -> str:
+        """Represent a task-wrapped call to a rate-constrained API."""
+
+        executions.append(value)
+        return value
+
+    runtime = ToolRuntime()
+    runtime._rate_limit_clock = lambda: 15.0
+    runtime.register(
+        quota_job,
+        rate_limit=ToolRateLimit(calls=1, period_seconds=20),
+    )
+    server = MCPServer(runtime, enable_tasks=True)
+    try:
+        await initialize(server)
+        first_create = await request(
+            server,
+            "create-first-quota",
+            "tools/call",
+            {"name": "quota_job", "arguments": {"value": "first"}, "task": {}},
+        )
+        first_result = await request(
+            server,
+            "result-first-quota",
+            "tasks/result",
+            {"taskId": task_id(first_create)},
+        )
+        limited_create = await request(
+            server,
+            "create-limited-quota",
+            "tools/call",
+            {
+                "name": "quota_job",
+                "arguments": {"value": "private-task-rate-value"},
+                "task": {},
+            },
+        )
+        identifier = task_id(limited_create)
+        limited_result = await request(
+            server,
+            "result-limited-quota",
+            "tasks/result",
+            {"taskId": identifier},
+        )
+        limited_state = await request(
+            server,
+            "state-limited-quota",
+            "tasks/get",
+            {"taskId": identifier},
+        )
+    finally:
+        await server.aclose()
+
+    assert first_result["result"]["isError"] is False
+    assert limited_state["result"]["status"] == "failed"
+    assert limited_result["result"]["isError"] is True
+    assert limited_result["result"]["_meta"]["com.samsarix/status"] == "rate_limited"
+    assert json.loads(limited_result["result"]["content"][0]["text"])["error"] == {
+        "code": "tool_rate_limited",
+        "message": "Tool invocation rate limit is temporarily exhausted",
+        "retryable": True,
+        "details": {"retry_after_ms": 20000},
+    }
+    assert executions == ["first"]
+    assert runtime.metrics().rate_limited == 1
+    assert "private-task-rate-value" not in json.dumps(
+        [limited_create, limited_state, limited_result]
+    )
 
 
 def test_task_configuration_and_metadata_validation() -> None:

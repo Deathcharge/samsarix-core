@@ -17,6 +17,7 @@ invocation: incoming call
     -> ToolRuntime argument validation
     -> optional bounded host policy decision
     -> optional per-tool execution bulkhead
+    -> optional per-tool token-bucket start check
     -> bounded async or thread-pool execution
     -> optional invocation-scoped progress handler
     -> output validation and resource preflight
@@ -32,8 +33,9 @@ invocation: incoming call
   iterative resource checks, strict input validation, and JSON normalization.
 - `registry.py` stores a capped set of compiled callable contracts behind a small
   thread-safe map.
-- `runtime.py` owns concurrency, the sync thread pool, timeouts, cancellation,
-  exception redaction, batch workers, lifecycle, and content-free counters.
+- `runtime.py` owns concurrency, process-local per-tool rate controls, the sync thread
+  pool, timeouts, cancellation, exception redaction, batch workers, lifecycle, and
+  content-free counters.
 - `progress.py` owns invocation-scoped async progress validation, ordering,
   resource caps, and lifecycle closure.
 - `_mcp_tasks.py` owns finite in-memory task retention, secure identifiers, TTL
@@ -94,12 +96,21 @@ run in a private `ThreadPoolExecutor` whose worker count equals
 global and per-tool semaphores still bound execution. This prevents workers queued on
 one constrained tool from head-of-line blocking unrelated calls that fit within the
 batch's available pending capacity.
+
+An exact registration may also own an event-loop-local token bucket. After validation,
+policy, and concurrency acquisition, the runtime checks one token immediately before
+starting tool code. It never waits for a token. Rejection releases the acquired slots,
+returns safe retry metadata, increments a content-free counter, and does not submit sync
+work. Policy denials and calls cancelled before execution controls are acquired do not
+consume tokens; a token is not refunded after execution may have started. Replacement
+discards the old bucket. The limiter uses a monotonic clock and has no content-bearing
+keys, but each process owns independent state.
 Registry and batch caps bound catalog and fan-out growth; per-value byte,
 depth, and node limits bound validation work. The stdio adapter separately caps
 admitted tool-call and blocking task-result coroutines so cancellation can remain
 responsive without creating an unbounded wait queue. The task store independently
-caps retained entries and TTL. These controls do not replace host-level request-rate
-limits, per-principal admission, or tenant quotas.
+caps retained entries and TTL. Process-local buckets do not replace shared rate limits,
+per-principal admission, authenticated tenant quotas, or gateway abuse controls.
 
 A second semaphore bounds async policy evaluations to `max_concurrency`. The caller's
 invocation timeout covers the policy wait, decision, execution-slot wait, and tool work.

@@ -21,6 +21,7 @@ from samsarix_core import (
     ToolPolicyContext,
     ToolPolicyDecision,
     ToolProgress,
+    ToolRateLimit,
     ToolResult,
     ToolRuntime,
     ToolStatus,
@@ -735,6 +736,16 @@ def test_per_tool_concurrency_is_validated_before_registration(
         asyncio.run(runtime.aclose())
 
 
+def test_per_tool_rate_limit_type_is_validated_before_registration() -> None:
+    runtime = ToolRuntime()
+    try:
+        with pytest.raises(TypeError, match="ToolRateLimit"):
+            runtime.register(add, rate_limit={"calls": 1})  # type: ignore[arg-type]
+        assert "add" not in runtime.registry
+    finally:
+        asyncio.run(runtime.aclose())
+
+
 @pytest.mark.asyncio
 async def test_replacing_a_tool_does_not_inherit_its_previous_bulkhead() -> None:
     active = 0
@@ -760,7 +771,14 @@ async def test_replacing_a_tool_does_not_inherit_its_previous_bulkhead() -> None
             active -= 1
 
     runtime = ToolRuntime(max_concurrency=2)
-    runtime.register(original, max_concurrency=1)
+    runtime._rate_limit_clock = lambda: 1.0
+    runtime.register(
+        original,
+        max_concurrency=1,
+        rate_limit=ToolRateLimit(calls=1, period_seconds=60),
+    )
+    assert (await runtime.invoke("replaceable", {"value": 0})).success
+    assert (await runtime.invoke("replaceable", {"value": 0})).status is (ToolStatus.RATE_LIMITED)
     runtime.register(replacement, replace=True)
     try:
         results = await runtime.invoke_many(
@@ -777,7 +795,7 @@ async def test_replacing_a_tool_does_not_inherit_its_previous_bulkhead() -> None
 
 
 @pytest.mark.asyncio
-async def test_concurrent_registrations_publish_every_tool_bulkhead() -> None:
+async def test_concurrent_registrations_publish_every_tool_control() -> None:
     tool_count = 16
     active = [0] * tool_count
     peaks = [0] * tool_count
@@ -802,7 +820,12 @@ async def test_concurrent_registrations_publish_every_tool_bulkhead() -> None:
     try:
         with ThreadPoolExecutor(max_workers=8) as executor:
             registrations = [
-                executor.submit(runtime.register, function, max_concurrency=1)
+                executor.submit(
+                    runtime.register,
+                    function,
+                    max_concurrency=1,
+                    rate_limit=ToolRateLimit(calls=2, period_seconds=60, burst=2),
+                )
                 for function in functions
             ]
             assert {future.result().name for future in registrations} == {
@@ -815,7 +838,7 @@ async def test_concurrent_registrations_publish_every_tool_bulkhead() -> None:
     finally:
         await runtime.aclose()
 
-    assert all(result.success for result in results)
+    assert [result.status for result in results].count(ToolStatus.SUCCESS) == tool_count * 2
     assert peaks == [1] * tool_count
 
 
@@ -915,6 +938,214 @@ async def test_batch_uses_pending_capacity_as_its_worker_bound() -> None:
     assert all(result.status is ToolStatus.SUCCESS for result in results)
     assert metrics.busy == 0
     assert metrics.peak_pending_invocations == 1
+
+
+@pytest.mark.asyncio
+async def test_per_tool_rate_limit_returns_safe_retry_metadata_and_refills() -> None:
+    now = 100.0
+    executions: list[str] = []
+    events: list[ToolLifecycleEvent] = []
+
+    @helix_tool
+    async def quota_target(value: str) -> str:
+        """Represent one request to a quota-constrained dependency."""
+
+        executions.append(value)
+        return value
+
+    runtime = ToolRuntime(lifecycle_handler=events.append)
+    runtime._rate_limit_clock = lambda: now
+    runtime.register(
+        quota_target,
+        rate_limit=ToolRateLimit(calls=2, period_seconds=10, burst=2),
+    )
+    try:
+        first = await runtime.invoke("quota_target", {"value": "first"})
+        second = await runtime.invoke("quota_target", {"value": "second"})
+        limited = await runtime.invoke("quota_target", {"value": "private-third"})
+        now += 5
+        refilled = await runtime.invoke("quota_target", {"value": "refilled"})
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    assert first.success and second.success and refilled.success
+    assert limited.status is ToolStatus.RATE_LIMITED
+    assert limited.error is not None
+    assert limited.error.to_dict() == {
+        "code": "tool_rate_limited",
+        "message": "Tool invocation rate limit is temporarily exhausted",
+        "retryable": True,
+        "details": {"retry_after_ms": 5000},
+    }
+    assert "private-third" not in str(limited.to_dict())
+    assert executions == ["first", "second", "refilled"]
+    assert metrics.calls_total == 4
+    assert metrics.succeeded == 3
+    assert metrics.rate_limited == 1
+    assert metrics.pending_invocations == 0
+    assert metrics.in_flight == 0
+    assert metrics.to_dict()["rate_limited"] == 1
+    assert [event.status for event in events] == [
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.SUCCESS,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.SUCCESS,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.RATE_LIMITED,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.SUCCESS,
+    ]
+    assert "private-third" not in str([event.to_dict() for event in events])
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_counts_execution_starts_after_policy_allows() -> None:
+    executions = 0
+    decisions: list[str] = []
+
+    @helix_tool
+    async def policy_quota_target(label: str) -> str:
+        """Run only when policy and the deployment-local quota allow it."""
+
+        nonlocal executions
+        executions += 1
+        return label
+
+    async def policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        label = context.arguments["label"]
+        assert isinstance(label, str)
+        decisions.append(label)
+        return ToolPolicyDecision.DENY if label == "deny" else ToolPolicyDecision.ALLOW
+
+    runtime = ToolRuntime(policy=policy)
+    runtime._rate_limit_clock = lambda: 10.0
+    runtime.register(
+        policy_quota_target,
+        rate_limit=ToolRateLimit(calls=1, period_seconds=60),
+    )
+    try:
+        denied = await runtime.invoke("policy_quota_target", {"label": "deny"})
+        allowed = await runtime.invoke("policy_quota_target", {"label": "allowed"})
+        limited = await runtime.invoke("policy_quota_target", {"label": "private-limited"})
+    finally:
+        await runtime.aclose()
+
+    assert denied.status is ToolStatus.DENIED
+    assert allowed.status is ToolStatus.SUCCESS
+    assert limited.status is ToolStatus.RATE_LIMITED
+    assert executions == 1
+    assert decisions == ["deny", "allowed", "private-limited"]
+    assert limited.error is not None
+    assert limited.error.details == {"retry_after_ms": 60000}
+    assert "private-limited" not in str(limited.to_dict())
+
+
+@pytest.mark.asyncio
+async def test_batch_rate_limit_is_atomic_and_does_not_run_rejected_tools() -> None:
+    executions: list[int] = []
+
+    @helix_tool
+    async def batch_quota_target(value: int) -> int:
+        """Track starts across a concurrent batch."""
+
+        executions.append(value)
+        await asyncio.sleep(0)
+        return value
+
+    runtime = ToolRuntime(max_concurrency=5)
+    runtime._rate_limit_clock = lambda: 5.0
+    runtime.register(
+        batch_quota_target,
+        rate_limit=ToolRateLimit(calls=2, period_seconds=60, burst=2),
+    )
+    try:
+        results = await runtime.invoke_many(
+            [ToolCall("batch_quota_target", {"value": value}) for value in range(5)]
+        )
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    statuses = [result.status for result in results]
+    assert statuses.count(ToolStatus.SUCCESS) == 2
+    assert statuses.count(ToolStatus.RATE_LIMITED) == 3
+    assert len(executions) == 2
+    assert {index for index, status in enumerate(statuses) if status is ToolStatus.SUCCESS} == set(
+        executions
+    )
+    assert metrics.succeeded == 2
+    assert metrics.rate_limited == 3
+
+
+@pytest.mark.asyncio
+async def test_sync_rate_limit_releases_global_and_tool_slots_without_submission() -> None:
+    executions = 0
+
+    @helix_tool
+    def sync_quota_target(value: str) -> str:
+        """Represent a synchronous quota-constrained call."""
+
+        nonlocal executions
+        executions += 1
+        return value
+
+    runtime = ToolRuntime(max_concurrency=1)
+    runtime._rate_limit_clock = lambda: 50.0
+    runtime.register(
+        sync_quota_target,
+        max_concurrency=1,
+        rate_limit=ToolRateLimit(calls=1, period_seconds=60),
+    )
+    runtime.register(add)
+    try:
+        first = await runtime.invoke("sync_quota_target", {"value": "first"})
+        limited = await runtime.invoke("sync_quota_target", {"value": "private-second"})
+        unrelated = await runtime.invoke("add", {"left": 4}, timeout=5)
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose(wait_for_sync=True)
+
+    assert first.success
+    assert limited.status is ToolStatus.RATE_LIMITED
+    assert unrelated.status is ToolStatus.SUCCESS
+    assert unrelated.output == 5
+    assert executions == 1
+    assert runtime.pending_sync_calls == 0
+    assert metrics.in_flight == 0
+    assert "private-second" not in str(limited.to_dict())
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        ({"calls": True, "period_seconds": 1}, TypeError),
+        ({"calls": 0, "period_seconds": 1}, ValueError),
+        ({"calls": 1, "period_seconds": True}, TypeError),
+        ({"calls": 1, "period_seconds": 0}, ValueError),
+        ({"calls": 1, "period_seconds": math.inf}, ValueError),
+        ({"calls": 1, "period_seconds": math.nan}, ValueError),
+        ({"calls": 1, "period_seconds": 10**1_000}, ValueError),
+        ({"calls": 10**1_000, "period_seconds": 1}, ValueError),
+        ({"calls": 1, "period_seconds": 5e-324}, ValueError),
+        ({"calls": 1, "period_seconds": 1e308}, ValueError),
+        ({"calls": 1, "period_seconds": 1, "burst": True}, TypeError),
+        ({"calls": 1, "period_seconds": 1, "burst": 0}, ValueError),
+        ({"calls": 1, "period_seconds": 1, "burst": 10**1_000}, ValueError),
+    ],
+)
+def test_tool_rate_limit_configuration_is_validated(
+    kwargs: dict[str, object], error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        ToolRateLimit(**kwargs)  # type: ignore[arg-type]
+
+
+def test_tool_rate_limit_normalizes_its_default_burst() -> None:
+    limit = ToolRateLimit(calls=3, period_seconds=2)
+
+    assert limit.burst_capacity == 3
+    assert limit.to_dict() == {"calls": 3, "period_seconds": 2.0, "burst": 3}
 
 
 @pytest.mark.asyncio

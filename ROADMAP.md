@@ -33,6 +33,9 @@ remain separate decisions.
 - Tool registrations can apply deployment-local concurrency bulkheads before the
   global execution semaphore, preventing one slow or quota-constrained dependency
   from starving unrelated tools across direct, batch, MCP, and task invocation.
+- Tool registrations can also apply process-local token buckets immediately before
+  execution, protecting sustained downstream request quotas with safe retry hints
+  without treating the runtime as a distributed or per-tenant quota service.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.

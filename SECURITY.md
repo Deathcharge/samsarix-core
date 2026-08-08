@@ -42,7 +42,8 @@ details may be disclosed to a caller.
 - Tool definitions reject ambiguous or unsupported contracts before registration.
 - Invocation arguments are validated before execution; unexpected arguments are
   rejected and outputs are validated against the declared contract.
-- Runtime concurrency and synchronous worker count remain bounded by configuration.
+- Runtime concurrency and synchronous worker count remain bounded by configuration;
+  opt-in per-tool token buckets bound starts over time within one runtime process.
 - Exception messages are redacted by default and runtime metrics retain no tool
   names, arguments, outputs, or exception content.
 - Caller cancellation propagates, and a closed runtime rejects new invocations.
@@ -71,8 +72,9 @@ concrete impact to the host process or its data.
 - Continued execution of an already-started synchronous callable after its result
   times out, unless a separate flaw defeats the documented concurrency or lifecycle
   bounds and materially amplifies the impact.
-- Missing network admission, payload-size, or request-rate controls in a host
-  application. Implementation-level resource exhaustion from realistically
+- Missing network admission, payload-size, authenticated per-principal, or distributed
+  request-rate controls in a host application. Core's local per-tool bucket is not a
+  network abuse control. Implementation-level resource exhaustion from realistically
   bounded input remains in scope.
 - Automated scanner output without a reproducible supported-code impact.
 
@@ -83,5 +85,5 @@ their own downstream I/O deadlines and make side effects safe when callers may
 retry. Untrusted code requires a separate process or sandbox boundary.
 
 The supported type-hint subset is deliberately narrower than Python's complete
-typing language. Remote hosts must add their own request-size, rate, identity, and
-authorization controls before invoking tools.
+typing language. Remote hosts must add their own request-size, shared/per-principal
+rate, identity, and authorization controls before invoking tools.

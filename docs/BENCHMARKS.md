@@ -13,6 +13,10 @@ path separately as `async_sequential_noop_lifecycle`. Compare it with
 `async_sequential` on the same run to estimate event construction and callback overhead;
 it does not model network export.
 
+The benchmark also repeats that path through a full per-tool token bucket and reports
+`async_sequential_full_rate_bucket`. It verifies zero throttled calls, so the comparison
+isolates local refill/check overhead rather than retry or downstream behavior.
+
 Run it from an installed development checkout:
 
 ```bash
