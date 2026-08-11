@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a6` release checksums, provenance, and clean installed-wheel
+  rate-limit recovery evidence.
+
 ## 2.0.0a6 - 2026-08-10
 
 ### Added

@@ -82,7 +82,7 @@ remain separate decisions.
 - [x] Publish immutable GitHub prerelease `v2.0.0a5` with privacy-safe lifecycle
   observability, independent consumer, clean-install, checksum, and SLSA provenance
   evidence.
-- [ ] Publish immutable GitHub prerelease `v2.0.0a6` with per-tool rate limiting,
+- [x] Publish immutable GitHub prerelease `v2.0.0a6` with per-tool rate limiting,
   independent consumer, clean-install, checksum, and SLSA provenance evidence.
 
 ## Samsarix adoption
