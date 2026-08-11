@@ -93,7 +93,7 @@ remain separate decisions.
   independent consumer, clean-install, checksum, and SLSA provenance evidence.
 - [x] Prove independent consumer adoption for the per-tool circuit-breaker contract
   after exact-head review and clean-wheel evidence.
-- [ ] Publish immutable GitHub prerelease `v2.0.0a7` with per-tool circuit breaking,
+- [x] Publish immutable GitHub prerelease `v2.0.0a7` with per-tool circuit breaking,
   independent consumer, clean-install, checksum, and SLSA provenance evidence.
 
 ## Samsarix adoption

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a7` release checksums, provenance, and clean
+  installed-wheel circuit-breaker recovery evidence.
+
 ## 2.0.0a7 - 2026-08-11
 
 ### Added

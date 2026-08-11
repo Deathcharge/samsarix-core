@@ -42,15 +42,15 @@ accounts, no API keys, no external service, and no hosted operating cost.
 Python 3.10 or newer is required.
 
 The latest published immutable prerelease is
-[`v2.0.0a6`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a6),
+[`v2.0.0a7`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a7),
 with an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a6 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a6-py3-none-any.whl \
+gh release download v2.0.0a7 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a7-py3-none-any.whl \
   --repo Deathcharge/samsarix-core
-python -m pip install samsarix_core-2.0.0a6-py3-none-any.whl
+python -m pip install samsarix_core-2.0.0a7-py3-none-any.whl
 ```
 
 For a source checkout instead:
