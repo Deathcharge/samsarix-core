@@ -7,9 +7,9 @@ volume, or service-level commitment.
 
 The latest published `2.0.0a5` prerelease has independently verified artifacts and
 installed-wheel lifecycle behavior. The repository consumer below pins the merged
-lifecycle-observability commit immediately before the release metadata commit, so its
-exact Git installation reports package metadata `2.0.0a4`. Release verification is not
-presented as consumer-adoption evidence.
+per-tool rate-limit commit after that release, so its exact Git installation reports
+package metadata `2.0.0a5`. The `2.0.0a6` candidate incorporates that contract; release
+verification is tracked separately and is not presented as consumer-adoption evidence.
 
 ## Privacy-first redaction MCP consumer
 
@@ -18,15 +18,15 @@ Repository:
 
 | Evidence | Value |
 | --- | --- |
-| Core contract commit | `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90` |
-| Core package metadata at pinned commit | `2.0.0a4` |
-| Consumer merge commit | `0455b7a16e0309ba295c0ddd8ad3776d709ea782` |
-| Consumer pull request | [samsarix-integration-examples#13](https://github.com/Deathcharge/samsarix-integration-examples/pull/13) |
-| Consumer package version | `0.2.10` |
+| Core contract commit | `6492495a426b1ae9856bf27f331d7cfec67006e6` |
+| Core package metadata at pinned commit | `2.0.0a5` |
+| Consumer merge commit | `a446c4a80295928e6161627a8c03cc2bca4a8f27` |
+| Consumer pull request | [samsarix-integration-examples#14](https://github.com/Deathcharge/samsarix-integration-examples/pull/14) |
+| Consumer package version | `0.2.11` |
 | Integration Guard provenance | [`samsarix-integration-guard`](https://github.com/Deathcharge/samsarix-integration-guard) `0.2.0` at `1aa711d89eaedcc396f0cd6eb416fb4253da3f5e` |
 | Orchestration provenance | [`samsarix-agent-orchestration`](https://github.com/Deathcharge/samsarix-agent-orchestration) `0.1.0` at `0dfc050cf9a4582c9fa8d34d74b1ca97d43c9005` |
 | Declared consumer Python | 3.11-3.13 |
-| Executed consumer Python in this record | 3.14.6 source tree and fresh installed wheel |
+| Executed consumer Python in this record | 3.11.9 fresh exact-pin editable environment and clean installed wheel |
 | Compatibility owner | Samsarix LLC |
 | Support level | Best effort; no SLA |
 
@@ -61,6 +61,16 @@ secrets, the source and output filenames, the private run identifier, and the re
 workspace path are absent. This is provider-neutral process-local observation, not a
 durable audit log, trace exporter, or claim that arbitrary downstream handlers are safe.
 
+The same public factory accepts an optional `ToolRateLimit` and applies it only to the
+exact redaction registration. A consumer-owned test admits one real policy-gated
+redaction, then immediately calls it again through the same runtime. The first call
+succeeds and publishes its artifact; the second returns status `rate_limited`, safe code
+`tool_rate_limited`, and a numeric retry delay without executing or publishing another
+artifact. The final content-free metrics report one success and one rate-limited call,
+and serialized results contain neither seeded private values nor the workspace path.
+This proves one process-local tool quota boundary, not distributed coordination,
+per-tenant accounting, authorization, or a service-level quota.
+
 The consumer adapter now installs a fail-closed host policy through Core's public
 `ToolPolicyContext` and `ToolPolicyDecision` API. It admits only the exact redaction
 name, version, tags, task mode, safety annotations, and default-filled argument set.
@@ -77,7 +87,7 @@ returns status `busy` and safe, retryable code `runtime_busy`; the policy evalua
 count remains one, no second tool execution occurs, no private argument is reflected,
 and no artifact is created. Cancelling the admitted call returns
 `pending_invocations` to zero. This proves process-local load shedding through Core's
-public API; it is not request-rate limiting, per-client fairness, or authorization.
+public API; that admission fixture alone is not per-client fairness or authorization.
 
 The same consumer redaction tool advertises task support as optional, preserving the
 ordinary call and older-client contract. A task-aware MCP `2025-11-25` client receives
@@ -110,26 +120,26 @@ was signed out of Copilot, so no trust prompt or VS Code tool call was accepted.
 desktop configuration-discovery evidence, not a completed desktop-agent journey.
 
 The consumer's merged
-[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/0455b7a16e0309ba295c0ddd8ad3776d709ea782/pyproject.toml)
+[`pyproject.toml`](https://github.com/Deathcharge/samsarix-integration-examples/blob/a446c4a80295928e6161627a8c03cc2bca4a8f27/pyproject.toml)
 is the dependency manifest. It declares
-`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90`;
-the installed public package reports Core version `2.0.0a4`. The same manifest
+`samsarix-core @ git+https://github.com/Deathcharge/samsarix-core.git@6492495a426b1ae9856bf27f331d7cfec67006e6`;
+the installed public package reports Core version `2.0.0a5`. The same manifest
 records the Guard and Orchestration commits above, and the compatibility test
 asserts all three installed package versions.
 
 ## Verified contract
 
-The installed-wheel consumer contract checks completed locally on Windows with Python
-3.14.6:
+The exact-pin consumer contract checks completed locally on Windows in a fresh editable
+environment with Python 3.11.9:
 
 ```text
 python -m ruff check .       -> passed
 python -m mypy               -> passed, strict mode
-python -m pytest             -> 36 passed, 91.03% branch coverage from installed wheel
+python -m pytest             -> 37 passed, 91.64% branch coverage
 python -m bandit -q -r src   -> passed
 ```
 
-The isolated release build and metadata checks separately passed on Python 3.14.6:
+The isolated release build and strict metadata checks separately passed on Python 3.11.9:
 
 ```text
 python -m build                    -> isolated wheel and sdist passed
@@ -137,27 +147,27 @@ python -m twine check <artifacts> -> wheel and sdist passed
 ```
 
 A fresh virtual environment installed the consumer wheel with dependencies resolved
-from their exact public Git commits. Import metadata resolved to `0.2.10`, and pip cloned
-Core and resolved commit `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90`.
-Outside the source checkout, the installed consumer suite proved both the permitted real
-redaction path and safe denial of the out-of-contract tool. Both installed CLIs also
-passed their help journeys. The source-tree development run on Python 3.14.6 separately
-completed the same 36 tests at 91.64% branch coverage. Python 3.12 and 3.13 remain
-declared consumer support, but their hosted jobs did not execute in this record because
-the account billing gate stopped the matrix before checkout.
+from their exact public Git commits. Import metadata resolved to consumer `0.2.11` and
+Core `2.0.0a5`; the consumer import resolved from the environment's `site-packages`.
+Outside the source checkout, both installed CLIs passed their help journeys and the
+focused installed-wheel contract proved one real redaction succeeds while an immediate
+second call is safely rate limited with no second artifact. `pip check` reported no
+broken requirements. Python 3.12 and 3.13 remain declared consumer support, but their
+hosted jobs did not execute in this record because the account billing gate stopped the
+matrix before checkout.
 
 Final local artifacts were:
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `samsarix_integration_examples-0.2.10-py3-none-any.whl` | 18,838 | `8cf067bd326d7a565b3879580af0ffa66570e6137ea8b6f389bdf2d119e7af1e` |
-| `samsarix_integration_examples-0.2.10.tar.gz` | 39,381 | `169d8ab69d568ada568d7224c2f0f459ee2ee0b7e583738b6195d3e3aa97b398` |
+| `samsarix_integration_examples-0.2.11-py3-none-any.whl` | 19,194 | `2a3f1b5be02b67eff2878e26e90471feddd931cf580f8f9e362e35ab3bfe1da8` |
+| `samsarix_integration_examples-0.2.11.tar.gz` | 40,795 | `ed86462aa5c5bb2569554453709f2ceebe43581fcd9e0cf8a1eec0c78f138a46` |
 
 CodeRabbit attached a green high-level status, but its free-plan notice says the pass
 provides only a summary and walkthrough; it is not counted as independent line-level
 review evidence. The consumer's
-[pull-request run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30746005628)
-and [post-merge run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/30746052161)
+[pull-request run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/31447006222)
+and [post-merge run](https://github.com/Deathcharge/samsarix-integration-examples/actions/runs/31448580817)
 did not start their jobs: GitHub attached an account
 billing/spending-limit failure before checkout, leaving zero executed steps and
 no job logs. That infrastructure failure is not represented as hosted test

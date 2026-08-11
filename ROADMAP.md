@@ -39,8 +39,8 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.10 pins Core
-  commit `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90` and proves a confined,
+- External consumer: `samsarix-integration-examples` version 0.2.11 pins Core
+  commit `6492495a426b1ae9856bf27f331d7cfec67006e6` and proves a confined,
   privacy-first redaction workflow, exact typed result discovery, and
   response-free asynchronous cancellation through the public MCP API. It also
   proves progress-token correlation, monotonic content-free updates, notification
@@ -57,6 +57,9 @@ remain separate decisions.
   policy bypass, private-argument redaction, and capacity cleanup after cancellation.
   A host-owned Core lifecycle handler also proves paired, correlated start/success
   events without secrets, filenames, run IDs, output names, or workspace paths.
+  It now also proves a policy-gated real redaction succeeds under an opt-in per-tool
+  token bucket while an immediate second call is safely rate limited without execution,
+  a second artifact, private-input retention, or incorrect aggregate metrics.
 - Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
   the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
@@ -79,6 +82,8 @@ remain separate decisions.
 - [x] Publish immutable GitHub prerelease `v2.0.0a5` with privacy-safe lifecycle
   observability, independent consumer, clean-install, checksum, and SLSA provenance
   evidence.
+- [ ] Publish immutable GitHub prerelease `v2.0.0a6` with per-tool rate limiting,
+  independent consumer, clean-install, checksum, and SLSA provenance evidence.
 
 ## Samsarix adoption
 
