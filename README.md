@@ -42,15 +42,15 @@ accounts, no API keys, no external service, and no hosted operating cost.
 Python 3.10 or newer is required.
 
 The latest published immutable prerelease is
-[`v2.0.0a6`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a6),
+[`v2.0.0a7`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a7),
 with an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a6 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a6-py3-none-any.whl \
+gh release download v2.0.0a7 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a7-py3-none-any.whl \
   --repo Deathcharge/samsarix-core
-python -m pip install samsarix_core-2.0.0a6-py3-none-any.whl
+python -m pip install samsarix_core-2.0.0a7-py3-none-any.whl
 ```
 
 For a source checkout instead:
@@ -138,7 +138,7 @@ progress and logging, bounded task retention, admission limits, and security bou
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.11 pins Core commit `6492495a426b1ae9856bf27f331d7cfec67006e6`
+version 0.2.12 pins Core commit `2744d69eb58aef8412d15fbee9485b6d22eb30a5`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
@@ -164,6 +164,10 @@ The same adapter can opt into a Core token bucket for that exact registration. I
 consumer-owned test proves one policy-gated redaction succeeds, an immediate second call
 returns a safe retryable `rate_limited` result, no second artifact is created, and the
 content-free success and rate-limit metrics each increment exactly once.
+The adapter independently accepts a host-owned circuit breaker. Its consumer-owned
+test injects one private downstream failure, proves the next call fails fast without
+tool execution, artifact creation, or private protocol content, then completes one
+real half-open recovery redaction and closes the circuit with exact aggregate metrics.
 The preceding v0.2.6 contract was also discovered and invoked through official MCP
 Inspector 0.21.2; a portable VS Code workspace is configuration-discovered, with
 signed-in trust and tool approval still awaiting operator acceptance.

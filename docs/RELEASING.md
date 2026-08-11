@@ -86,6 +86,45 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a7
+
+The per-tool circuit-breaker alpha was published on 2026-08-11 as an immutable
+GitHub prerelease:
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a7`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a7) |
+| Tagged commit | `766189a035c8a076a2b23f10b28576af586d5474` |
+| Annotated tag object | `56308ee653c91a6ea35e410165a519b61297390b` |
+| Release workflow | [run `31460562784`](https://github.com/Deathcharge/samsarix-core/actions/runs/31460562784) |
+| Build-only dry run | [run `31460435905`](https://github.com/Deathcharge/samsarix-core/actions/runs/31460435905) |
+| Exact-main CI | [run `31460476424`](https://github.com/Deathcharge/samsarix-core/actions/runs/31460476424) |
+| Release state | published, prerelease, immutable |
+
+Published assets are:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a7-py3-none-any.whl` | 51,136 | `2aaa2980e7c1d69445402eab8d0b34a620f2bf829c1311e4f2f6cc57940f7c29` |
+| `samsarix_core-2.0.0a7.tar.gz` | 136,538 | `c2b407e84e12cbe956a45c528a528fc142f41bc7767a3986af80c849bc0cb409` |
+| `SHA256SUMS` | 200 | `403795bad3323aebed67b129443e396075c73cd28246bce0e9954474edac5b41` |
+
+`gh release verify` confirmed the immutable release, and `gh release verify-asset`
+confirmed all three freshly downloaded assets. The downloaded manifest independently
+matched both distribution digests. `gh attestation verify` validated SLSA provenance
+for the wheel and source distribution while identifying this public repository,
+`.github/workflows/release.yml`, tag ref `refs/tags/v2.0.0a7`, source commit
+`766189a035c8a076a2b23f10b28576af586d5474`, and a GitHub-hosted runner.
+
+A fresh Python 3.11.9 environment installed the downloaded wheel without dependencies
+and reported no broken requirements. Both public namespaces and distribution metadata
+reported `2.0.0a7` from the fresh environment's `site-packages`. The installed smoke
+probe produced a safe failure, rejected the immediate next call as `circuit_open`, and
+completed a successful real recovery probe after the configured interval. This is
+GitHub distribution, provenance, and clean-wheel behavior evidence, not PyPI
+publication, a stable-API declaration, a security audit, third-party production
+adoption, or an SLA.
+
 ## Published evidence: v2.0.0a6
 
 The per-tool rate-limit alpha was published on 2026-08-10 as an immutable GitHub

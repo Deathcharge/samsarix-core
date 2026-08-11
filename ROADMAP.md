@@ -43,8 +43,8 @@ remain separate decisions.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
-- External consumer: `samsarix-integration-examples` version 0.2.11 pins Core
-  commit `6492495a426b1ae9856bf27f331d7cfec67006e6` and proves a confined,
+- External consumer: `samsarix-integration-examples` version 0.2.12 pins Core
+  commit `2744d69eb58aef8412d15fbee9485b6d22eb30a5` and proves a confined,
   privacy-first redaction workflow, exact typed result discovery, and
   response-free asynchronous cancellation through the public MCP API. It also
   proves progress-token correlation, monotonic content-free updates, notification
@@ -64,6 +64,9 @@ remain separate decisions.
   It now also proves a policy-gated real redaction succeeds under an opt-in per-tool
   token bucket while an immediate second call is safely rate limited without execution,
   a second artifact, private-input retention, or incorrect aggregate metrics.
+  It now also proves that a host-owned per-tool circuit opens after a private downstream
+  failure, rejects the next request without execution or an artifact, and closes after
+  one successful real redaction recovery probe without leaking private protocol content.
 - Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
   the consumer matrix after GitHub Actions billing is restored. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
@@ -88,8 +91,10 @@ remain separate decisions.
   evidence.
 - [x] Publish immutable GitHub prerelease `v2.0.0a6` with per-tool rate limiting,
   independent consumer, clean-install, checksum, and SLSA provenance evidence.
-- [ ] Prove independent consumer adoption and publish an immutable prerelease for the
-  per-tool circuit-breaker contract after exact-head review and clean-wheel evidence.
+- [x] Prove independent consumer adoption for the per-tool circuit-breaker contract
+  after exact-head review and clean-wheel evidence.
+- [x] Publish immutable GitHub prerelease `v2.0.0a7` with per-tool circuit breaking,
+  independent consumer, clean-install, checksum, and SLSA provenance evidence.
 
 ## Samsarix adoption
 
