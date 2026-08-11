@@ -281,12 +281,13 @@ All baseline commands were run on Windows with Python 3.11.9 at commit
   asynchronous cancellation, bounded content-free progress, and client-filtered
   operational logging, retained sync-worker capacity after timeout, and bounded
   shutdown quiescence, official MCP Inspector invocation, and Visual Studio Code
-  configuration discovery from `samsarix-integration-examples`; version 0.2.11 at merge
-  commit `a446c4a80295928e6161627a8c03cc2bca4a8f27` pins Core commit
-  `6492495a426b1ae9856bf27f331d7cfec67006e6` and additionally proves the bounded
+  configuration discovery from `samsarix-integration-examples`; version 0.2.12 at merge
+  commit `be56db8476454d6f241a5da7d5e846d92d1bcefb` pins Core commit
+  `2744d69eb58aef8412d15fbee9485b6d22eb30a5` and additionally proves the bounded
   experimental task lifecycle, allow/deny invocation policy, fail-fast runtime
   admission, paired content-free lifecycle observation, and process-local per-tool
-  rate limiting on the real redaction adapter.
+  rate limiting and per-tool circuit failure, fail-fast rejection, and successful
+  half-open recovery on the real redaction adapter.
 
 ## Deferred work and rationale
 
@@ -296,12 +297,12 @@ tasks retain bounded results only inside one server process and do not satisfy d
 persistence or restart recovery. Those features are not required for the first useful
 release. One independent repository now proves the stable MCP boundary, experimental
 task lifecycle, bounded policy gate, fail-fast runtime admission, and privacy-safe
-lifecycle observation. Core now also supplies the process-local per-tool rate control
-required by its supported MCP tool boundary. Subsequent surface
+lifecycle observation. Core now also supplies the process-local per-tool rate and
+circuit controls required by its supported MCP tool boundary. Subsequent surface
 area should follow concrete consumer demand. Core's per-tool rate-limit pull request
 [Python 3.10-3.14 hosted matrix](https://github.com/Deathcharge/samsarix-core/actions/runs/31241493059)
 is green. The consumer's separate Python 3.11-3.13 jobs could not start because GitHub
-reported an account billing/spending-limit problem, so its local 37-test exact-pin and
+reported an account billing/spending-limit problem, so its local 38-test exact-pin and
 clean-wheel behavioral evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
