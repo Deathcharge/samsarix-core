@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a6 - 2026-08-10
+
 ### Added
 
 - opt-in process-local per-tool token buckets with explicit sustained rate and
@@ -10,6 +12,8 @@
 
 ### Changed
 
+- recorded independent consumer `0.2.11` adoption evidence for the process-local
+  per-tool rate-limit contract.
 - recorded immutable `v2.0.0a5` release checksums, provenance, and clean installed-wheel
   lifecycle evidence.
 

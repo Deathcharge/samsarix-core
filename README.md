@@ -41,8 +41,9 @@ accounts, no API keys, no external service, and no hosted operating cost.
 
 Python 3.10 or newer is required.
 
-The immutable [`v2.0.0a5` GitHub prerelease](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a5)
-contains an installable wheel, source distribution, SHA-256 manifest, and verifiable
+The latest published immutable prerelease is
+[`v2.0.0a5`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a5),
+with an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
@@ -135,7 +136,7 @@ progress and logging, bounded task retention, admission limits, and security bou
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.10 pins Core commit `e20a4e982b24dbc7ff2b5c78714742bfd1ee2f90`
+version 0.2.11 pins Core commit `6492495a426b1ae9856bf27f331d7cfec67006e6`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
@@ -157,6 +158,10 @@ Its host-owned lifecycle handler also receives correlated `started` and `success
 events for the real policy-gated redaction call while consumer tests prove that source
 secrets, filenames, output names, run IDs, and workspace paths never enter the event
 stream.
+The same adapter can opt into a Core token bucket for that exact registration. Its
+consumer-owned test proves one policy-gated redaction succeeds, an immediate second call
+returns a safe retryable `rate_limited` result, no second artifact is created, and the
+content-free success and rate-limit metrics each increment exactly once.
 The preceding v0.2.6 contract was also discovered and invoked through official MCP
 Inspector 0.21.2; a portable VS Code workspace is configuration-discovered, with
 signed-in trust and tool approval still awaiting operator acceptance.

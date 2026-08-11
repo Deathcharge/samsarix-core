@@ -1,6 +1,6 @@
 # API reference
 
-This page describes the complete supported API on `main` after `2.0.0a5`. Imports not exposed
+This page describes the complete supported API in the `2.0.0a6` alpha. Imports not exposed
 from `samsarix_core.__all__` are internal.
 
 ## `samsarix_tool`
