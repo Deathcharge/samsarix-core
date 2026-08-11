@@ -306,9 +306,9 @@ clean-wheel behavioral evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
-The immutable GitHub prerelease `v2.0.0a5` is published from commit
-`60fa5554d8ef4625dc803751cc4bd34cf757e094` with verified checksums, GitHub Actions
-build provenance, and a clean installed-wheel lifecycle probe. The exact assets,
+The immutable GitHub prerelease `v2.0.0a6` is published from commit
+`f09e77877b04500aa7d23504ba21123577138543` with verified checksums, GitHub Actions
+build provenance, and a clean installed-wheel rate-limit recovery probe. The exact assets,
 workflow runs, verification, installation evidence, and recovery model are recorded in
 `docs/RELEASING.md`. This passes the GitHub release gate only; it does not pass the
 PyPI, stable API, or third-party production-adoption gates.

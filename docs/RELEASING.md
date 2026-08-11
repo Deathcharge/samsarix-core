@@ -86,6 +86,45 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a6
+
+The per-tool rate-limit alpha was published on 2026-08-10 as an immutable GitHub
+prerelease:
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a6`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a6) |
+| Tagged commit | `f09e77877b04500aa7d23504ba21123577138543` |
+| Annotated tag object | `e38fa58fcf94fac6b0525027967194f9c6d8fb64` |
+| Release workflow | [run `31451329609`](https://github.com/Deathcharge/samsarix-core/actions/runs/31451329609) |
+| Build-only dry run | [run `31451018128`](https://github.com/Deathcharge/samsarix-core/actions/runs/31451018128) |
+| Exact-main CI | [run `31450834231`](https://github.com/Deathcharge/samsarix-core/actions/runs/31450834231) |
+| Release state | published, prerelease, immutable |
+
+Published assets are:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a6-py3-none-any.whl` | 48,503 | `4e0b52c0bd72d143e8ab5cc28180f86b12fc004ef3a056d854a275d1654c7d22` |
+| `samsarix_core-2.0.0a6.tar.gz` | 124,908 | `61cce7d16c659916b0fb36887c5cadd9e48f697c46f41d6f7d7f6efa42d716fe` |
+| `SHA256SUMS` | 200 | `b8d701365b30f258e014aa3a46f2e491eff908598d746c04c01ac453ad84c433` |
+
+`gh release verify` confirmed the immutable release, and `gh release verify-asset`
+confirmed all three freshly downloaded assets. The downloaded manifest independently
+matched both distribution digests. `gh attestation verify` validated SLSA provenance
+for the wheel and source distribution while explicitly requiring this public repository,
+`.github/workflows/release.yml`, tag ref `refs/tags/v2.0.0a6`, source commit
+`f09e77877b04500aa7d23504ba21123577138543`, and a GitHub-hosted runner.
+
+A fresh Python 3.11.9 environment installed the downloaded wheel without dependencies
+and reported no broken requirements. Both public namespaces reported `2.0.0a6`, exposed
+the same `ToolRateLimit`, and resolved from the fresh environment's `site-packages`. The
+installed public example completed one call, rejected an immediate second call as
+`rate_limited` with a numeric retry delay, and succeeded again after that delay. This is
+GitHub distribution, provenance, and clean-wheel behavior evidence, not PyPI
+publication, a stable-API declaration, a security audit, third-party production
+adoption, or an SLA.
+
 ## Published evidence: v2.0.0a5
 
 The lifecycle-observability alpha was published on 2026-08-02 as an immutable GitHub
