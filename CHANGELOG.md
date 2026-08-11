@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a7 - 2026-08-11
+
 ### Added
 
 - opt-in process-local per-tool consecutive-failure circuit breakers with safe
@@ -11,8 +13,10 @@
 
 ### Changed
 
-- recorded immutable `v2.0.0a6` release checksums, provenance, and clean installed-wheel
-  rate-limit recovery evidence.
+- recorded independent consumer `0.2.12` adoption evidence for the process-local
+  per-tool circuit-breaker contract.
+- recorded immutable `v2.0.0a6` release checksums, provenance, and clean
+  installed-wheel rate-limit recovery evidence.
 
 ## 2.0.0a6 - 2026-08-10
 
