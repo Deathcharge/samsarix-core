@@ -18,11 +18,11 @@ persistence, or an untrusted-code sandbox.
 - turns annotated sync or async functions into inspectable tool contracts;
 - emits JSON Schema Draft 2020-12 input and output schemas;
 - validates arguments and outputs without surprising scalar coercion;
-- returns structured success, validation, policy-denial, overload, rate-limit, timeout,
-  missing-tool, and failure results;
+- returns structured success, validation, policy-denial, overload, rate-limit,
+  open-circuit, timeout, missing-tool, and failure results;
 - bounds pending invocations, registry growth, batches, value size/complexity,
-  global and per-tool concurrent work, sustained per-tool request rate, and
-  thread-pool use;
+  global and per-tool concurrent work, sustained per-tool request rate, repeated
+  calls to failing dependencies, and thread-pool use;
 - supports ordered batch invocation and cooperative async cancellation;
 - optionally requires a bounded host-owned policy decision after validation and
   before any tool code executes;
@@ -111,6 +111,8 @@ snapshot and returns `ToolPolicyDecision.ALLOW` or `DENY`; it is not an authenti
 service or a durable human-approval workflow.
 For a quota-constrained dependency with safe retry handling, run
 `python examples/rate_limited_api.py`.
+For a failing dependency with fail-fast recovery probing, run
+`python examples/circuit_breaker_api.py`.
 
 ## Connect an MCP client
 
@@ -192,6 +194,7 @@ exception. It returns a `ToolResult` with one of these states:
 - `denied`
 - `busy`
 - `rate_limited`
+- `circuit_open`
 - `timed_out`
 - `failed`
 - `runtime_closed`
@@ -217,13 +220,17 @@ them to the host's actual workload.
 Hosts can isolate a slow or quota-constrained dependency when registering its tool:
 
 ```python
-from samsarix_core import ToolRateLimit
+from samsarix_core import ToolCircuitBreaker, ToolRateLimit
 
 runtime = ToolRuntime(max_concurrency=8)
 runtime.register(
     query_warehouse,
     max_concurrency=2,
     rate_limit=ToolRateLimit(calls=60, period_seconds=60, burst=5),
+    circuit_breaker=ToolCircuitBreaker(
+        failure_threshold=3,
+        recovery_timeout_seconds=30,
+    ),
 )
 runtime.register(health_check)
 ```
@@ -239,6 +246,14 @@ warehouse calls to execute concurrently. An empty bucket returns retryable statu
 `rate_limited` with a safe `retry_after_ms` hint and never runs the tool. The bucket is
 process-local deployment policy, not tenant fairness or a distributed quota service. See
 [per-tool rate limits](docs/RATE_LIMITS.md).
+
+The circuit breaker counts consecutive tool/output failures and caller-visible
+timeouts. Once open, it rejects before capacity or tokens are consumed, then admits one
+half-open recovery probe after 30 seconds. Invalid input, host policy outcomes,
+admission/rate rejections, progress-handler failure, and caller cancellation do not
+trip it. Core does not automatically retry calls. Breaker state is process-local
+deployment policy and can be inspected or manually reset by the host. See
+[per-tool circuit breakers](docs/CIRCUIT_BREAKERS.md).
 
 Hosts can attach a synchronous `lifecycle_handler` to receive paired, immutable start
 and terminal events across direct, batch, MCP, and task calls. Events contain only
@@ -272,7 +287,7 @@ for delivery semantics, privacy/cardinality cautions, and a content-free OpenTel
 See [Getting started](docs/GETTING_STARTED.md), the [API reference](docs/API_REFERENCE.md),
 [architecture](docs/ARCHITECTURE.md), [MCP bridge](docs/MCP.md),
 [lifecycle observability](docs/OBSERVABILITY.md), [best practices](docs/BEST_PRACTICES.md),
-[per-tool rate limits](docs/RATE_LIMITS.md),
+[per-tool rate limits](docs/RATE_LIMITS.md), [per-tool circuit breakers](docs/CIRCUIT_BREAKERS.md),
 [benchmark guide](docs/BENCHMARKS.md),
 the [adoption record](docs/ADOPTION.md), and the [productization
 record](docs/PRODUCTIZATION.md).

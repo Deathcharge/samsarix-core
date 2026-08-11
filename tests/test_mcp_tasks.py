@@ -11,6 +11,7 @@ import pytest
 
 from samsarix_core import (
     MCPServer,
+    ToolCircuitBreaker,
     ToolPolicyContext,
     ToolPolicyDecision,
     ToolRateLimit,
@@ -618,6 +619,85 @@ async def test_task_rate_limit_retains_retryable_safe_terminal_result() -> None:
     assert runtime.metrics().rate_limited == 1
     assert "private-task-rate-value" not in json.dumps(
         [limited_create, limited_state, limited_result]
+    )
+
+
+@pytest.mark.asyncio
+async def test_task_open_circuit_retains_retryable_safe_terminal_result() -> None:
+    executions: list[str] = []
+
+    @samsarix_tool(task_support="optional")
+    async def unstable_job(value: str) -> str:
+        """Represent a task-wrapped call to a circuit-protected dependency."""
+
+        executions.append(value)
+        raise RuntimeError("private task dependency failure")
+
+    runtime = ToolRuntime()
+    runtime._circuit_clock = lambda: 20.0
+    runtime.register(
+        unstable_job,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=25,
+        ),
+    )
+    server = MCPServer(runtime, enable_tasks=True)
+    try:
+        await initialize(server)
+        failed_create = await request(
+            server,
+            "create-failing-circuit",
+            "tools/call",
+            {"name": "unstable_job", "arguments": {"value": "first"}, "task": {}},
+        )
+        failed_result = await request(
+            server,
+            "result-failing-circuit",
+            "tasks/result",
+            {"taskId": task_id(failed_create)},
+        )
+        blocked_create = await request(
+            server,
+            "create-blocked-circuit",
+            "tools/call",
+            {
+                "name": "unstable_job",
+                "arguments": {"value": "private-task-circuit-value"},
+                "task": {},
+            },
+        )
+        identifier = task_id(blocked_create)
+        blocked_result = await request(
+            server,
+            "result-blocked-circuit",
+            "tasks/result",
+            {"taskId": identifier},
+        )
+        blocked_state = await request(
+            server,
+            "state-blocked-circuit",
+            "tasks/get",
+            {"taskId": identifier},
+        )
+    finally:
+        await server.aclose()
+
+    assert failed_result["result"]["isError"] is True
+    assert blocked_state["result"]["status"] == "failed"
+    assert blocked_result["result"]["isError"] is True
+    assert blocked_result["result"]["_meta"]["com.samsarix/status"] == "circuit_open"
+    assert json.loads(blocked_result["result"]["content"][0]["text"])["error"] == {
+        "code": "tool_circuit_open",
+        "message": "Tool dependency circuit is temporarily open",
+        "retryable": True,
+        "details": {"retry_after_ms": 25000},
+    }
+    assert executions == ["first"]
+    assert runtime.metrics().circuit_breaker_trips == 1
+    assert runtime.metrics().circuit_open == 1
+    assert "private-task-circuit-value" not in json.dumps(
+        [blocked_create, blocked_state, blocked_result]
     )
 
 

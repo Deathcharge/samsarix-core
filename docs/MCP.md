@@ -11,7 +11,7 @@ The supported server surface is intentionally narrow:
 - `ping`;
 - `tools/list` with JSON Schema Draft 2020-12 input and output contracts;
 - `tools/call` with Samsarix validation, timeouts, concurrency and opt-in per-tool
-  rate limits, and safe structured errors, including optional host-policy denial;
+  circuit/rate controls, and safe structured errors, including optional host-policy denial;
 - requested `notifications/progress` updates from cooperative asynchronous tools;
 - opt-in `logging/setLevel` and content-free `notifications/message` operational
   events;
@@ -99,6 +99,16 @@ The MCP tool security considerations require rate limiting, but this local bucke
 not identify clients or coordinate multiple server processes. A network adapter still
 needs authenticated per-principal and distributed controls. See
 [per-tool rate limits](RATE_LIMITS.md) for configuration and token-accounting semantics.
+
+## Fail fast around an unhealthy dependency
+
+`ToolRuntime.register(..., circuit_breaker=ToolCircuitBreaker(...))` applies the same
+process-local breaker to direct, ordinary MCP, and task-augmented calls. An open circuit
+returns `isError: true`, Samsarix status `circuit_open`, safe code
+`tool_circuit_open`, and a retry delay when the recovery interval has time remaining.
+The failure is a tool execution result rather than a JSON-RPC protocol error. A task
+reaches `failed` and retains that exact safe result; call arguments and the triggering
+exception are not reflected. See [per-tool circuit breakers](CIRCUIT_BREAKERS.md).
 
 ## Structured output
 

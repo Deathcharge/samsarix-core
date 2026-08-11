@@ -14,6 +14,7 @@ import pytest
 from samsarix_core import (
     MCPServer,
     ProgressHandlerError,
+    ToolCircuitBreaker,
     ToolLifecycleEvent,
     ToolLifecycleStatus,
     ToolPolicyContext,
@@ -590,6 +591,68 @@ async def test_mcp_exposes_safe_retryable_per_tool_rate_limit() -> None:
     assert executions == ["first"]
     assert runtime.metrics().rate_limited == 1
     assert "private-rate-limit-value" not in json.dumps(limited)
+
+
+@pytest.mark.asyncio
+async def test_mcp_exposes_safe_retryable_open_circuit() -> None:
+    executions: list[str] = []
+
+    @samsarix_tool
+    async def unstable_dependency(value: str) -> str:
+        """Represent one failing call to a circuit-protected dependency."""
+
+        executions.append(value)
+        raise RuntimeError("private dependency failure")
+
+    runtime = ToolRuntime()
+    runtime._circuit_clock = lambda: 40.0
+    runtime.register(
+        unstable_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=30,
+        ),
+    )
+    server = MCPServer(runtime)
+    try:
+        await initialize(server)
+        failed = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "failing-circuit-call",
+                "method": "tools/call",
+                "params": {"name": "unstable_dependency", "arguments": {"value": "first"}},
+            }
+        )
+        blocked = await server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": "blocked-circuit-call",
+                "method": "tools/call",
+                "params": {
+                    "name": "unstable_dependency",
+                    "arguments": {"value": "private-open-circuit-value"},
+                },
+            }
+        )
+    finally:
+        await server.aclose()
+
+    assert failed is not None and failed["result"]["isError"] is True
+    assert blocked is not None and blocked["result"]["isError"] is True
+    assert blocked["result"]["_meta"]["com.samsarix/status"] == "circuit_open"
+    assert json.loads(blocked["result"]["content"][0]["text"]) == {
+        "error": {
+            "code": "tool_circuit_open",
+            "message": "Tool dependency circuit is temporarily open",
+            "retryable": True,
+            "details": {"retry_after_ms": 30000},
+        }
+    }
+    assert executions == ["first"]
+    assert runtime.metrics().circuit_breaker_trips == 1
+    assert runtime.metrics().circuit_open == 1
+    assert "private-open-circuit-value" not in json.dumps(blocked)
 
 
 @pytest.mark.asyncio

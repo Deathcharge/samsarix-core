@@ -16,7 +16,9 @@ invocation: incoming call
     -> iterative argument resource preflight
     -> ToolRuntime argument validation
     -> optional bounded host policy decision
+    -> optional per-tool circuit permit
     -> optional per-tool execution bulkhead
+    -> queued circuit-permit revalidation
     -> optional per-tool token-bucket start check
     -> bounded async or thread-pool execution
     -> optional invocation-scoped progress handler
@@ -33,9 +35,9 @@ invocation: incoming call
   iterative resource checks, strict input validation, and JSON normalization.
 - `registry.py` stores a capped set of compiled callable contracts behind a small
   thread-safe map.
-- `runtime.py` owns concurrency, process-local per-tool rate controls, the sync thread
-  pool, timeouts, cancellation, exception redaction, batch workers, lifecycle, and
-  content-free counters.
+- `runtime.py` owns concurrency, process-local per-tool circuit/rate controls, the sync
+  thread pool, timeouts, cancellation, exception redaction, batch workers, lifecycle,
+  and content-free counters.
 - `progress.py` owns invocation-scoped async progress validation, ordering,
   resource caps, and lifecycle closure.
 - `_mcp_tasks.py` owns finite in-memory task retention, secure identifiers, TTL
@@ -96,6 +98,14 @@ run in a private `ThreadPoolExecutor` whose worker count equals
 global and per-tool semaphores still bound execution. This prevents workers queued on
 one constrained tool from head-of-line blocking unrelated calls that fit within the
 batch's available pending capacity.
+
+An optional circuit breaker is also bound to the exact registration and checked before
+capacity is acquired. A generation-bound permit is revalidated at the execution
+boundary; opening or manually resetting a circuit invalidates queued permits and late
+outcomes. Breaker outcome is committed before async or thread-backed capacity is
+released. Open state admits no work until its monotonic recovery interval elapses, then
+reserves exactly one half-open probe. The runtime performs no automatic retries and no
+background health checks.
 
 An exact registration may also own an event-loop-local token bucket. After validation,
 policy, and concurrency acquisition, the runtime checks one token immediately before

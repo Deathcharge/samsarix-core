@@ -36,6 +36,10 @@ remain separate decisions.
 - Tool registrations can also apply process-local token buckets immediately before
   execution, protecting sustained downstream request quotas with safe retry hints
   without treating the runtime as a distributed or per-tenant quota service.
+- Tool registrations can opt into process-local consecutive-failure circuit breakers
+  that fail fast before capacity and rate tokens, invalidate queued stale permits,
+  allow one half-open recovery probe, and expose safe results plus host inspection/reset
+  without automatic retry or distributed-health claims.
 - Strict `TypedDict` input and output contracts now preserve named nested fields,
   descriptions, and required/optional key semantics in JSON Schema and runtime
   validation.
@@ -84,6 +88,8 @@ remain separate decisions.
   evidence.
 - [x] Publish immutable GitHub prerelease `v2.0.0a6` with per-tool rate limiting,
   independent consumer, clean-install, checksum, and SLSA provenance evidence.
+- [ ] Prove independent consumer adoption and publish an immutable prerelease for the
+  per-tool circuit-breaker contract after exact-head review and clean-wheel evidence.
 
 ## Samsarix adoption
 

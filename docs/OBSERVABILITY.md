@@ -132,6 +132,7 @@ Primary references:
 | Need | Core surface | Cardinality/content |
 | --- | --- | --- |
 | Aggregate runtime health | `RuntimeMetrics` | Content-free counters; no tool names |
+| Circuit health | `circuit_open`, `circuit_breaker_trips`, `circuit_state(name)` | Aggregate counters plus host-requested per-tool state |
 | Per-invocation traces or host logs | `lifecycle_handler` | Tool name and invocation ID; no call content |
 | MCP client diagnostics | opt-in MCP logging | Terminal tool name, ID, status, and duration |
 | User-facing work progress | `progress_handler` | Application text may cross the trust boundary |
@@ -139,3 +140,10 @@ Primary references:
 Avoid enabling two terminal logging paths into the same backend unless duplicate
 events are intentional. Lifecycle signals operate at the direct runtime boundary and
 therefore cover direct, batch, MCP, and task-augmented calls uniformly.
+
+Alert on sustained `circuit_open` growth and breaker trips rather than on a single
+expected rejection. `circuit_state(name)` is an explicit host diagnostic for a known
+registration; unlike aggregate metrics it identifies which dependency is protected.
+Do not use caller-controlled tool names as unbounded metric labels. Manual
+`reset_circuit(name)` should be an operator action with its own application-owned audit
+trail because Core deliberately emits no content-bearing reset event.
