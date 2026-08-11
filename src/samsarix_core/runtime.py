@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial
 from math import ceil
@@ -25,6 +25,8 @@ from .models import (
     JSONValue,
     RuntimeMetrics,
     ToolCall,
+    ToolCircuitBreaker,
+    ToolCircuitState,
     ToolError,
     ToolLifecycleEvent,
     ToolLifecycleHandler,
@@ -64,6 +66,14 @@ class _ToolRateLimited(Exception):
         self.retry_after_ms = retry_after_ms
 
 
+class _ToolCircuitOpen(Exception):
+    """Signal that one tool registration is not admitting dependency calls."""
+
+    def __init__(self, retry_after_ms: int | None) -> None:
+        super().__init__(retry_after_ms)
+        self.retry_after_ms = retry_after_ms
+
+
 @dataclass(slots=True)
 class _TokenBucket:
     """Mutable event-loop-local token bucket for one exact registration."""
@@ -98,6 +108,173 @@ class _TokenBucket:
             self.tokens -= 1
             return None
         return max(1, ceil((1 - self.tokens) * self.milliseconds_per_token))
+
+
+@dataclass(frozen=True, slots=True)
+class _CircuitPermit:
+    """Generation-bound permission to attempt one protected execution."""
+
+    generation: int
+    probe: bool
+
+
+class _CircuitBreaker:
+    """Thread-safe consecutive-failure breaker for one exact registration."""
+
+    def __init__(self, policy: ToolCircuitBreaker, *, now: float) -> None:
+        self.failure_threshold = policy.failure_threshold
+        self.recovery_timeout_seconds = policy.recovery_timeout_seconds
+        self._state = ToolCircuitState.CLOSED
+        self._consecutive_failures = 0
+        self._opened_until = 0.0
+        self._generation = 0
+        self._last_observed = now
+        self._lock = Lock()
+
+    def acquire(self, *, now: float) -> _CircuitPermit:
+        """Return one permit or raise a retryable internal open-circuit signal."""
+
+        with self._lock:
+            current = self._observe(now)
+            if self._state is ToolCircuitState.CLOSED:
+                return _CircuitPermit(self._generation, probe=False)
+            if self._state is ToolCircuitState.OPEN:
+                if current < self._opened_until:
+                    raise _ToolCircuitOpen(self._retry_after_ms(current))
+                self._state = ToolCircuitState.HALF_OPEN
+                self._generation += 1
+                return _CircuitPermit(self._generation, probe=True)
+            raise _ToolCircuitOpen(None)
+
+    def validate(self, permit: _CircuitPermit, *, now: float) -> None:
+        """Reject a queued permit when another invocation changed the circuit."""
+
+        with self._lock:
+            current = self._observe(now)
+            if self._permit_is_current(permit):
+                return
+            retry_after_ms = (
+                self._retry_after_ms(current)
+                if self._state is ToolCircuitState.OPEN and current < self._opened_until
+                else None
+            )
+            raise _ToolCircuitOpen(retry_after_ms)
+
+    def succeed(self, permit: _CircuitPermit, *, now: float) -> None:
+        """Record a successful execution if its permit is still current."""
+
+        with self._lock:
+            self._observe(now)
+            if not self._permit_is_current(permit):
+                return
+            if permit.probe:
+                self._state = ToolCircuitState.CLOSED
+                self._generation += 1
+            self._consecutive_failures = 0
+
+    def fail(self, permit: _CircuitPermit, *, now: float) -> bool:
+        """Record one execution failure and report whether the circuit opened."""
+
+        with self._lock:
+            current = self._observe(now)
+            if not self._permit_is_current(permit):
+                return False
+            if permit.probe:
+                self._open(current)
+                return True
+            self._consecutive_failures += 1
+            if self._consecutive_failures < self.failure_threshold:
+                return False
+            self._open(current)
+            return True
+
+    def abandon(self, permit: _CircuitPermit, *, now: float) -> None:
+        """Release a non-executed half-open probe without counting a failure."""
+
+        with self._lock:
+            current = self._observe(now)
+            if self._permit_is_current(permit) and permit.probe:
+                self._state = ToolCircuitState.OPEN
+                self._opened_until = current
+                self._generation += 1
+
+    def reset(self, *, now: float) -> None:
+        """Force the circuit closed and invalidate outstanding permits."""
+
+        with self._lock:
+            self._observe(now)
+            self._state = ToolCircuitState.CLOSED
+            self._consecutive_failures = 0
+            self._opened_until = 0.0
+            self._generation += 1
+
+    @property
+    def state(self) -> ToolCircuitState:
+        """Return the current explicit state without reserving a probe."""
+
+        with self._lock:
+            return self._state
+
+    def _observe(self, now: float) -> float:
+        current = max(now, self._last_observed)
+        self._last_observed = current
+        return current
+
+    def _permit_is_current(self, permit: _CircuitPermit) -> bool:
+        expected_state = ToolCircuitState.HALF_OPEN if permit.probe else ToolCircuitState.CLOSED
+        return permit.generation == self._generation and self._state is expected_state
+
+    def _open(self, now: float) -> None:
+        self._state = ToolCircuitState.OPEN
+        self._opened_until = now + self.recovery_timeout_seconds
+        self._generation += 1
+
+    def _retry_after_ms(self, now: float) -> int:
+        return max(1, ceil((self._opened_until - now) * 1_000))
+
+
+@dataclass(slots=True)
+class _CircuitAttempt:
+    """Invocation-local holder that records exactly one breaker outcome."""
+
+    breaker: _CircuitBreaker | None = None
+    permit: _CircuitPermit | None = None
+    _lock: Lock = field(default_factory=Lock, repr=False)
+
+    def acquire(self, breaker: _CircuitBreaker | None, *, now: float) -> None:
+        if breaker is None:
+            return
+        permit = breaker.acquire(now=now)
+        with self._lock:
+            self.breaker = breaker
+            self.permit = permit
+
+    def validate(self, *, now: float) -> None:
+        with self._lock:
+            breaker, permit = self.breaker, self.permit
+        if breaker is not None and permit is not None:
+            breaker.validate(permit, now=now)
+
+    def succeed(self, *, now: float) -> None:
+        breaker, permit = self._take()
+        if breaker is not None and permit is not None:
+            breaker.succeed(permit, now=now)
+
+    def fail(self, *, now: float) -> bool:
+        breaker, permit = self._take()
+        return breaker is not None and permit is not None and breaker.fail(permit, now=now)
+
+    def abandon(self, *, now: float) -> None:
+        breaker, permit = self._take()
+        if breaker is not None and permit is not None:
+            breaker.abandon(permit, now=now)
+
+    def _take(self) -> tuple[_CircuitBreaker | None, _CircuitPermit | None]:
+        with self._lock:
+            breaker, permit = self.breaker, self.permit
+            self.breaker = None
+            self.permit = None
+            return breaker, permit
 
 
 def _is_async_callable(value: object) -> bool:
@@ -178,7 +355,9 @@ class ToolRuntime:
         self._policy_semaphore = asyncio.Semaphore(max_concurrency)
         self._tool_semaphores: dict[int, tuple[RegisteredTool, asyncio.Semaphore]] = {}
         self._tool_rate_limiters: dict[int, tuple[RegisteredTool, _TokenBucket]] = {}
+        self._tool_circuit_breakers: dict[int, tuple[RegisteredTool, _CircuitBreaker]] = {}
         self._rate_limit_clock: Callable[[], float] = time.monotonic
+        self._circuit_clock: Callable[[], float] = time.monotonic
         self._executor = ThreadPoolExecutor(
             max_workers=max_concurrency, thread_name_prefix="samsarix-tool"
         )
@@ -196,6 +375,8 @@ class ToolRuntime:
             "denied": 0,
             "busy": 0,
             "rate_limited": 0,
+            "circuit_open": 0,
+            "circuit_breaker_trips": 0,
             "timed_out": 0,
             "failed": 0,
             "runtime_closed": 0,
@@ -214,8 +395,9 @@ class ToolRuntime:
         replace: bool = False,
         max_concurrency: int | None = None,
         rate_limit: ToolRateLimit | None = None,
+        circuit_breaker: ToolCircuitBreaker | None = None,
     ) -> ToolSpec:
-        """Register a callable with optional concurrency and sustained-rate controls."""
+        """Register a callable with optional deployment-local resilience controls."""
 
         if max_concurrency is not None:
             if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int):
@@ -224,6 +406,8 @@ class ToolRuntime:
                 raise ValueError("max_concurrency must be positive")
         if rate_limit is not None and not isinstance(rate_limit, ToolRateLimit):
             raise TypeError("rate_limit must be a ToolRateLimit or None")
+        if circuit_breaker is not None and not isinstance(circuit_breaker, ToolCircuitBreaker):
+            raise TypeError("circuit_breaker must be a ToolCircuitBreaker or None")
 
         # Keep the callable registration and its deployment-local policy atomic
         # with respect to both direct registry mutation and invocation resolution.
@@ -252,6 +436,17 @@ class ToolRuntime:
                     _TokenBucket.from_limit(rate_limit, now=self._rate_limit_clock()),
                 )
             self._tool_rate_limiters = tool_rate_limiters
+            tool_circuit_breakers = {
+                key: entry
+                for key, entry in self._tool_circuit_breakers.items()
+                if entry[0].spec.name != spec.name
+            }
+            if circuit_breaker is not None:
+                tool_circuit_breakers[id(registered)] = (
+                    registered,
+                    _CircuitBreaker(circuit_breaker, now=self._circuit_clock()),
+                )
+            self._tool_circuit_breakers = tool_circuit_breakers
         return spec
 
     async def invoke(
@@ -389,6 +584,12 @@ class ToolRuntime:
                     if tool_rate_limit is not None and tool_rate_limit[0] is registered
                     else None
                 )
+                tool_circuit = self._tool_circuit_breakers.get(id(registered))
+                circuit_breaker = (
+                    tool_circuit[1]
+                    if tool_circuit is not None and tool_circuit[0] is registered
+                    else None
+                )
         except ToolNotFoundError:
             self._increment("not_found")
             return self._result(
@@ -431,6 +632,7 @@ class ToolRuntime:
             max_updates=self.max_progress_updates,
             max_message_bytes=self.max_progress_message_bytes,
         )
+        circuit_attempt = _CircuitAttempt()
         execution = asyncio.create_task(
             self._authorize_and_execute(
                 registered,
@@ -438,6 +640,8 @@ class ToolRuntime:
                 invocation_id=invocation_id,
                 tool_semaphore=tool_semaphore,
                 rate_limiter=rate_limiter,
+                circuit_breaker=circuit_breaker,
+                circuit_attempt=circuit_attempt,
             )
         )
         self._active.add(execution)
@@ -449,6 +653,8 @@ class ToolRuntime:
             )
         except asyncio.TimeoutError:
             _stop_progress(progress_scope)
+            if circuit_attempt.fail(now=self._circuit_clock()):
+                self._increment("circuit_breaker_trips")
             execution.cancel()
             with suppress(asyncio.CancelledError):
                 await execution
@@ -469,9 +675,11 @@ class ToolRuntime:
             execution.cancel()
             with suppress(asyncio.CancelledError):
                 await execution
+            circuit_attempt.abandon(now=self._circuit_clock())
             self._increment("cancelled")
             raise
         except _ToolPolicyDenied:
+            circuit_attempt.abandon(now=self._circuit_clock())
             self._increment("denied")
             return self._result(
                 invocation_id,
@@ -485,6 +693,7 @@ class ToolRuntime:
                 ),
             )
         except _ToolPolicyFailed:
+            circuit_attempt.abandon(now=self._circuit_clock())
             self._increment("failed")
             return self._result(
                 invocation_id,
@@ -497,7 +706,29 @@ class ToolRuntime:
                     "Tool invocation policy failed",
                 ),
             )
+        except _ToolCircuitOpen as exc:
+            circuit_attempt.abandon(now=self._circuit_clock())
+            self._increment("circuit_open")
+            details = (
+                None
+                if exc.retry_after_ms is None
+                else {"retry_after_ms": cast(JSONValue, exc.retry_after_ms)}
+            )
+            return self._result(
+                invocation_id,
+                name,
+                ToolStatus.CIRCUIT_OPEN,
+                started_at,
+                started,
+                error=ToolError(
+                    "tool_circuit_open",
+                    "Tool dependency circuit is temporarily open",
+                    retryable=True,
+                    details=details,
+                ),
+            )
         except _ToolRateLimited as exc:
+            circuit_attempt.abandon(now=self._circuit_clock())
             self._increment("rate_limited")
             return self._result(
                 invocation_id,
@@ -513,6 +744,8 @@ class ToolRuntime:
                 ),
             )
         except ToolOutputError as exc:
+            if circuit_attempt.fail(now=self._circuit_clock()):
+                self._increment("circuit_breaker_trips")
             self._increment("failed")
             return self._result(
                 invocation_id,
@@ -527,8 +760,11 @@ class ToolRuntime:
                 ),
             )
         except ProgressHandlerError:
+            circuit_attempt.abandon(now=self._circuit_clock())
             raise
         except Exception as exc:
+            if circuit_attempt.fail(now=self._circuit_clock()):
+                self._increment("circuit_breaker_trips")
             self._increment("failed")
             message = str(exc) if self.expose_exceptions else "Tool execution failed"
             return self._result(
@@ -540,6 +776,7 @@ class ToolRuntime:
                 error=ToolError("tool_failed", message, type=type(exc).__name__),
             )
         else:
+            circuit_attempt.succeed(now=self._circuit_clock())
             self._increment("succeeded")
             return self._result(
                 invocation_id,
@@ -583,6 +820,27 @@ class ToolRuntime:
 
         with self._metrics_lock:
             return RuntimeMetrics(**self._counters)
+
+    def circuit_state(self, name: str) -> ToolCircuitState | None:
+        """Return one configured breaker's state, or ``None`` when it is disabled."""
+
+        with self.registry._lock:
+            registered = self.registry._resolve(name)
+            entry = self._tool_circuit_breakers.get(id(registered))
+            breaker = entry[1] if entry is not None and entry[0] is registered else None
+            return None if breaker is None else breaker.state
+
+    def reset_circuit(self, name: str) -> bool:
+        """Force one configured breaker closed and report whether it existed."""
+
+        with self.registry._lock:
+            registered = self.registry._resolve(name)
+            entry = self._tool_circuit_breakers.get(id(registered))
+            breaker = entry[1] if entry is not None and entry[0] is registered else None
+            if breaker is None:
+                return False
+            breaker.reset(now=self._circuit_clock())
+            return True
 
     @property
     def pending_sync_calls(self) -> int:
@@ -650,18 +908,32 @@ class ToolRuntime:
         arguments: dict[str, Any],
         tool_semaphore: asyncio.Semaphore | None,
         rate_limiter: _TokenBucket | None,
+        circuit_breaker: _CircuitBreaker | None,
+        circuit_attempt: _CircuitAttempt,
     ) -> JSONValue:
+        circuit_attempt.acquire(circuit_breaker, now=self._circuit_clock())
         if registered.spec.is_async:
             if tool_semaphore is not None:
                 await tool_semaphore.acquire()
             try:
                 async with self._semaphore:
+                    circuit_attempt.validate(now=self._circuit_clock())
                     self._require_rate_token(rate_limiter)
                     self._begin_execution()
                     try:
-                        awaitable = cast(Awaitable[Any], registered.function(**arguments))
-                        raw_output = await awaitable
-                        return self._normalize_output(registered, raw_output)
+                        try:
+                            awaitable = cast(Awaitable[Any], registered.function(**arguments))
+                            raw_output = await awaitable
+                            output = self._normalize_output(registered, raw_output)
+                        except ProgressHandlerError:
+                            circuit_attempt.abandon(now=self._circuit_clock())
+                            raise
+                        except Exception:
+                            self._record_circuit_failure(circuit_attempt)
+                            raise
+                        else:
+                            circuit_attempt.succeed(now=self._circuit_clock())
+                            return output
                     finally:
                         self._end_execution()
             finally:
@@ -677,6 +949,7 @@ class ToolRuntime:
                 tool_semaphore.release()
             raise
         try:
+            circuit_attempt.validate(now=self._circuit_clock())
             self._require_rate_token(rate_limiter)
         except BaseException:
             self._semaphore.release()
@@ -685,7 +958,7 @@ class ToolRuntime:
             raise
         loop = asyncio.get_running_loop()
         try:
-            sync_future = self._executor.submit(self._run_sync, registered.function, arguments)
+            sync_future = self._executor.submit(self._run_sync, registered, arguments)
         except BaseException:
             self._semaphore.release()
             if tool_semaphore is not None:
@@ -694,14 +967,16 @@ class ToolRuntime:
         with self._sync_futures_lock:
             self._sync_futures.add(sync_future)
         sync_future.add_done_callback(
+            partial(self._sync_circuit_finished, circuit_attempt=circuit_attempt)
+        )
+        sync_future.add_done_callback(
             partial(
                 self._sync_finished,
                 loop=loop,
                 tool_semaphore=tool_semaphore,
             )
         )
-        raw_output = await self._wrap_sync_future(sync_future)
-        return self._normalize_output(registered, raw_output)
+        return cast(JSONValue, await self._wrap_sync_future(sync_future))
 
     async def _authorize_and_execute(
         self,
@@ -711,6 +986,8 @@ class ToolRuntime:
         invocation_id: str,
         tool_semaphore: asyncio.Semaphore | None,
         rate_limiter: _TokenBucket | None,
+        circuit_breaker: _CircuitBreaker | None,
+        circuit_attempt: _CircuitAttempt,
     ) -> JSONValue:
         """Fail closed on one bounded policy decision before tool execution."""
 
@@ -731,7 +1008,20 @@ class ToolRuntime:
                 raise _ToolPolicyFailed
             if decision is ToolPolicyDecision.DENY:
                 raise _ToolPolicyDenied
-        return await self._execute(registered, arguments, tool_semaphore, rate_limiter)
+        return await self._execute(
+            registered,
+            arguments,
+            tool_semaphore,
+            rate_limiter,
+            circuit_breaker,
+            circuit_attempt,
+        )
+
+    def _record_circuit_failure(self, circuit_attempt: _CircuitAttempt) -> None:
+        """Record one protected execution failure and any resulting trip."""
+
+        if circuit_attempt.fail(now=self._circuit_clock()):
+            self._increment("circuit_breaker_trips")
 
     def _require_rate_token(self, rate_limiter: _TokenBucket | None) -> None:
         """Consume one start token or raise a safe internal throttling signal."""
@@ -742,14 +1032,34 @@ class ToolRuntime:
         if retry_after_ms is not None:
             raise _ToolRateLimited(retry_after_ms)
 
-    def _run_sync(self, function: Callable[..., Any], arguments: dict[str, Any]) -> Any:
-        """Run one sync callable while tracking its real thread lifetime."""
+    def _run_sync(self, registered: RegisteredTool, arguments: dict[str, Any]) -> JSONValue:
+        """Run and normalize one sync callable while tracking its real lifetime."""
 
         self._begin_execution()
         try:
-            return function(**arguments)
+            raw_output = registered.function(**arguments)
+            return self._normalize_output(registered, raw_output)
         finally:
             self._end_execution()
+
+    def _sync_circuit_finished(
+        self,
+        future: Future[JSONValue],
+        *,
+        circuit_attempt: _CircuitAttempt,
+    ) -> None:
+        """Record the sync outcome before releasing capacity to queued calls."""
+
+        try:
+            future.result()
+        except ProgressHandlerError:
+            circuit_attempt.abandon(now=self._circuit_clock())
+        except Exception:
+            self._record_circuit_failure(circuit_attempt)
+        except BaseException:
+            circuit_attempt.abandon(now=self._circuit_clock())
+        else:
+            circuit_attempt.succeed(now=self._circuit_clock())
 
     def _sync_finished(
         self,

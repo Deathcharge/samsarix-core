@@ -59,9 +59,11 @@ One invocation proceeds in this order:
 1. bounded runtime admission;
 2. tool lookup plus argument resource and schema validation;
 3. optional host policy;
-4. optional per-tool and global concurrency acquisition;
-5. token check and consumption;
-6. tool execution.
+4. optional circuit permit;
+5. optional per-tool and global concurrency acquisition;
+6. queued circuit-permit revalidation;
+7. token check and consumption;
+8. tool execution.
 
 Missing tools, invalid calls, explicit policy denials, policy failures, and calls that
 time out or are cancelled before the execution controls are acquired do not spend a
@@ -74,6 +76,11 @@ Replacement is explicit deployment policy. Replacing a tool discards the old buc
 and omitting `rate_limit` leaves the replacement unrestricted apart from other runtime
 controls. Direct registry mutation does not add a rate policy; use `ToolRuntime.register`
 when this control is required.
+
+An open circuit rejects before the bucket is checked, so it does not spend a token. A
+rate rejection while holding the single half-open probe does not count as a dependency
+failure or leave the breaker stuck; the next eligible caller can probe after a token is
+available. See [per-tool circuit breakers](CIRCUIT_BREAKERS.md).
 
 ## Scope and limits
 

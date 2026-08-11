@@ -85,19 +85,26 @@ When one dependency has both a concurrency ceiling and a sustained request quota
 configure the exact registration rather than slowing unrelated tools:
 
 ```python
-from samsarix_core import ToolRateLimit
+from samsarix_core import ToolCircuitBreaker, ToolRateLimit
 
 async with ToolRuntime(max_concurrency=8) as quota_runtime:
     quota_runtime.register(
         greet,
         max_concurrency=2,
         rate_limit=ToolRateLimit(calls=30, period_seconds=60, burst=3),
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=3,
+            recovery_timeout_seconds=30,
+        ),
     )
     result = await quota_runtime.invoke("greet", {"name": "Ada"})
 ```
 
 An empty bucket returns the retryable `rate_limited` result without running the tool.
 The bucket is local to this runtime process; see [per-tool rate limits](RATE_LIMITS.md).
+Three consecutive execution failures open the independent circuit for 30 seconds;
+open calls return a retryable `circuit_open` result without running the tool. One
+half-open probe tests recovery. See [per-tool circuit breakers](CIRCUIT_BREAKERS.md).
 
 ## 4. Invoke a bounded batch
 

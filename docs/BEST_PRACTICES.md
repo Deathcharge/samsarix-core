@@ -56,8 +56,8 @@ this tool-specific slot before a global execution slot, preserving unrelated too
 availability while the constrained tool queues.
 
 The per-tool concurrency limit is an in-process execution bulkhead, not a request-rate
-limit, tenant quota, circuit breaker, or process sandbox. When the dependency also has a
-sustained request quota, add `rate_limit=ToolRateLimit(...)`. The token bucket is checked
+limit, tenant quota, or process sandbox. When the dependency also has a sustained
+request quota, add `rate_limit=ToolRateLimit(...)`. The token bucket is checked
 immediately before tool start and returns a safe retry delay instead of waiting. Combine
 both controls: concurrency protects simultaneous downstream work while rate protects
 starts over time. Keep total admission finite and set downstream I/O deadlines.
@@ -65,6 +65,14 @@ See the vendor-neutral [bulkhead pattern guidance](https://learn.microsoft.com/e
 for the reliability trade-offs and complementary controls.
 See [per-tool rate limits](RATE_LIMITS.md) for token accounting, safe retry behavior,
 primary references, and process-local limitations.
+
+When repeatedly calling a known-failing dependency would waste capacity or amplify an
+incident, add `circuit_breaker=ToolCircuitBreaker(...)`. Choose the consecutive-failure
+threshold and recovery interval from observed failure modes and recovery time. Monitor
+both trips and open-circuit rejections. Keep dependency connect/read/write deadlines:
+the breaker reacts to observed outcomes and does not interrupt a hung operation by
+itself. It also does not retry. See [per-tool circuit breakers](CIRCUIT_BREAKERS.md) for
+counting, half-open probes, manual reset, primary references, and process-local limits.
 
 Choose the runtime-wide `max_concurrency` from aggregate downstream capacity, not CPU count alone. Set
 `max_pending_invocations` to the total policy/execution work one process can safely
@@ -105,8 +113,11 @@ Branch on `ToolStatus`; do not infer success from a truthy output. A `busy` resu
 retryable because no tool or policy code ran, but use capped exponential backoff with
 jitter rather than retrying immediately. A `rate_limited` result also means tool code
 did not run; wait at least `error.details["retry_after_ms"]`, add bounded jitter for
-competing callers, and remember that the hint does not reserve the next token. Other
-failures remain non-retryable because a timed-out sync function may still finish and
+competing callers, and remember that the hint does not reserve the next token. A
+`circuit_open` result also means this call did not run; its retry delay may be absent
+while another recovery probe is active. Retry only after bounded backoff and only when
+the tool's side-effect semantics allow it. Other failures remain non-retryable because
+a timed-out sync function may still finish and
 cause its side effect. Apply any broader retry policy only when the tool's semantics
 make that safe.
 

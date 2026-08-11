@@ -27,6 +27,7 @@ class ToolStatus(str, Enum):
     DENIED = "denied"
     BUSY = "busy"
     RATE_LIMITED = "rate_limited"
+    CIRCUIT_OPEN = "circuit_open"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
     RUNTIME_CLOSED = "runtime_closed"
@@ -42,11 +43,20 @@ class ToolLifecycleStatus(str, Enum):
     DENIED = "denied"
     BUSY = "busy"
     RATE_LIMITED = "rate_limited"
+    CIRCUIT_OPEN = "circuit_open"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
     RUNTIME_CLOSED = "runtime_closed"
     CANCELLED = "cancelled"
     ABORTED = "aborted"
+
+
+class ToolCircuitState(str, Enum):
+    """Observable state of one configured process-local circuit breaker."""
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +191,46 @@ class ToolRateLimit:
         }
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ToolCircuitBreaker:
+    """Consecutive-failure circuit policy for one exact tool registration."""
+
+    failure_threshold: int
+    recovery_timeout_seconds: float
+
+    def __post_init__(self) -> None:
+        if isinstance(self.failure_threshold, bool) or not isinstance(self.failure_threshold, int):
+            raise TypeError("failure_threshold must be an integer")
+        if self.failure_threshold <= 0:
+            raise ValueError("failure_threshold must be positive")
+        if self.failure_threshold > _MAX_EXACT_TOKEN_COUNT:
+            raise ValueError("failure_threshold exceeds the exact count limit")
+        if isinstance(self.recovery_timeout_seconds, bool) or not isinstance(
+            self.recovery_timeout_seconds, (int, float)
+        ):
+            raise TypeError("recovery_timeout_seconds must be a number")
+        try:
+            recovery_timeout_seconds = float(self.recovery_timeout_seconds)
+        except OverflowError as exc:
+            raise ValueError("recovery_timeout_seconds must be finite and positive") from exc
+        retry_after_ms = recovery_timeout_seconds * 1_000
+        if (
+            recovery_timeout_seconds <= 0
+            or not isfinite(recovery_timeout_seconds)
+            or not isfinite(retry_after_ms)
+        ):
+            raise ValueError("recovery_timeout_seconds must be finite and positive")
+        object.__setattr__(self, "recovery_timeout_seconds", recovery_timeout_seconds)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the normalized deployment-local configuration."""
+
+        return {
+            "failure_threshold": self.failure_threshold,
+            "recovery_timeout_seconds": self.recovery_timeout_seconds,
+        }
+
+
 class ToolPolicyDecision(str, Enum):
     """A host policy's explicit decision for one validated invocation."""
 
@@ -277,6 +327,8 @@ class RuntimeMetrics:
     peak_pending_invocations: int = 0
     lifecycle_handler_failures: int = 0
     rate_limited: int = 0
+    circuit_open: int = 0
+    circuit_breaker_trips: int = 0
 
     def to_dict(self) -> dict[str, int]:
         """Return the counters as a plain mapping."""
@@ -289,6 +341,7 @@ class RuntimeMetrics:
             "denied": self.denied,
             "busy": self.busy,
             "rate_limited": self.rate_limited,
+            "circuit_open": self.circuit_open,
             "timed_out": self.timed_out,
             "failed": self.failed,
             "runtime_closed": self.runtime_closed,
@@ -298,4 +351,5 @@ class RuntimeMetrics:
             "in_flight": self.in_flight,
             "peak_in_flight": self.peak_in_flight,
             "lifecycle_handler_failures": self.lifecycle_handler_failures,
+            "circuit_breaker_trips": self.circuit_breaker_trips,
         }

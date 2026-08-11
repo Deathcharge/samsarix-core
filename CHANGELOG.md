@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- opt-in process-local per-tool consecutive-failure circuit breakers with safe
+  fail-fast results, one half-open recovery probe, queued-permit invalidation,
+  manual inspection/reset, content-free metrics/lifecycle events, and consistent
+  direct, batch, MCP, and task behavior.
+
 ### Changed
 
 - recorded immutable `v2.0.0a6` release checksums, provenance, and clean installed-wheel

@@ -72,10 +72,12 @@ ToolRuntime(
 )
 ```
 
-- `register(function, *, replace=False, max_concurrency=None, rate_limit=None) -> ToolSpec`
+- `register(function, *, replace=False, max_concurrency=None, rate_limit=None, circuit_breaker=None) -> ToolSpec`
 - `await invoke(name, arguments=None, *, timeout=None, progress_handler=None) -> ToolResult`
 - `await invoke_many(calls) -> list[ToolResult]`
 - `metrics() -> RuntimeMetrics`
+- `circuit_state(name) -> ToolCircuitState | None`
+- `reset_circuit(name) -> bool`
 - `pending_sync_calls -> int`
 - `await wait_for_sync(*, timeout=None) -> bool`
 - `await aclose(*, wait_for_sync=False, timeout=None) -> bool`
@@ -121,6 +123,17 @@ part of `ToolSpec` or discovery. It is not a distributed, durable, per-client, o
 per-tenant quota. Token counts are positive integers no larger than `2**53 - 1`; the
 period and derived refill/retry magnitudes must be positive and finite. See
 [Per-tool rate limits](RATE_LIMITS.md).
+
+`register(..., circuit_breaker=ToolCircuitBreaker(failure_threshold=N,
+recovery_timeout_seconds=S))` adds a process-local consecutive-execution-failure
+breaker to the exact registration. It fails fast with retryable status `circuit_open`
+and safe code `tool_circuit_open`, admits one half-open probe after the recovery
+interval, and closes after a successful validated output. Invalid input, policy and
+admission outcomes, rate rejection, progress-handler failure, and caller cancellation
+do not count; tool/output failures and caller-visible timeouts do. The breaker is
+checked before capacity and again before execution so a queued stale permit cannot run
+after another call opens it. `circuit_state()` inspects configured state and
+`reset_circuit()` forces it closed. See [Per-tool circuit breakers](CIRCUIT_BREAKERS.md).
 
 Argument and output sizes are the UTF-8 byte length of compact JSON. The root is
 depth zero; every child increments depth. Each container and scalar is one node,
@@ -255,6 +268,9 @@ All public models are frozen, slotted dataclasses.
 - `ToolRateLimit`: positive token allocation, finite refill period, and optional burst
   capacity. `burst_capacity` resolves the default and `to_dict()` returns normalized
   deployment-local configuration.
+- `ToolCircuitBreaker`: positive consecutive-failure threshold and finite positive
+  recovery interval for one process-local exact registration.
+- `ToolCircuitState`: `closed`, `open`, or `half_open`.
 - `ToolPolicyContext`: invocation ID plus detached validated arguments and tool spec;
   unlike result models, it intentionally has no serialization helper.
 - `ToolPolicyDecision`: explicit `allow` or `deny` policy outcome.
@@ -269,13 +285,13 @@ All public models are frozen, slotted dataclasses.
 - `ToolError`: code, safe message, optional exception type/details, and retryable flag.
 - `ToolProgress`: numeric progress, optional total, and optional human-readable message.
 - `RuntimeMetrics`: content-free counters only, including policy denials, aggregate
-  process-wide rate-limit rejections, and runtime saturation.
+  process-wide rate/circuit rejections and breaker trips, and runtime saturation.
 - `ToolStatus`: `success`, `not_found`, `invalid_arguments`, `denied`, `busy`,
-  `rate_limited`, `timed_out`, `failed`, and `runtime_closed`.
+  `rate_limited`, `circuit_open`, `timed_out`, `failed`, and `runtime_closed`.
 - `TaskSupport`: the `"forbidden" | "optional" | "required"` public type alias.
 
-`ToolSpec`, `ToolRateLimit`, `ToolResult`, `ToolError`, `ToolLifecycleEvent`, and
-`RuntimeMetrics` provide `to_dict()`.
+`ToolSpec`, `ToolRateLimit`, `ToolCircuitBreaker`, `ToolResult`, `ToolError`,
+`ToolLifecycleEvent`, and `RuntimeMetrics` provide `to_dict()`.
 
 ## Supported annotations
 

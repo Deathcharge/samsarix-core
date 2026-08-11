@@ -16,8 +16,11 @@ import pytest
 from samsarix_core import (
     ProgressHandlerError,
     ToolCall,
+    ToolCircuitBreaker,
+    ToolCircuitState,
     ToolLifecycleEvent,
     ToolLifecycleStatus,
+    ToolNotFoundError,
     ToolPolicyContext,
     ToolPolicyDecision,
     ToolProgress,
@@ -746,6 +749,19 @@ def test_per_tool_rate_limit_type_is_validated_before_registration() -> None:
         asyncio.run(runtime.aclose())
 
 
+def test_per_tool_circuit_breaker_type_is_validated_before_registration() -> None:
+    runtime = ToolRuntime()
+    try:
+        with pytest.raises(TypeError, match="ToolCircuitBreaker"):
+            runtime.register(
+                add,
+                circuit_breaker={"failure_threshold": 1},  # type: ignore[arg-type]
+            )
+        assert "add" not in runtime.registry
+    finally:
+        asyncio.run(runtime.aclose())
+
+
 @pytest.mark.asyncio
 async def test_replacing_a_tool_does_not_inherit_its_previous_bulkhead() -> None:
     active = 0
@@ -825,6 +841,10 @@ async def test_concurrent_registrations_publish_every_tool_control() -> None:
                     function,
                     max_concurrency=1,
                     rate_limit=ToolRateLimit(calls=2, period_seconds=60, burst=2),
+                    circuit_breaker=ToolCircuitBreaker(
+                        failure_threshold=1,
+                        recovery_timeout_seconds=60,
+                    ),
                 )
                 for function in functions
             ]
@@ -840,6 +860,9 @@ async def test_concurrent_registrations_publish_every_tool_control() -> None:
 
     assert [result.status for result in results].count(ToolStatus.SUCCESS) == tool_count * 2
     assert peaks == [1] * tool_count
+    assert {runtime.circuit_state(f"concurrent_{index}") for index in range(tool_count)} == {
+        ToolCircuitState.CLOSED
+    }
 
 
 @pytest.mark.asyncio
@@ -1116,6 +1139,519 @@ async def test_sync_rate_limit_releases_global_and_tool_slots_without_submission
     assert "private-second" not in str(limited.to_dict())
 
 
+@pytest.mark.asyncio
+async def test_per_tool_circuit_breaker_opens_recovers_and_reports_safe_state() -> None:
+    now = 100.0
+    executions: list[str] = []
+    events: list[ToolLifecycleEvent] = []
+
+    @helix_tool
+    async def fragile_dependency(value: str, fail: bool) -> str:
+        """Represent a dependency that can fail until it recovers."""
+
+        executions.append(value)
+        if fail:
+            raise RuntimeError(value)
+        return value
+
+    runtime = ToolRuntime(lifecycle_handler=events.append)
+    runtime._circuit_clock = lambda: now
+    runtime.register(
+        fragile_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=2,
+            recovery_timeout_seconds=10,
+        ),
+    )
+    try:
+        assert runtime.circuit_state("fragile_dependency") is ToolCircuitState.CLOSED
+        first = await runtime.invoke("fragile_dependency", {"value": "private-first", "fail": True})
+        assert runtime.circuit_state("fragile_dependency") is ToolCircuitState.CLOSED
+        second = await runtime.invoke(
+            "fragile_dependency", {"value": "private-second", "fail": True}
+        )
+        assert runtime.circuit_state("fragile_dependency") is ToolCircuitState.OPEN
+        blocked = await runtime.invoke(
+            "fragile_dependency", {"value": "private-blocked", "fail": False}
+        )
+        now += 10
+        probe = await runtime.invoke(
+            "fragile_dependency", {"value": "recovered-probe", "fail": False}
+        )
+        assert runtime.circuit_state("fragile_dependency") is ToolCircuitState.CLOSED
+        healthy = await runtime.invoke("fragile_dependency", {"value": "healthy", "fail": False})
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    assert first.status is ToolStatus.FAILED
+    assert second.status is ToolStatus.FAILED
+    assert blocked.status is ToolStatus.CIRCUIT_OPEN
+    assert blocked.error is not None
+    assert blocked.error.to_dict() == {
+        "code": "tool_circuit_open",
+        "message": "Tool dependency circuit is temporarily open",
+        "retryable": True,
+        "details": {"retry_after_ms": 10000},
+    }
+    assert probe.success and healthy.success
+    assert executions == ["private-first", "private-second", "recovered-probe", "healthy"]
+    assert "private-blocked" not in str(blocked.to_dict())
+    assert metrics.calls_total == 5
+    assert metrics.succeeded == 2
+    assert metrics.failed == 2
+    assert metrics.circuit_open == 1
+    assert metrics.circuit_breaker_trips == 1
+    assert metrics.to_dict()["circuit_open"] == 1
+    assert metrics.to_dict()["circuit_breaker_trips"] == 1
+    assert [event.status for event in events] == [
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.FAILED,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.FAILED,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.CIRCUIT_OPEN,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.SUCCESS,
+        ToolLifecycleStatus.STARTED,
+        ToolLifecycleStatus.SUCCESS,
+    ]
+    assert "private-blocked" not in str([event.to_dict() for event in events])
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_counts_only_post_policy_execution_failures() -> None:
+    executions: list[str] = []
+
+    @helix_tool
+    async def guarded_dependency(label: str) -> str:
+        """Succeed or fail after validation and policy admission."""
+
+        executions.append(label)
+        if label == "fail":
+            raise RuntimeError("dependency unavailable")
+        return label
+
+    async def policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        return (
+            ToolPolicyDecision.DENY
+            if context.arguments["label"] == "deny"
+            else ToolPolicyDecision.ALLOW
+        )
+
+    runtime = ToolRuntime(policy=policy)
+    runtime.register(
+        guarded_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=2,
+            recovery_timeout_seconds=60,
+        ),
+    )
+    try:
+        invalid = await runtime.invoke("guarded_dependency", {"label": 7})
+        denied = await runtime.invoke("guarded_dependency", {"label": "deny"})
+        first_failure = await runtime.invoke("guarded_dependency", {"label": "fail"})
+        success = await runtime.invoke("guarded_dependency", {"label": "success"})
+        second_failure = await runtime.invoke("guarded_dependency", {"label": "fail"})
+        assert runtime.circuit_state("guarded_dependency") is ToolCircuitState.CLOSED
+        third_failure = await runtime.invoke("guarded_dependency", {"label": "fail"})
+        metrics = runtime.metrics()
+    finally:
+        await runtime.aclose()
+
+    assert invalid.status is ToolStatus.INVALID_ARGUMENTS
+    assert denied.status is ToolStatus.DENIED
+    assert first_failure.status is ToolStatus.FAILED
+    assert success.status is ToolStatus.SUCCESS
+    assert second_failure.status is ToolStatus.FAILED
+    assert third_failure.status is ToolStatus.FAILED
+    assert runtime.circuit_state("guarded_dependency") is ToolCircuitState.OPEN
+    assert executions == ["fail", "success", "fail", "fail"]
+    assert metrics.circuit_breaker_trips == 1
+    assert metrics.circuit_open == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_output_validation_failure_trips_before_queued_execution() -> None:
+    executions = 0
+
+    @helix_tool
+    def malformed_dependency() -> int:
+        """Return a private malformed value from a protected sync dependency."""
+
+        nonlocal executions
+        executions += 1
+        return "private-malformed-output"  # type: ignore[return-value]
+
+    runtime = ToolRuntime()
+    runtime.register(
+        malformed_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=60,
+        ),
+    )
+    try:
+        failed = await runtime.invoke("malformed_dependency")
+        blocked = await runtime.invoke("malformed_dependency")
+    finally:
+        await runtime.aclose()
+
+    assert failed.status is ToolStatus.FAILED
+    assert failed.error is not None
+    assert failed.error.code == "invalid_output"
+    assert blocked.status is ToolStatus.CIRCUIT_OPEN
+    assert executions == 1
+    assert "private-malformed-output" not in str(failed.to_dict())
+    assert runtime.metrics().circuit_breaker_trips == 1
+
+
+@pytest.mark.asyncio
+async def test_half_open_rate_rejection_releases_probe_without_changing_trip_count() -> None:
+    circuit_now = 10.0
+    rate_now = 20.0
+    available = False
+    executions = 0
+
+    @helix_tool
+    async def circuit_and_rate_dependency() -> str:
+        """Exercise independent circuit and token-bucket admission."""
+
+        nonlocal executions
+        executions += 1
+        if not available:
+            raise RuntimeError("dependency unavailable")
+        return "available"
+
+    runtime = ToolRuntime()
+    runtime._circuit_clock = lambda: circuit_now
+    runtime._rate_limit_clock = lambda: rate_now
+    runtime.register(
+        circuit_and_rate_dependency,
+        rate_limit=ToolRateLimit(calls=1, period_seconds=60),
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=5,
+        ),
+    )
+    try:
+        failed = await runtime.invoke("circuit_and_rate_dependency")
+        circuit_now += 5
+        throttled_probe = await runtime.invoke("circuit_and_rate_dependency")
+        assert runtime.circuit_state("circuit_and_rate_dependency") is ToolCircuitState.OPEN
+        rate_now += 60
+        available = True
+        recovered = await runtime.invoke("circuit_and_rate_dependency")
+    finally:
+        await runtime.aclose()
+
+    assert failed.status is ToolStatus.FAILED
+    assert throttled_probe.status is ToolStatus.RATE_LIMITED
+    assert recovered.success
+    assert executions == 2
+    assert runtime.metrics().rate_limited == 1
+    assert runtime.metrics().circuit_breaker_trips == 1
+    assert runtime.circuit_state("circuit_and_rate_dependency") is ToolCircuitState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_opening_circuit_invalidates_queued_closed_state_permits() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    executions: list[str] = []
+
+    @helix_tool
+    async def serialized_dependency(label: str) -> str:
+        """Hold and fail the first call while another call waits for capacity."""
+
+        executions.append(label)
+        if label == "first":
+            started.set()
+            await release.wait()
+            raise RuntimeError("dependency unavailable")
+        return label
+
+    runtime = ToolRuntime(max_concurrency=1)
+    runtime.register(
+        serialized_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=60,
+        ),
+    )
+    first = asyncio.create_task(runtime.invoke("serialized_dependency", {"label": "first"}))
+    second: asyncio.Task[ToolResult] | None = None
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        second = asyncio.create_task(
+            runtime.invoke("serialized_dependency", {"label": "private-queued"})
+        )
+        for _ in range(100):
+            if runtime.metrics().pending_invocations == 2:
+                break
+            await asyncio.sleep(0)
+        else:
+            pytest.fail("second circuit-protected invocation was not admitted")
+        await asyncio.sleep(0)
+        release.set()
+        failed, blocked = await asyncio.gather(first, second)
+    finally:
+        release.set()
+        first.cancel()
+        if second is not None:
+            second.cancel()
+        await asyncio.gather(
+            first, *(item for item in (second,) if item is not None), return_exceptions=True
+        )
+        await runtime.aclose()
+
+    assert failed.status is ToolStatus.FAILED
+    assert blocked.status is ToolStatus.CIRCUIT_OPEN
+    assert executions == ["first"]
+    assert "private-queued" not in str(blocked.to_dict())
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_allows_only_one_half_open_probe() -> None:
+    now = 20.0
+    probe_started = asyncio.Event()
+    release_probe = asyncio.Event()
+    executions: list[str] = []
+
+    @helix_tool
+    async def recovering_dependency(label: str) -> str:
+        """Fail initially and hold one recovery probe."""
+
+        executions.append(label)
+        if label == "failure":
+            raise RuntimeError("dependency unavailable")
+        probe_started.set()
+        await release_probe.wait()
+        return label
+
+    runtime = ToolRuntime(max_concurrency=2)
+    runtime._circuit_clock = lambda: now
+    runtime.register(
+        recovering_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=5,
+        ),
+    )
+    probe: asyncio.Task[ToolResult] | None = None
+    try:
+        failed = await runtime.invoke("recovering_dependency", {"label": "failure"})
+        assert failed.status is ToolStatus.FAILED
+        now += 5
+        probe = asyncio.create_task(runtime.invoke("recovering_dependency", {"label": "probe"}))
+        await asyncio.wait_for(probe_started.wait(), timeout=1)
+        assert runtime.circuit_state("recovering_dependency") is ToolCircuitState.HALF_OPEN
+        competing = await runtime.invoke("recovering_dependency", {"label": "private-competing"})
+        release_probe.set()
+        recovered = await probe
+    finally:
+        release_probe.set()
+        if probe is not None:
+            probe.cancel()
+            await asyncio.gather(probe, return_exceptions=True)
+        await runtime.aclose()
+
+    assert competing.status is ToolStatus.CIRCUIT_OPEN
+    assert competing.error is not None
+    assert competing.error.retryable is True
+    assert competing.error.details is None
+    assert "private-competing" not in str(competing.to_dict())
+    assert recovered.success
+    assert executions == ["failure", "probe"]
+    assert runtime.circuit_state("recovering_dependency") is ToolCircuitState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_cancelled_half_open_probe_releases_recovery_slot_without_tripping() -> None:
+    now = 10.0
+    probe_started = asyncio.Event()
+    hold_probe = asyncio.Event()
+    executions: list[str] = []
+
+    @helix_tool
+    async def cancellable_probe(label: str) -> str:
+        """Fail once, then expose one cancellable recovery probe."""
+
+        executions.append(label)
+        if label == "failure":
+            raise RuntimeError("dependency unavailable")
+        if label == "cancelled-probe":
+            probe_started.set()
+            await hold_probe.wait()
+        return label
+
+    runtime = ToolRuntime()
+    runtime._circuit_clock = lambda: now
+    runtime.register(
+        cancellable_probe,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=5,
+        ),
+    )
+    probe: asyncio.Task[ToolResult] | None = None
+    try:
+        failed = await runtime.invoke("cancellable_probe", {"label": "failure"})
+        assert failed.status is ToolStatus.FAILED
+        now += 5
+        probe = asyncio.create_task(
+            runtime.invoke("cancellable_probe", {"label": "cancelled-probe"})
+        )
+        await asyncio.wait_for(probe_started.wait(), timeout=1)
+        assert runtime.circuit_state("cancellable_probe") is ToolCircuitState.HALF_OPEN
+        probe.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await probe
+        assert runtime.circuit_state("cancellable_probe") is ToolCircuitState.OPEN
+        recovered = await runtime.invoke("cancellable_probe", {"label": "recovery"})
+    finally:
+        hold_probe.set()
+        if probe is not None:
+            probe.cancel()
+            await asyncio.gather(probe, return_exceptions=True)
+        await runtime.aclose()
+
+    assert recovered.success
+    assert executions == ["failure", "cancelled-probe", "recovery"]
+    assert runtime.circuit_state("cancellable_probe") is ToolCircuitState.CLOSED
+    assert runtime.metrics().circuit_breaker_trips == 1
+
+
+@pytest.mark.asyncio
+async def test_async_timeout_trips_circuit_before_releasing_capacity() -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    executions = 0
+
+    @helix_tool
+    async def slow_async_dependency(value: str) -> str:
+        """Remain active until the caller-visible deadline cancels execution."""
+
+        nonlocal executions
+        executions += 1
+        started.set()
+        await release.wait()
+        return value
+
+    runtime = ToolRuntime(max_concurrency=1)
+    runtime._circuit_clock = lambda: 45.0
+    runtime.register(
+        slow_async_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=60,
+        ),
+    )
+    try:
+        timed_out = await runtime.invoke(
+            "slow_async_dependency", {"value": "private-timeout"}, timeout=0.02
+        )
+        assert started.is_set()
+        blocked = await runtime.invoke(
+            "slow_async_dependency", {"value": "private-blocked"}, timeout=1
+        )
+    finally:
+        release.set()
+        await runtime.aclose()
+
+    assert timed_out.status is ToolStatus.TIMED_OUT
+    assert blocked.status is ToolStatus.CIRCUIT_OPEN
+    assert executions == 1
+    assert runtime.metrics().circuit_breaker_trips == 1
+    assert "private-blocked" not in str(blocked.to_dict())
+
+
+@pytest.mark.asyncio
+async def test_sync_timeout_trips_circuit_without_submitting_another_worker() -> None:
+    started = Event()
+    release = Event()
+    executions = 0
+
+    @helix_tool
+    def slow_dependency(value: str) -> str:
+        """Hold one real worker until the host releases it."""
+
+        nonlocal executions
+        executions += 1
+        started.set()
+        release.wait(timeout=5)
+        return value
+
+    runtime = ToolRuntime(max_concurrency=1)
+    runtime._circuit_clock = lambda: 50.0
+    runtime.register(
+        slow_dependency,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=60,
+        ),
+    )
+    try:
+        timed_out = await runtime.invoke(
+            "slow_dependency", {"value": "private-timeout"}, timeout=0.02
+        )
+        assert started.wait(timeout=1)
+        blocked = await runtime.invoke("slow_dependency", {"value": "private-blocked"}, timeout=1)
+        metrics = runtime.metrics()
+    finally:
+        release.set()
+        await runtime.aclose(wait_for_sync=True, timeout=5)
+
+    assert timed_out.status is ToolStatus.TIMED_OUT
+    assert blocked.status is ToolStatus.CIRCUIT_OPEN
+    assert executions == 1
+    assert runtime.pending_sync_calls == 0
+    assert metrics.timed_out == 1
+    assert metrics.circuit_open == 1
+    assert metrics.circuit_breaker_trips == 1
+    assert "private-blocked" not in str(blocked.to_dict())
+
+
+@pytest.mark.asyncio
+async def test_circuit_state_reset_and_replacement_are_registration_scoped() -> None:
+    @helix_tool(name="replaceable_circuit")
+    async def failing() -> str:
+        """Trip the original registration's circuit."""
+
+        raise RuntimeError("offline")
+
+    @helix_tool(name="replaceable_circuit")
+    async def replacement() -> str:
+        """Represent a healthy replacement registration."""
+
+        return "available"
+
+    runtime = ToolRuntime()
+    runtime._circuit_clock = lambda: 5.0
+    runtime.register(
+        failing,
+        circuit_breaker=ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=60,
+        ),
+    )
+    try:
+        assert (await runtime.invoke("replaceable_circuit")).status is ToolStatus.FAILED
+        assert runtime.circuit_state("replaceable_circuit") is ToolCircuitState.OPEN
+        assert runtime.reset_circuit("replaceable_circuit") is True
+        assert runtime.circuit_state("replaceable_circuit") is ToolCircuitState.CLOSED
+        runtime.register(replacement, replace=True)
+        assert runtime.circuit_state("replaceable_circuit") is None
+        assert runtime.reset_circuit("replaceable_circuit") is False
+        assert (await runtime.invoke("replaceable_circuit")).output == "available"
+        with pytest.raises(ToolNotFoundError):
+            runtime.circuit_state("missing")
+        with pytest.raises(ToolNotFoundError):
+            runtime.reset_circuit("missing")
+    finally:
+        await runtime.aclose()
+
+
 @pytest.mark.parametrize(
     ("kwargs", "error"),
     [
@@ -1146,6 +1682,35 @@ def test_tool_rate_limit_normalizes_its_default_burst() -> None:
 
     assert limit.burst_capacity == 3
     assert limit.to_dict() == {"calls": 3, "period_seconds": 2.0, "burst": 3}
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        ({"failure_threshold": True, "recovery_timeout_seconds": 1}, TypeError),
+        ({"failure_threshold": 0, "recovery_timeout_seconds": 1}, ValueError),
+        ({"failure_threshold": 10**1_000, "recovery_timeout_seconds": 1}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": True}, TypeError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": 0}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": math.inf}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": math.nan}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": 10**1_000}, ValueError),
+    ],
+)
+def test_tool_circuit_breaker_configuration_is_validated(
+    kwargs: dict[str, object], error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        ToolCircuitBreaker(**kwargs)  # type: ignore[arg-type]
+
+
+def test_tool_circuit_breaker_normalizes_its_configuration() -> None:
+    policy = ToolCircuitBreaker(failure_threshold=3, recovery_timeout_seconds=2)
+
+    assert policy.to_dict() == {
+        "failure_threshold": 3,
+        "recovery_timeout_seconds": 2.0,
+    }
 
 
 @pytest.mark.asyncio
