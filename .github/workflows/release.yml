@@ -43,8 +43,7 @@ jobs:
         run: |
           python -m venv .release-smoke
           .release-smoke/bin/python -m pip install --no-deps dist/*.whl
-          .release-smoke/bin/python -c "from samsarix_core import MCPServer, ToolCircuitBreaker, ToolCircuitState, ToolPolicyContext, ToolPolicyDecision, ToolRateLimit, ToolRuntime, serve_stdio, __version__; assert ToolRateLimit(calls=1, period_seconds=1).burst_capacity == 1; assert ToolCircuitBreaker(failure_threshold=1, recovery_timeout_seconds=1).recovery_timeout_seconds == 1.0; assert ToolCircuitState.CLOSED.value == 'closed'; print(__version__)"
-          .release-smoke/bin/python -c "from helix_core import MCPServer, ToolCircuitBreaker, ToolCircuitState, ToolPolicyContext, ToolPolicyDecision, ToolRateLimit, serve_stdio, __version__ as legacy_version; from samsarix_core import __version__; assert legacy_version == __version__, f'{legacy_version} != {__version__}'"
+          .release-smoke/bin/python scripts/smoke_check.py
       - name: Require the tag to match the package version
         if: startsWith(github.ref, 'refs/tags/v')
         env:

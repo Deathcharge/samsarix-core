@@ -1547,16 +1547,25 @@ async def test_async_timeout_trips_circuit_before_releasing_capacity() -> None:
             recovery_timeout_seconds=60,
         ),
     )
+    timed_out_call: asyncio.Task[ToolResult] | None = None
     try:
-        timed_out = await runtime.invoke(
-            "slow_async_dependency", {"value": "private-timeout"}, timeout=0.02
+        timed_out_call = asyncio.create_task(
+            runtime.invoke(
+                "slow_async_dependency",
+                {"value": "private-timeout"},
+                timeout=0.2,
+            )
         )
-        assert started.is_set()
+        await asyncio.wait_for(started.wait(), timeout=1)
+        timed_out = await timed_out_call
         blocked = await runtime.invoke(
             "slow_async_dependency", {"value": "private-blocked"}, timeout=1
         )
     finally:
         release.set()
+        if timed_out_call is not None:
+            timed_out_call.cancel()
+            await asyncio.gather(timed_out_call, return_exceptions=True)
         await runtime.aclose()
 
     assert timed_out.status is ToolStatus.TIMED_OUT
@@ -1694,6 +1703,10 @@ def test_tool_rate_limit_normalizes_its_default_burst() -> None:
         ({"failure_threshold": 1, "recovery_timeout_seconds": 0}, ValueError),
         ({"failure_threshold": 1, "recovery_timeout_seconds": math.inf}, ValueError),
         ({"failure_threshold": 1, "recovery_timeout_seconds": math.nan}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": 1e308}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": -1}, ValueError),
+        ({"failure_threshold": 1, "recovery_timeout_seconds": "1"}, TypeError),
+        ({"failure_threshold": "1", "recovery_timeout_seconds": 1}, TypeError),
         ({"failure_threshold": 1, "recovery_timeout_seconds": 10**1_000}, ValueError),
     ],
 )

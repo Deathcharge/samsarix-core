@@ -194,6 +194,7 @@ exception. It returns a `ToolResult` with one of these states:
 - `denied`
 - `busy`
 - `rate_limited`
+- `circuit_open`
 - `timed_out`
 - `failed`
 - `runtime_closed`

@@ -653,8 +653,7 @@ class ToolRuntime:
             )
         except asyncio.TimeoutError:
             _stop_progress(progress_scope)
-            if circuit_attempt.fail(now=self._circuit_clock()):
-                self._increment("circuit_breaker_trips")
+            self._record_circuit_failure(circuit_attempt)
             execution.cancel()
             with suppress(asyncio.CancelledError):
                 await execution
@@ -744,8 +743,7 @@ class ToolRuntime:
                 ),
             )
         except ToolOutputError as exc:
-            if circuit_attempt.fail(now=self._circuit_clock()):
-                self._increment("circuit_breaker_trips")
+            self._record_circuit_failure(circuit_attempt)
             self._increment("failed")
             return self._result(
                 invocation_id,
@@ -763,8 +761,7 @@ class ToolRuntime:
             circuit_attempt.abandon(now=self._circuit_clock())
             raise
         except Exception as exc:
-            if circuit_attempt.fail(now=self._circuit_clock()):
-                self._increment("circuit_breaker_trips")
+            self._record_circuit_failure(circuit_attempt)
             self._increment("failed")
             message = str(exc) if self.expose_exceptions else "Tool execution failed"
             return self._result(
