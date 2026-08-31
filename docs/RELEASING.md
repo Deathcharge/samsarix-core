@@ -17,7 +17,7 @@ For a tag build, the workflow:
 2. runs strict Twine metadata checks;
 3. installs the wheel offline without dependencies in a temporary environment, verifies
    public exports and runtime behavior, and drives the documented MCP example through
-   actual subprocess pipes;
+   actual subprocess pipes, then runs the transactional SQLite reservation example;
 4. creates a `SHA256SUMS` manifest;
 5. generates GitHub Actions build-provenance attestations for both distributions; and
 6. creates a GitHub release containing the distributions and checksum manifest.
@@ -90,9 +90,9 @@ python scripts/verify_distribution.py /absolute/path/to/samsarix_core-VERSION-py
 
 Omit the argument only when `dist/` contains exactly one wheel. The verifier creates a
 temporary virtual environment, installs the exact artifact with `--no-index --no-deps`,
-runs `pip check`, and invokes both smoke scripts using Python isolated mode (`-I`) from
-outside the checkout. It does not change the caller's environment or access a package
-index. Environment creation and subprocesses have finite deadlines; the MCP checker
+runs `pip check`, and invokes both smoke scripts and the SQLite example using Python
+isolated mode (`-I`) from outside the checkout. It does not change the caller's environment
+or access a package index. Environment creation and subprocesses have finite deadlines; the MCP checker
 kills and reaps its child on failure. No model, account, network service, or user data
 is needed. Only run the checker against trusted project wheels and examples.
 
@@ -105,6 +105,8 @@ The gate verifies:
 - real MCP initialization before discovery/calls, UTF-8 and escaped-newline round-trip,
   synchronous results, invalid-input error logging with content-free fields, async
   progress correlation/order, and clean EOF shutdown without extra stdout.
+- real temporary SQLite stock mutation, duplicate replay, conflicting-key rejection,
+  replay after runtime recreation, and final stock verification before cleanup.
 
 Package CI runs this gate on Linux, Windows, and macOS at Python 3.10 and 3.14;
 the full unit suite additionally covers Python 3.10 through 3.14 on Linux. The

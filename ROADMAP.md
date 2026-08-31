@@ -79,6 +79,8 @@ remain separate decisions.
 
 ## Release candidate
 
+- [x] Prove a real transactional write journey with bounded application-owned
+  idempotency records, concurrent replay, rollback, and recovery after a lost response.
 - [x] Provide a reproducible mixed-dependency outage evaluation with actual execution
   counts, unrelated-tool latency, isolation trade-offs, and bounded cleanup checks.
 - [x] Verify installed wheel runtime behavior and the documented MCP example through
