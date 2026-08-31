@@ -244,7 +244,7 @@ JSON-RPC responses with `isError: true`; malformed protocol calls use standard
 JSON-RPC error objects. An MCP-cancelled call returns `None` and emits no response.
 Direct host task cancellation continues to raise `asyncio.CancelledError`.
 
-Unreleased: `enable_modern=True` also accepts MCP `2026-07-28` per-request
+Added in `2.0.0a10`: `enable_modern=True` also accepts MCP `2026-07-28` per-request
 metadata and `server/discover`, ordinary tool discovery/invocation, progress and
 cancellation. Each instance selects either modern behavior or legacy initialization;
 it does not interleave eras. Every modern request must independently supply its

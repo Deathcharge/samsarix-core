@@ -3,7 +3,7 @@
 Samsarix Core can expose its trusted local tools through the Model Context
 Protocol (MCP) without adding a runtime dependency. The bridge implements the
 explicit protocol revisions `2025-11-25` and `2025-06-18`. These are compatibility
-targets. The unreleased source also offers opt-in `2026-07-28` ordinary-tool
+targets. Starting with `2.0.0a10`, Core also offers opt-in `2026-07-28` ordinary-tool
 support through `MCPServer(..., enable_modern=True)`. The published a9 artifact
 does not contain that option. Default servers keep the 2025 handshake unchanged;
 newer clients can negotiate backward or use the explicit modern option below.
@@ -29,7 +29,7 @@ Those remain host-application concerns.
 
 ## Opt-in MCP 2026-07-28
 
-From a checkout containing this unreleased change, install with `python -m pip
+From a `2.0.0a10` or newer checkout, install with `python -m pip
 install -e .`, then launch the same read-only inventory example with:
 
 ```bash

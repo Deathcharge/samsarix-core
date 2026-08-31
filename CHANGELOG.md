@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a10 - 2026-08-31
+
 ### Added
 
 - opt-in MCP `2026-07-28` stdio tool support with per-request metadata, discovery,
