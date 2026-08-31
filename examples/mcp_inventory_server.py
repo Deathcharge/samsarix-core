@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from functools import partial
 
 from samsarix_core import MCPServer, ToolRuntime, report_progress, samsarix_tool, serve_stdio
 
@@ -68,14 +69,15 @@ async def main(*, enable_modern: bool = False) -> None:
     runtime.register(reserve_inventory)
     # Keep an expensive audit from occupying every execution slot needed by other tools.
     runtime.register(audit_inventory, max_concurrency=1)
-    server = MCPServer(
+    # Keep the default example usable with the published pre-modern wheel.
+    create_server = partial(MCPServer, enable_modern=True) if enable_modern else MCPServer
+    server = create_server(
         runtime,
         name="samsarix-inventory-example",
         title="Samsarix Inventory Example",
         instructions="Confirm with the user before calling tools that are not read-only.",
         enable_logging=True,
         enable_tasks=True,
-        enable_modern=enable_modern,
     )
     await serve_stdio(server)
 

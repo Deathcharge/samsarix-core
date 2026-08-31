@@ -45,8 +45,8 @@ transient and still requires exact final counters within five seconds and at mos
 counter state; missing remote cancellation remains a failure. No runtime accounting
 was changed to manufacture an atomic observation.
 
-Final local verification: 379 tests passed with 95.41% branch-aware coverage,
-including 29 modern protocol cases and 39 checker tests. Black checked 40 files;
+Final local verification: 383 tests passed with 95.41% branch-aware coverage,
+including 29 modern protocol cases and 43 checker tests. Black checked 40 files;
 Ruff, strict mypy (28 files), Bandit and `git diff --check` passed. An isolated
 source-to-wheel build, strict Twine checks and the offline runtime/MCP/SQLite gate
 passed. The final locally built wheel SHA-256 was
@@ -55,6 +55,12 @@ All three official-client runs passed against that exact wheel: SDK 1.29.1 legac
 SDK 2.1.1 legacy, and SDK 2.1.1 modern. Separately, the source-backed reproducer
 passed 12 successive real SDK 1.x cancellation sessions (24 cancellations) after
 the checker correction. This repeated diagnostic is distinct from wheel evidence.
+Final example review also caught a backward-artifact compatibility issue: passing
+`enable_modern=False` to the old published constructor would fail even in legacy
+mode. The examples now pass the new keyword only when explicitly enabled; four
+regressions cover both launchers and modes. Both SDK pins then passed the updated
+legacy checker against the actual immutable a9 wheel, SHA-256
+`52ec76698f71584b29291e6b497ae94d8646721cafa38a49fed3ed7bf8e55e35`.
 
 Release disposition: unreleased opt-in API, not part of the immutable a9 wheel.
 No new dependency or external service. The next release needs its own artifact and

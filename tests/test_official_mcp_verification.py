@@ -7,6 +7,7 @@ import asyncio
 import copy
 import importlib.util
 import json
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -267,6 +268,35 @@ def test_server_bootstrap_forwards_arguments_and_restores_argv(tmp_path):
     original = sys.argv
     script.run_server(fixture, arguments=["--modern"])
     assert sys.argv is original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modern", [False, True])
+@pytest.mark.parametrize("name", ["fixture", "inventory"])
+async def test_examples_pass_new_constructor_option_only_when_requested(monkeypatch, modern, name):
+    target = (
+        SCRIPT.with_name("mcp_cancellation_fixture.py")
+        if name == "fixture"
+        else SCRIPT.parents[1] / "examples" / "mcp_inventory_server.py"
+    )
+    main = runpy.run_path(str(target))["main"]
+    seen = []
+
+    def constructor(runtime, **options):
+        # An old published MCPServer cannot accept enable_modern, even if False.
+        assert ("enable_modern" in options) is modern
+        if modern:
+            assert options["enable_modern"] is True
+        seen.append(options)
+        return SimpleNamespace(runtime=runtime)
+
+    async def serve(server):
+        await server.runtime.aclose()
+
+    monkeypatch.setitem(main.__globals__, "MCPServer", constructor)
+    monkeypatch.setitem(main.__globals__, "serve_stdio", serve)
+    await main(enable_modern=modern)
+    assert len(seen) == 1
 
 
 @pytest.mark.parametrize("count", [0, 2])
