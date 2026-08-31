@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
-### 2.0.0a8 release preparation
+### 2.0.0a8 verified distribution
 
 The finite-deadline fix merged in [PR #41](https://github.com/Deathcharge/samsarix-core/pull/41)
 at `1c05fb4bd46d4836b2f4ced6698d3071d7b00eeb`; all 12 exact-main CI jobs passed in
@@ -14,11 +14,24 @@ test/helper docstring-coverage warning remains separate from required quality ga
 A freshly downloaded a7 wheel matched its immutable release and known digest, but
 correctly failed the new gate with `invalid deadline was not rejected`.
 
-The checkout now prepares `2.0.0a8` with synchronized package/citation metadata and
-a dated changelog. Publication still requires exact-head CI, a main-commit build-only
-release dry run, an annotated version tag, verified immutable assets and provenance,
-and a fresh offline installation of the downloaded wheel. Until that succeeds, a7
-remains the published artifact; no PyPI upload or stable-API claim is implied.
+Release preparation [PR #42](https://github.com/Deathcharge/samsarix-core/pull/42)
+synchronized the package/citation metadata and dated the changelog. All 12 exact-main
+CI jobs and the build-only release dry run passed before the annotated `v2.0.0a8`
+tag was pushed at `dfaf41ee850ff94c7f106c60a6752865fb364ad4`. The immutable GitHub
+prerelease was published on 2026-08-31, with unchanged historical a7 assets.
+
+Fresh downloads passed release membership and SHA-256 manifest verification. Both
+distribution attestations passed explicit repository, workflow, source-ref and source
+digest constraints with self-hosted runners denied. The downloaded wheel installed
+offline into a fresh Python 3.11.9 environment and passed runtime/deadline, ordered
+batch, circuit recovery, MCP subprocess and SQLite transaction/replay checks.
+See `docs/RELEASING.md` for exact assets, digests, workflow IDs and verification commands.
+
+Disposition: a reproducible, useful evaluation alpha for typed Python tools, not a
+stable API or independently proven production service. No PyPI upload, deployment,
+paid account, new dependency, external data or other-repository change was needed.
+The next adoption priority is a consumer-owned a8 upgrade and real workload feedback;
+the existing exact-pin consumer evidence is not silently extended to this release.
 
 ### Finite-deadline validation follow-up
 
@@ -53,8 +66,8 @@ host must still choose practical deadlines. Async cancellation cleanup is cooper
 sync workers cannot be force-killed, and `aclose(timeout=...)` bounds its sync-worker
 wait rather than all async cancellation. Docs now distinguish these limitations.
 The immutable published a7 wheel does not include this fix and cannot pass the newly
-expanded deadline gate; its earlier verification remains historical evidence. A new
-version and verified release remain necessary to distribute the fix as a tagged asset.
+expanded deadline gate; its earlier verification remains historical evidence. The fix
+is now distributed in the separately verified a8 release described above.
 
 ### Transactional application example follow-up
 
@@ -457,9 +470,9 @@ clean-wheel behavioral evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
-The immutable GitHub prerelease `v2.0.0a7` is published from commit
-`766189a035c8a076a2b23f10b28576af586d5474` with verified checksums, GitHub Actions
-build provenance, and a clean installed-wheel circuit-breaker recovery probe. The exact assets,
+The immutable GitHub prerelease `v2.0.0a8` is published from commit
+`dfaf41ee850ff94c7f106c60a6752865fb364ad4` with verified checksums, GitHub Actions
+build provenance, and clean installed-wheel runtime, MCP and SQLite checks. The exact assets,
 workflow runs, verification, installation evidence, and recovery model are recorded in
 `docs/RELEASING.md`. This passes the GitHub release gate only; it does not pass the
 PyPI, stable API, or third-party production-adoption gates.
