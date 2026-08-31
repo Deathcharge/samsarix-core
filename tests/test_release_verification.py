@@ -19,6 +19,7 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 def test_sensitive_release_steps_require_push_and_tag():
     workflow = (SCRIPTS.parent / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "sha256sum -- *.whl *.tar.gz > SHA256SUMS" in workflow
     conditions = [line.strip() for line in workflow.splitlines() if line.strip().startswith("if:")]
     assert (
         conditions
