@@ -302,7 +302,7 @@ The release gate runs Black, Ruff, strict mypy, and the test suite with at least
 branch-aware coverage on Python 3.10–3.14. Package CI builds and installs the wheel
 offline on Linux, Windows, and macOS at Python 3.10 and 3.14, then exercises real
 runtime invocation/circuit recovery and the documented MCP server through subprocess
-pipes. Reproduce that gate with `python scripts/verify_distribution.py <wheel-path>`;
+pipes. Reproduce that gate with `python scripts/verify_distribution.py path/to/wheel.whl`;
 see [release verification](docs/RELEASING.md) for scope and isolation details.
 
 Run `python benchmarks/runtime_benchmark.py` or
