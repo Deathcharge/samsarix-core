@@ -250,12 +250,17 @@ progress update, and operational event carries
 `io.modelcontextprotocol/related-task` metadata.
 
 Retention is in memory and scoped to one `MCPServer` session. Requested TTLs are
-clamped to `max_task_ttl_ms`; expired tasks and results are removed, and capacity
+positive finite numbers representable as Python floats, then clamped to
+`max_task_ttl_ms`; expired tasks and results are removed, and capacity
 is reclaimed. Arguments must pass the runtime's byte, depth, node, cycle, and JSON
 compatibility preflight before the server detaches them for background execution.
 At `max_retained_tasks`, new task requests receive server-busy error `-32000`.
 Task cancellation is cooperative: async work is cancelled, while a running
 synchronous function can retain its runtime worker until it actually stops.
+Invalid requested TTLs, including overflowing integers, receive invalid-parameters
+error `-32602` before task creation, leaving retention capacity available. Host
+duration settings (`default_task_ttl_ms`, `max_task_ttl_ms`, `task_poll_interval_ms`)
+must be positive integers representable as finite floats.
 
 Core deliberately does not advertise `tasks.list` on unauthenticated stdio. MCP's
 task security guidance warns that listing can expose task metadata when requestor

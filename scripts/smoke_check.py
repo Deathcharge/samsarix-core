@@ -114,6 +114,14 @@ async def verify_runtime() -> None:
             invalid.status is samsarix_core.ToolStatus.INVALID_ARGUMENTS,
             "invalid input was not rejected",
         )
+        for timeout in (float("nan"), float("inf"), 10**1000):
+            invalid_deadline = await runtime.invoke("echo", {"value": value}, timeout=timeout)
+            _require(
+                invalid_deadline.status is samsarix_core.ToolStatus.INVALID_ARGUMENTS
+                and invalid_deadline.error is not None
+                and invalid_deadline.error.code == "invalid_timeout",
+                "invalid deadline was not rejected",
+            )
         batch = await runtime.invoke_many(
             [samsarix_core.ToolCall("echo", {"value": item}) for item in ("first", "second")]
         )
@@ -122,6 +130,19 @@ async def verify_runtime() -> None:
             and all(item.success for item in batch)
             and [item.output for item in batch] == ["first", "second"],
             "ordered batch failed",
+        )
+        mixed_batch = await runtime.invoke_many(
+            [
+                samsarix_core.ToolCall("echo", {"value": "invalid"}, timeout=10**1000),
+                samsarix_core.ToolCall("echo", {"value": "accepted"}),
+            ]
+        )
+        _require(
+            len(mixed_batch) == 2
+            and mixed_batch[0].status is samsarix_core.ToolStatus.INVALID_ARGUMENTS
+            and mixed_batch[1].success
+            and mixed_batch[1].output == "accepted",
+            "invalid deadline disrupted a batch",
         )
         failed = await runtime.invoke("dependency", {})
         _require(failed.status is samsarix_core.ToolStatus.FAILED, "failure was not structured")

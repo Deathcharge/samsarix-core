@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from ._timeouts import normalize_timeout
 from .models import JSONValue
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
@@ -77,6 +78,8 @@ class MCPTaskStore:
                 raise TypeError(f"{name} must be an integer")
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
+            if name != "max_tasks" and normalize_timeout(value) is None:
+                raise ValueError(f"{name} must be representable as finite milliseconds")
         if default_ttl_ms > max_ttl_ms:
             raise ValueError("default_ttl_ms cannot exceed max_ttl_ms")
 

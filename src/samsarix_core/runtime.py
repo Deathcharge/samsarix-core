@@ -20,6 +20,7 @@ from threading import Lock
 from typing import Any, cast
 from uuid import uuid4
 
+from ._timeouts import normalize_timeout
 from .errors import ProgressHandlerError, ToolArgumentError, ToolNotFoundError, ToolOutputError
 from .models import (
     JSONValue,
@@ -324,12 +325,9 @@ class ToolRuntime:
                 raise TypeError(f"{name} must be an integer")
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
-        if (
-            isinstance(default_timeout, bool)
-            or not isinstance(default_timeout, (int, float))
-            or default_timeout <= 0
-        ):
-            raise ValueError("default_timeout must be a positive number")
+        normalized_default_timeout = normalize_timeout(default_timeout)
+        if normalized_default_timeout is None:
+            raise ValueError("default_timeout must be a finite positive number")
         if policy is not None and not _is_async_callable(policy):
             raise TypeError("policy must be an async callable or None")
         if lifecycle_handler is not None and (
@@ -347,7 +345,7 @@ class ToolRuntime:
         self.max_value_nodes = max_value_nodes
         self.max_progress_updates = max_progress_updates
         self.max_progress_message_bytes = max_progress_message_bytes
-        self.default_timeout = float(default_timeout)
+        self.default_timeout = normalized_default_timeout
         self.expose_exceptions = expose_exceptions
         self.policy = policy
         self.lifecycle_handler = lifecycle_handler
@@ -473,6 +471,7 @@ class ToolRuntime:
             if progress_handler is not None and not callable(progress_handler):
                 raise TypeError("progress_handler must be callable or None")
 
+            normalized_timeout = normalize_timeout(timeout)
             if self._closed:
                 self._increment("runtime_closed")
                 result = self._result(
@@ -483,9 +482,7 @@ class ToolRuntime:
                     started,
                     error=ToolError("runtime_closed", "The tool runtime is closed"),
                 )
-            elif timeout is not None and (
-                isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
-            ):
+            elif timeout is not None and normalized_timeout is None:
                 self._increment("invalid_arguments")
                 result = self._result(
                     invocation_id,
@@ -494,7 +491,7 @@ class ToolRuntime:
                     started_at,
                     started,
                     error=ToolError(
-                        "invalid_timeout", "Invocation timeout must be a positive number"
+                        "invalid_timeout", "Invocation timeout must be a finite positive number"
                     ),
                 )
             elif not self._try_admit():
@@ -516,7 +513,7 @@ class ToolRuntime:
                     result = await self._invoke_admitted(
                         name,
                         arguments,
-                        timeout=timeout,
+                        timeout=normalized_timeout,
                         progress_handler=progress_handler,
                         invocation_id=invocation_id,
                         started_at=started_at,
@@ -849,17 +846,16 @@ class ToolRuntime:
     async def wait_for_sync(self, *, timeout: float | None = None) -> bool:
         """Wait for currently submitted sync calls and report whether they stopped."""
 
-        if timeout is not None and (
-            isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout < 0
-        ):
-            raise ValueError("timeout must be a non-negative number or None")
+        normalized_timeout = normalize_timeout(timeout, allow_zero=True)
+        if timeout is not None and normalized_timeout is None:
+            raise ValueError("timeout must be a finite non-negative number or None")
         with self._sync_futures_lock:
             pending = tuple(self._sync_futures)
         if not pending:
             return True
 
         waits = [self._wrap_sync_future(future) for future in pending]
-        done, _ = await asyncio.wait(waits, timeout=timeout)
+        done, _ = await asyncio.wait(waits, timeout=normalized_timeout)
         return len(done) == len(waits)
 
     async def aclose(
@@ -874,12 +870,9 @@ class ToolRuntime:
             raise TypeError("wait_for_sync must be a boolean")
         if timeout is not None and not wait_for_sync:
             raise ValueError("timeout requires wait_for_sync=True")
-        if (
-            wait_for_sync
-            and timeout is not None
-            and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout < 0)
-        ):
-            raise ValueError("timeout must be a non-negative number or None")
+        normalized_timeout = normalize_timeout(timeout, allow_zero=True)
+        if timeout is not None and normalized_timeout is None:
+            raise ValueError("timeout must be a finite non-negative number or None")
         if not self._closed:
             self._closed = True
             active = tuple(self._active)
@@ -890,7 +883,7 @@ class ToolRuntime:
                 await asyncio.gather(*active, return_exceptions=True)
             self._executor.shutdown(wait=False, cancel_futures=True)
         if wait_for_sync:
-            return await self.wait_for_sync(timeout=timeout)
+            return await self.wait_for_sync(timeout=normalized_timeout)
         return self.pending_sync_calls == 0
 
     async def __aenter__(self) -> ToolRuntime:

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- reject NaN, infinite and overflowing execution timeouts consistently at decorator,
+  runtime-default and invocation boundaries; invalid overrides return a safe result
+  without consuming admission or aborting valid batch items;
+- validate sync-wait/shutdown timeouts before closing or cancelling active work,
+  preserving explicit unbounded `None` and zero-duration polling;
+- reject overflowing MCP task TTLs as invalid parameters rather than internal errors,
+  and reject unrepresentable host task-duration settings before task-store use.
+
 ### Added
 
 - application-owned SQLite reservation example with atomic stock/ledger commits,

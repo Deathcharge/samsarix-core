@@ -99,7 +99,8 @@ is needed. Only run the checker against trusted project wheels and examples.
 The gate verifies:
 
 - canonical/legacy export identity and installed metadata version consistency;
-- actual synchronous Unicode invocation, invalid-input rejection, and ordered batches;
+- actual synchronous Unicode invocation, invalid-input/deadline rejection, and ordered
+  batches that survive an invalid timeout;
 - redacted dependency failure, fail-fast circuit rejection, one later recovery probe,
   closed state, trip/rejection metrics, and bounded runtime quiescence;
 - real MCP initialization before discovery/calls, UTF-8 and escaped-newline round-trip,
@@ -122,6 +123,11 @@ and publish a new tag. Consumers can roll back by installing a previously verifi
 release asset or exact commit. Core stores no remote runtime state.
 
 ## Published evidence: v2.0.0a7
+
+The finite-deadline validation fix in `Unreleased` is not in this artifact. The current
+checkout's expanded gate requires that fix and therefore is not a passing gate for a7.
+The historical verification below used the earlier gate, before deadline regressions
+were added. Do not replace the immutable a7 files to incorporate newer changes.
 
 The per-tool circuit-breaker alpha was published on 2026-08-11 as an immutable
 GitHub prerelease:
@@ -161,7 +167,7 @@ coverage. On this date, a freshly downloaded a7 wheel with the unchanged digest 
 passed `gh release verify-asset` and the expanded portable gate on Windows/Python 3.11.9.
 That new execution proved failure/open/recovery behavior, sync and batch invocation,
 input validation, and the real Unicode/progress/EOF MCP subprocess journey. The
-verification scripts are from the current checkout; the immutable a7 artifact was
+verification scripts were from the pre-deadline-fix checkout; the immutable a7 artifact was
 not modified. This is
 GitHub distribution, provenance, and clean-wheel behavior evidence, not PyPI
 publication, a stable-API declaration, a security audit, third-party production

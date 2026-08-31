@@ -19,6 +19,7 @@ from ._mcp_tasks import (
     TaskNotFoundError,
     TaskTerminalError,
 )
+from ._timeouts import normalize_timeout
 from ._version import __version__
 from .errors import ProgressHandlerError, ToolArgumentError, ToolNotFoundError
 from .models import JSONValue, ToolResult, ToolSpec
@@ -394,12 +395,7 @@ class MCPServer:
         requested = task_options.get("ttl")
         if requested is None:
             return None
-        if (
-            isinstance(requested, bool)
-            or not isinstance(requested, (int, float))
-            or not math.isfinite(requested)
-            or requested <= 0
-        ):
+        if not isinstance(requested, (int, float)) or normalize_timeout(requested) is None:
             raise _InvalidParams("task ttl must be a positive finite number of milliseconds")
         return int(math.ceil(requested))
 

@@ -4,6 +4,42 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Finite-deadline validation follow-up
+
+At clean main `0ccd94b55f0ade481ce073bf3e495f8b1711c73f`, a bounded reproduction
+found that NaN and infinity were accepted as execution deadlines, while an integer
+such as `10**1000` could leak `OverflowError` and abort an entire batch. Invalid
+wait/close timeouts were also accepted, and overflowing MCP task TTLs produced an
+internal-server error rather than invalid parameters. These were real validation
+defects affecting otherwise valid calls, not a need for a broader scheduling API.
+
+- [x] Normalize finite durations before decorator metadata, runtime construction,
+  invocation admission, and shutdown side effects.
+- [x] Preserve timeout precedence, positive finite values, explicit `None` semantics,
+  and zero-duration sync polling; reject bad overrides with `invalid_timeout`.
+- [x] Prove invalid calls do not reach policy or execution, consume capacity/rate
+  tokens, trip circuits, leak inputs, or abort good batch items.
+- [x] Reject unrepresentable task-duration configuration and requested TTLs; prove
+  invalid parameters leave the sole task slot and protocol request ID reusable.
+- [x] Add installed-wheel deadline/batch regression checks and prove the checker
+  catches discarded deadlines and dropped batch items.
+
+Local verification passed: `python -m pytest` (279 tests, 94.87% branch-aware coverage),
+Black (33 files), Ruff, strict mypy (25 files), and Bandit over `src`. The 39 new cases
+include 37 runtime/protocol regressions and two negative controls for the package
+checker. An isolated sdist-to-wheel build, strict Twine check and fresh offline wheel
+installation passed, including actual deadline/batch behavior, MCP subprocess pipes,
+and SQLite transaction/replay. Hosted exact-head evidence belongs to the pull request.
+
+This intentionally tightens invalid configuration handling without new public exports,
+dependencies, services or telemetry. Finite does not mean operationally sensible: the
+host must still choose practical deadlines. Async cancellation cleanup is cooperative,
+sync workers cannot be force-killed, and `aclose(timeout=...)` bounds its sync-worker
+wait rather than all async cancellation. Docs now distinguish these limitations.
+The immutable published a7 wheel does not include this fix and cannot pass the newly
+expanded deadline gate; its earlier verification remains historical evidence. A new
+version and verified release remain necessary to distribute the fix as a tagged asset.
+
 ### Transactional application example follow-up
 
 At clean main `048f26a608201d8a09a8d826f041f6598baaa0ee`, 208 tests passed with

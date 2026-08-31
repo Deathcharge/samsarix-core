@@ -42,6 +42,31 @@ async def test_runtime_smoke_detects_wrong_output(monkeypatch):
         await load_script("smoke_check").verify_runtime()
 
 
+@pytest.mark.asyncio
+async def test_runtime_smoke_detects_invalid_deadline_acceptance(monkeypatch):
+    invoke = samsarix_core.ToolRuntime.invoke
+
+    async def discard_timeout(self, *args, **kwargs):
+        kwargs.pop("timeout", None)
+        return await invoke(self, *args, **kwargs)
+
+    monkeypatch.setattr(samsarix_core.ToolRuntime, "invoke", discard_timeout)
+    with pytest.raises(RuntimeError, match="invalid deadline was not rejected"):
+        await load_script("smoke_check").verify_runtime()
+
+
+@pytest.mark.asyncio
+async def test_runtime_smoke_detects_dropped_invalid_batch_items(monkeypatch):
+    invoke_many = samsarix_core.ToolRuntime.invoke_many
+
+    async def drop_invalid(self, calls):
+        return await invoke_many(self, [call for call in calls if call.timeout is None])
+
+    monkeypatch.setattr(samsarix_core.ToolRuntime, "invoke_many", drop_invalid)
+    with pytest.raises(RuntimeError, match="invalid deadline disrupted a batch"):
+        await load_script("smoke_check").verify_runtime()
+
+
 def test_release_smoke_detects_metadata_mismatch(monkeypatch):
     script = load_script("smoke_check")
     monkeypatch.setattr(script, "version", lambda name: "0.0.0")

@@ -44,10 +44,15 @@ that deliberately omits sensitive argument and result attributes.
 
 ## Bound every external dependency
 
-The runtime timeout bounds how long the caller waits. A sync function's thread
-cannot be force-stopped. Set connect/read/query/process timeouts in the tool itself,
-make cancellation-friendly async calls, and make side effects idempotent when the
-caller might retry after a timeout.
+Use finite positive execution timeouts, not NaN or infinity. `None` on a decorator
+or invocation inherits a deadline rather than disabling it. Invalid settings are
+rejected, including integers too large to convert to a finite float.
+
+The runtime requests cancellation when an async deadline expires; waiting for that
+cancellation can exceed the deadline if cleanup is slow or suppresses cancellation.
+A sync function's thread cannot be force-stopped. Set connect/read/query/process
+timeouts in the tool itself, make cancellation-friendly async calls, and make side
+effects idempotent when the caller might retry after a timeout.
 
 For a runnable example of application-owned transactions and duplicate suppression,
 see [transactional tools and safe replay](SIDE_EFFECTS.md). Its SQLite reservation
