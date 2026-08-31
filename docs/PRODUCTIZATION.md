@@ -4,16 +4,39 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
-### 2.0.0a9 release preparation
+### 2.0.0a9 verified distribution
 
-The boundary fixes are submitted in [PR #44](https://github.com/Deathcharge/samsarix-core/pull/44)
-at `c4712d80bae085789ad4fadb2f74272f7e16f60f`. All 12 branch CI jobs and all 12
-pull-request CI jobs passed; package checks covered Linux, Windows and macOS.
-Release preparation synchronizes package/citation version `2.0.0a9`, dates the
-changelog, and distinguishes historical a8 verification from the expanded gate.
-This paragraph is preparation evidence, not a claim that a9 is already published.
-Publication still requires merged reviewed fixes, exact-main CI, build-only dry run,
-immutable-release checks, and fresh asset/provenance verification.
+The boundary fixes merged in [PR #44](https://github.com/Deathcharge/samsarix-core/pull/44)
+at `bc1fe2b2a6c9a215b37a698056c633795072fbd0`. CodeRabbit completed a full review
+of `c4712d80bae085789ad4fadb2f74272f7e16f60f`; its sole actionable checksum-glob
+comment was fixed in `5198a8abae98cc98df170480cf8640c4eb9440dc` and the thread
+resolved. That follow-up added an explicit `--` option terminator and a regression
+assertion; it was not represented as a second full review. All 12 exact-main CI
+jobs passed in [run 33390409997](https://github.com/Deathcharge/samsarix-core/actions/runs/33390409997).
+
+Release preparation [PR #45](https://github.com/Deathcharge/samsarix-core/pull/45)
+merged at `8957b208db4ee08a32e9c66cf0cf50b7dc7422a4`. All 12 exact-main CI jobs
+and the build-only dry run passed before the annotated `v2.0.0a9` tag was pushed.
+The immutable GitHub prerelease was published on 2026-08-31. A subsequent manual
+dispatch on the actual tag also passed with attestation and publication skipped,
+proving the new event guard in addition to its source-level regression test.
+
+All three fresh release downloads passed immutable membership and digest checks.
+Wheel and source-distribution provenance passed exact repository, workflow, tag
+and source-commit constraints with self-hosted runners denied. One wheel verifier
+initialization failure resolved on an identical retry; no constraint was relaxed.
+The downloaded wheel installed offline into a fresh Python 3.11.9 environment and
+passed the expanded runtime, bounded diagnostic/numeric, real MCP subprocess and
+SQLite transaction/replay gate. The source suite passed 311 tests with 95.23%
+branch-aware coverage. See [release evidence](RELEASING.md#published-evidence-v200a9)
+for asset digests, hosted runs and exact verification commands.
+
+Disposition: a useful, reproducible evaluation alpha, not a stable API or proven
+third-party production offering. This increment adds no public exports, runtime
+dependencies, services, telemetry or retries. No PyPI upload, deployment, paid
+account, user data or other-repository change was needed. Next: upgrade and rerun
+the separate consumer at the new exact release, complete operator-owned client
+trust/tool approval, and collect real workload feedback before expanding scope.
 
 ### Post-a8 input-boundary review and remediation
 
@@ -57,7 +80,7 @@ strict Twine checks passed, followed by a fresh offline install exercising runti
 boundaries, real MCP pipes, and SQLite transaction/replay. The actual published a8
 wheel matched its known SHA-256 but failed the expanded checker with the expected
 numeric `OverflowError`; that is a negative control, not a new passing a8 claim.
-Hosted exact-commit and new-release evidence is recorded in the follow-up. Published
+Hosted exact-commit and new-release evidence is recorded above. Published
 a8 remains immutable and does not acquire these fixes retroactively.
 
 ### 2.0.0a8 verified distribution
@@ -86,7 +109,7 @@ See `docs/RELEASING.md` for exact assets, digests, workflow IDs and verification
 Disposition: a reproducible, useful evaluation alpha for typed Python tools, not a
 stable API or independently proven production service. No PyPI upload, deployment,
 paid account, new dependency, external data or other-repository change was needed.
-The next adoption priority is a consumer-owned a8 upgrade and real workload feedback;
+At that release, the next priority was a consumer-owned a8 upgrade and workload feedback;
 the existing exact-pin consumer evidence is not silently extended to this release.
 
 ### Finite-deadline validation follow-up

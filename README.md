@@ -42,23 +42,26 @@ accounts, no API keys, no external service, and no hosted operating cost.
 Python 3.10 or newer is required.
 
 The latest published immutable prerelease is
-[`v2.0.0a8`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a8),
+[`v2.0.0a9`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a9),
 with an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a8 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a8-py3-none-any.whl \
-  --repo Deathcharge/samsarix-core
-python -m pip install samsarix_core-2.0.0a8-py3-none-any.whl
+gh release download v2.0.0a9 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a9-py3-none-any.whl \
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.0.0a9 \
+  --source-digest 8957b208db4ee08a32e9c66cf0cf50b7dc7422a4 \
+  --deny-self-hosted-runners
+python -m pip install samsarix_core-2.0.0a9-py3-none-any.whl
 ```
 
-Version `2.0.0a8` fixes non-finite and overflowing timeout handling and passed its
-release-time runtime, MCP subprocess, and SQLite gate. The current source prepares
-`2.0.0a9`, which additionally bounds derived diagnostics, isolates overflowing float
-arguments, and hardens malformed MCP frames. The immutable a8 wheel lacks these
-new fixes and correctly fails the newer numeric checker; use the fixed source while
-the new prerelease is being verified.
+Version `2.0.0a9` bounds derived validation diagnostics, isolates overflowing float
+arguments, and hardens malformed MCP frames. The freshly downloaded release wheel
+passed the expanded runtime, MCP subprocess, and SQLite transaction/replay gate.
+Earlier immutable releases lack these fixes; their historical verification is not
+a claim that they pass the current gate.
 
 For a source checkout instead:
 
@@ -289,9 +292,9 @@ for delivery semantics, privacy/cardinality cautions, and a content-free OpenTel
   bounded and its global and per-tool concurrency slots stay occupied until it actually stops. Inspect
   `pending_sync_calls`, or use `wait_for_sync()` / `aclose(wait_for_sync=True)` when
   shutdown must prove quiescence. The function still needs its own I/O deadlines.
-- Opt-in MCP tasks are experimental and session-local. Results remain in memory
-  only until their finite TTL; there is no durable queue, restart recovery, or
-  unauthenticated task listing.
+- Opt-in MCP tasks are experimental and session-local. Their finite TTL limits
+  result access; lazy cleanup is not a timed physical-memory erasure guarantee.
+  There is no durable queue, restart recovery, or unauthenticated task listing.
 - Tool outputs are returned to the caller. Do not return secrets to an untrusted
   model, client, or log sink.
 - A policy is application code, not caller authentication or user consent. Keep MCP
