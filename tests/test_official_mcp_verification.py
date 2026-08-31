@@ -7,6 +7,7 @@ import asyncio
 import copy
 import importlib.util
 import json
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -181,6 +182,123 @@ def test_unsupported_sdk_pin_fails_before_install(tmp_path):
         load_script().verify(tmp_path / "missing.whl", "2.0.0")
 
 
+def test_modern_gate_rejects_legacy_sdk_before_install(tmp_path):
+    with pytest.raises(RuntimeError, match="modern verification requires"):
+        load_script().verify(tmp_path / "missing.whl", "1.29.1", modern=True)
+
+
+class ModernSession(Session):
+    def __init__(self, logs, fault=None):
+        super().__init__(logs, fault)
+        self.discover_result = self.stamp(
+            Model({"supportedVersions": ["2026-07-28"], "capabilities": {"tools": {}}})
+        )
+        if fault == "fallback":
+            self.discover_result = None
+
+    def stamp(self, model):
+        model.data["resultType"] = "complete"
+        model.data.setdefault("_meta", {})["io.modelcontextprotocol/serverInfo"] = {
+            "name": "samsarix-inventory-example"
+        }
+        if self.fault == "missing_type":
+            del model.data["resultType"]
+        if self.fault == "wrong_identity":
+            model.data["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] = "other"
+        return model
+
+    async def initialize(self):
+        raise AssertionError("Modern journey must not initialize")
+
+    async def send_ping(self):
+        raise AssertionError("Modern journey must not ping")
+
+    async def set_logging_level(self, level):
+        raise AssertionError("Modern journey must not use connection-global log levels")
+
+    async def list_tools(self):
+        catalog = self.stamp(await super().list_tools())
+        catalog.data.update(ttlMs=0, cacheScope="private")
+        catalog.data["tools"].sort(key=lambda item: item["name"])
+        if self.fault == "cache":
+            catalog.data["cacheScope"] = "public"
+        return catalog
+
+    async def call_tool(self, name, arguments, progress_callback=None, *, meta=None):
+        before = len(self.logs)
+        result = self.stamp(await super().call_tool(name, arguments, progress_callback))
+        if meta is None and self.fault != "leaked_log":
+            del self.logs[before:]
+        return result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fault,message",
+    [
+        (None, None),
+        ("fallback", "fell back"),
+        ("missing_type", "complete result"),
+        ("wrong_identity", "identity"),
+        ("cache", "cache hints"),
+        ("leaked_log", "log level leaked"),
+    ],
+)
+async def test_modern_journey_requires_modern_contract_and_per_request_logs(
+    monkeypatch, fault, message
+):
+    script = load_script()
+    monkeypatch.setattr(
+        script.importlib, "import_module", lambda _: SimpleNamespace(Draft202012Validator=Validator)
+    )
+    logs = []
+    session = ModernSession(logs, fault)
+    if fault:
+        with pytest.raises(RuntimeError, match=message):
+            await script.journey(session, logs, modern=True)
+    else:
+        await script.journey(session, logs, modern=True)
+        assert len(logs) == 1
+
+
+def test_server_bootstrap_forwards_arguments_and_restores_argv(tmp_path):
+    script = load_script("mcp_client_server")
+    fixture = tmp_path / "arguments.py"
+    fixture.write_text("import sys\nassert sys.argv[1:] == ['--modern']\n", encoding="utf-8")
+    original = sys.argv
+    script.run_server(fixture, arguments=["--modern"])
+    assert sys.argv is original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modern", [False, True])
+@pytest.mark.parametrize("name", ["fixture", "inventory"])
+async def test_examples_pass_new_constructor_option_only_when_requested(monkeypatch, modern, name):
+    target = (
+        SCRIPT.with_name("mcp_cancellation_fixture.py")
+        if name == "fixture"
+        else SCRIPT.parents[1] / "examples" / "mcp_inventory_server.py"
+    )
+    main = runpy.run_path(str(target))["main"]
+    seen = []
+
+    def constructor(runtime, **options):
+        # An old published MCPServer cannot accept enable_modern, even if False.
+        assert ("enable_modern" in options) is modern
+        if modern:
+            assert options["enable_modern"] is True
+        seen.append(options)
+        return SimpleNamespace(runtime=runtime)
+
+    async def serve(server):
+        await server.runtime.aclose()
+
+    monkeypatch.setitem(main.__globals__, "MCPServer", constructor)
+    monkeypatch.setitem(main.__globals__, "serve_stdio", serve)
+    await main(enable_modern=modern)
+    assert len(seen) == 1
+
+
 @pytest.mark.parametrize("count", [0, 2])
 def test_default_artifact_must_be_unambiguous(tmp_path, count):
     distribution = tmp_path / "dist"
@@ -282,6 +400,7 @@ class CancellationSession:
         self.active = 0
         self.cancelled = 0
         self.pings = 0
+        self.inspections = {}
 
     async def initialize(self):
         return Model(
@@ -325,15 +444,19 @@ class CancellationSession:
                 raise
         if self.fault == "leaked_slot":
             await asyncio.Event().wait()
+        self.inspections[self.cancelled] = self.inspections.get(self.cancelled, 0) + 1
+        settling = self.fault == "stuck_counters" or (
+            self.fault == "settling_counters" and self.inspections[self.cancelled] == 1
+        )
         return result(
             {
                 "active": self.active,
                 "cancelled": self.cancelled,
                 "completed": 0,
-                "runtime_cancelled": self.cancelled,
+                "runtime_cancelled": self.cancelled - int(settling),
                 "runtime_timed_out": int(self.fault == "timed_out"),
                 "in_flight": 1,
-                "pending": 1,
+                "pending": 2 if settling else 1,
             }
         )
 
@@ -354,6 +477,21 @@ async def test_local_cancellation_without_notification_is_not_remote_success():
         await load_script().cancellation_journey(session, None)
     assert session.active == 1
     assert session.cancelled == 0
+
+
+@pytest.mark.asyncio
+async def test_cancellation_checker_waits_for_terminal_accounting_after_slot_release():
+    session = CancellationSession(fault="settling_counters")
+    await load_script().cancellation_journey(session, None)
+    assert session.inspections == {1: 2, 2: 2}
+
+
+@pytest.mark.asyncio
+async def test_cancellation_checker_rejects_counters_that_never_finish_cleanup():
+    with pytest.raises(asyncio.TimeoutError):
+        await load_script().cancellation_journey(
+            CancellationSession(fault="stuck_counters"), None, timeout=0.05
+        )
 
 
 @pytest.mark.asyncio

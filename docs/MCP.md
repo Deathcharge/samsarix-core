@@ -3,8 +3,10 @@
 Samsarix Core can expose its trusted local tools through the Model Context
 Protocol (MCP) without adding a runtime dependency. The bridge implements the
 explicit protocol revisions `2025-11-25` and `2025-06-18`. These are compatibility
-targets, not a claim to implement the newest MCP revision. Newer clients must
-negotiate a supported revision; see the official-client gate below.
+targets. The unreleased source also offers opt-in `2026-07-28` ordinary-tool
+support through `MCPServer(..., enable_modern=True)`. The published a9 artifact
+does not contain that option. Default servers keep the 2025 handshake unchanged;
+newer clients can negotiate backward or use the explicit modern option below.
 
 The supported server surface is intentionally narrow:
 
@@ -24,6 +26,80 @@ The supported server surface is intentionally narrow:
 It does not implement MCP resources, prompts, sampling, `tasks/list`, durable
 cross-process task persistence, HTTP transport, authentication, or authorization.
 Those remain host-application concerns.
+
+## Opt-in MCP 2026-07-28
+
+From a checkout containing this unreleased change, install with `python -m pip
+install -e .`, then launch the same read-only inventory example with:
+
+```bash
+python examples/mcp_inventory_server.py --modern
+```
+
+For an application-owned runtime, construct `MCPServer(runtime,
+enable_modern=True)`. One `MCPServer` instance represents one trusted stdio
+connection/process and selects an era: a successful legacy `initialize` selects
+the 2025 contract; a valid modern request selects the per-request contract. This
+implementation does not mix eras on that instance. Use a fresh instance/process
+to switch. Protocol version, capabilities and logging are still validated on
+every modern request; discovery never grants capabilities to later requests.
+An unversioned pre-initialization `ping` still receives the legacy empty result
+without selecting either era. A modern-versioned ping remains a removed method.
+
+The modern path implements:
+
+- `server/discover`, or a direct first `tools/list`/`tools/call` without discovery;
+- required `params._meta` fields `io.modelcontextprotocol/protocolVersion` and
+  `io.modelcontextprotocol/clientCapabilities`; missing or malformed required
+  metadata returns `-32602` before tool execution;
+- unsupported-version error `-32022` with `data.requested` and `data.supported`;
+- `resultType: "complete"` and `io.modelcontextprotocol/serverInfo` result metadata;
+- deterministic name-sorted tool discovery with `ttlMs: 0`, `cacheScope: "private"`:
+  no freshness promise or permission to share a potentially private tool catalog;
+- the same validated calls, bounded runtime controls, output schema/text fallback,
+  progress and cooperative cancellation as the legacy bridge;
+- if the host already enables operational logging, per-request
+  `io.modelcontextprotocol/logLevel` filtering. Missing logLevel means no protocol
+  log, including errors; overlapping calls do not share log settings. This remains
+  a deprecated protocol feature, not a reason to add new logging integrations.
+
+Optional client identity/capabilities are untrusted metadata, not authentication,
+tenant identity, policy approval or permission to invoke a tool. Core never acts
+on arbitrary extension capabilities. It emits only complete ordinary tool results;
+it does not request roots, sampling or elicitation, so no client capability is
+required beyond the required capabilities object (which can be empty).
+
+Modern `ping`, `logging/setLevel`, task methods, subscriptions, resources and prompts
+return `-32601`. Legacy task support is **not** the redesigned 2026 task extension:
+modern discovery advertises no tasks/extensions or `execution.taskSupport`.
+Task-required tools are omitted from the modern catalog and rejected by name;
+task-optional tools remain ordinary calls. Calls containing `task`, `inputResponses`
+or `requestState` are rejected before execution; no unimplemented continuation is
+silently treated as a fresh write. HTTP/authentication, multi-round-trip operations,
+subscriptions and the task extension are not implemented. Existing object-wrapped
+scalar/array outputs remain deliberate valid schemas, not native unwrapped output.
+
+The source's official-client checker adds an explicit mode:
+
+```bash
+python -I scripts/verify_mcp_client.py /absolute/path/to/newly-built.whl --sdk-version 2.1.1 --modern
+```
+
+It requires the official SDK 2.1.1, a wheel containing the new option, successful
+modern discovery (not fallback), modern results/cache hints, per-request log
+privacy, Unicode, validation errors, empty results and progress. A separate modern
+session proves repeated cooperative cancellation and slot recovery. The existing
+SDK 2.x CI jobs run both legacy and modern commands; SDK 1.x continues proving the
+legacy path. SDK packages remain outside Core's dependencies. This is the narrow
+stdio tool surface, not certification of every optional MCP feature.
+
+Primary sources checked 2026-08-31: [revision changes](https://modelcontextprotocol.io/specification/2026-07-28/changelog),
+[versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning),
+[request metadata](https://modelcontextprotocol.io/specification/2026-07-28/basic#_meta),
+[discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover),
+[tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools),
+[stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio),
+and [request-scoped logging](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/logging).
 
 ## Run the example
 
@@ -83,6 +159,12 @@ same sole execution slot. Two consecutive cycles must show zero active/completed
 waiters, exact tool/runtime cancellation counts, zero runtime timeouts, and only the
 state tool's own in-flight/pending call. A successful ping follows each cycle.
 Thus cancelling a local Python task without stopping server work cannot pass.
+Execution capacity can become available before the cancelled invocation finishes
+its terminal accounting. The checker allows only that exact transient (tool already
+stopped, no timeouts/completions, at most one remaining cancelled admission) and
+requires the exact final counters within the same five-second recovery deadline,
+with at most 100 observations. Counter leakage still fails; retries do not cancel
+the server work or replace cancellation with a timeout.
 
 The tested paths deliberately differ:
 
@@ -109,9 +191,10 @@ progress, private log fields/values, SDK pin drift and checker failure, and exer
 timeout cleanup, including independent server exit. No model credentials, signed-in desktop UI or external API calls
 are needed for the journey.
 
-This gate does **not** validate experimental tasks, cancellation of synchronous or
+The default legacy gate does **not** validate experimental tasks, cancellation of synchronous or
 non-cooperative functions, a signed-in tool-approval UI, HTTP/authentication, every
-SDK version or newer MCP revisions. Cancellation is not rollback of committed side
+SDK version or newer MCP revisions. The explicit `--modern` mode above separately
+covers the 2026 ordinary-tool path. Cancellation is not rollback of committed side
 effects. The fixture performs no durable writes; Core's separate tests cover its
 task and surviving-sync-worker contracts. SDK 2.x emits a logging deprecation
 warning because the checker deliberately exercises the older negotiated revision.

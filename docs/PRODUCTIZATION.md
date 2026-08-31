@@ -4,6 +4,78 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Opt-in 2026 MCP ordinary-tool compatibility
+
+The previous cancellation milestone merged in [PR #48](https://github.com/Deathcharge/samsarix-core/pull/48)
+at `6da104f7923840f26686a742ed7036f27607d714`; all 18 exact-main CI jobs passed
+in [run 33396263775](https://github.com/Deathcharge/samsarix-core/actions/runs/33396263775).
+The next gap was modern clients having to fall back to legacy initialization.
+Current primary-source research identified MCP `2026-07-28` as a substantial
+protocol change, not just a version-number addition: stateless request metadata,
+discovery, complete-result discriminators, cache hints and per-request logs are
+required or relevant to Core's tool surface; task execution moved to a redesigned
+extension. Sources and precise boundaries are in [the MCP guide](MCP.md#opt-in-mcp-2026-07-28).
+
+Decision: provide `enable_modern=True` while leaving the default 2025 contract and
+public result wrapping unchanged. Preserve ordinary tools and the existing runtime's
+validation, host policy, concurrency/rate/circuit controls and cancellation. Do not
+interpret the previous experimental tasks as the new extension or silently execute
+unsupported continuation requests. This is a protocol adapter, not a new framework,
+network service, SaaS frontend or reason to modify another repository.
+
+- [x] Validate required metadata before execution and return supported-version errors.
+- [x] Supply discovery, server identity, complete results, stable catalog order and
+  conservative private zero-TTL cache hints without authentication assumptions.
+- [x] Keep logging per-request, including concurrent calls; absent logLevel is silent.
+- [x] Preserve legacy initialization when selected first; prevent cross-era state reuse.
+- [x] Omit/reject legacy-task-required tools and reject task/MRTR call parameters.
+- [x] Extend the real installed-wheel SDK 2.1.1 gate with modern discovery, ordinary
+  calls, safe errors, progress, empty results and repeated cancellation/recovery.
+- [x] Finish local regression, package and official-client verification; require
+  exact-head CI before merge and record the hosted run evidence in the pull request.
+
+The first real SDK 2.x modern and legacy runs passed against a locally built wheel.
+A concurrent SDK 1.x run exposed an existing checker scheduling assumption. A
+targeted repeat reproduced exact counters `active=0, cancelled=1, completed=0,
+runtime_cancelled=0, runtime_timed_out=0, in_flight=1, pending=2`: the worker had
+stopped and released execution capacity before the enclosing invocation finished
+terminal accounting/admission cleanup. The gate now tolerates only this bounded
+transient and still requires exact final counters within five seconds and at most
+100 observations. Deterministic tests cover convergence and a permanently stuck
+counter state; missing remote cancellation remains a failure. No runtime accounting
+was changed to manufacture an atomic observation.
+
+Final local verification: 385 tests passed with 95.41% branch-aware coverage,
+including 31 modern protocol cases and 43 checker tests. Black checked 40 files;
+Ruff, strict mypy (28 files), Bandit and `git diff --check` passed. An isolated
+source-to-wheel build, strict Twine checks and the offline runtime/MCP/SQLite gate
+passed. The final locally built wheel SHA-256 was
+`b4e1037df0136da143a7c5ab584e2164d2efc32fe38d8dc3c3e5e50b22ae348f`.
+All three official-client runs passed against that exact wheel: SDK 1.29.1 legacy,
+SDK 2.1.1 legacy, and SDK 2.1.1 modern. Separately, the source-backed reproducer
+passed 12 successive real SDK 1.x cancellation sessions (24 cancellations) after
+the checker correction. This repeated diagnostic is distinct from wheel evidence.
+Final example review also caught a backward-artifact compatibility issue: passing
+`enable_modern=False` to the old published constructor would fail even in legacy
+mode. The examples now pass the new keyword only when explicitly enabled; four
+regressions cover both launchers and modes. Both SDK pins then passed the updated
+legacy checker against the actual immutable a9 wheel, SHA-256
+`52ec76698f71584b29291e6b497ae94d8646721cafa38a49fed3ed7bf8e55e35`.
+CodeRabbit completed a full review of implementation commit
+`737ecbfc69b76fb47613ee70cdecfafa52a9cf33` and found one functional compatibility
+issue: a legacy pre-initialize ping was routed to modern metadata validation.
+The follow-up preserves that ping without choosing an era and adds regressions
+for both subsequent protocol choices; a versioned modern ping still fails.
+Final verification above includes that correction. This is not a claim that the
+follow-up commits received a second full external review.
+
+Release disposition: unreleased opt-in API, not part of the immutable a9 wheel.
+No new dependency or external service. The next release needs its own artifact and
+provenance checks. HTTP/authentication, subscriptions, MRTR and redesigned tasks are
+explicitly unsupported; signed-in desktop acceptance and separate-consumer upgrade
+remain separate gates. Modern support does not claim broader schema adoption or
+forced termination/rollback of arbitrary tool effects.
+
 ### Official-client cancellation and recovery
 
 PR #47 merged at `84c305a9e98b4841ff3b231ebd4ab8bad01a3299`, with all 18

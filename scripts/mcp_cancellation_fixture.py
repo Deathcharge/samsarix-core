@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+from functools import partial
 
 from samsarix_core import MCPServer, ToolRuntime, report_progress, samsarix_tool, serve_stdio
 
@@ -48,10 +50,14 @@ def create_runtime() -> ToolRuntime:
     return runtime
 
 
-async def main() -> None:
-    server = MCPServer(create_runtime(), name="samsarix-cancellation-fixture")
+async def main(*, enable_modern: bool = False) -> None:
+    # Legacy verification must still accept the unchanged published a9 artifact.
+    create_server = partial(MCPServer, enable_modern=True) if enable_modern else MCPServer
+    server = create_server(create_runtime(), name="samsarix-cancellation-fixture")
     await serve_stdio(server)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--modern", action="store_true")
+    asyncio.run(main(enable_modern=parser.parse_args().modern))

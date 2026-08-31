@@ -17,7 +17,7 @@ import threading
 from pathlib import Path
 
 
-def run_server(example: Path, *, timeout: float = 55) -> None:
+def run_server(example: Path, *, timeout: float = 55, arguments: list[str] | None = None) -> None:
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("test server lifetime must be finite and positive")
     # The SDK may create a separate POSIX session or Windows Job Object. If
@@ -25,12 +25,15 @@ def run_server(example: Path, *, timeout: float = 55) -> None:
     watchdog = threading.Timer(timeout, os._exit, args=(124,))
     watchdog.daemon = True
     watchdog.start()
+    original_argv = sys.argv
     try:
+        sys.argv = [str(example), *(arguments or [])]
         runpy.run_path(str(example.resolve(strict=True)), run_name="__main__")
     finally:
+        sys.argv = original_argv
         watchdog.cancel()
         watchdog.join(timeout=1)
 
 
 if __name__ == "__main__":
-    run_server(Path(sys.argv[1]))
+    run_server(Path(sys.argv[1]), arguments=sys.argv[2:])

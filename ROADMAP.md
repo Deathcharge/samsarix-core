@@ -89,8 +89,10 @@ remain separate decisions.
   current SDK 2.x against isolated installed wheels on Linux, Windows and macOS.
 - [x] Prove cooperative cancellation and sole-slot recovery through both pinned
   official clients, keeping explicit 1.x and automatic 2.x notification paths distinct.
-- [ ] Evaluate newer MCP protocol revisions separately; preserve the explicit
-  2025 contracts and do not equate client fallback with modern-feature support.
+- [x] Evaluate MCP `2026-07-28` and add an opt-in ordinary-tool stdio path, preserving
+  default 2025 contracts and proving modern discovery separately from client fallback.
+- [ ] Release the opt-in modern path after exact-head verification; keep task
+  extensions, multi-round-trip operations and network transport separate decisions.
 
 - [x] Build and install the wheel in a clean environment.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.

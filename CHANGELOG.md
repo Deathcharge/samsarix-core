@@ -4,6 +4,12 @@
 
 ### Added
 
+- opt-in MCP `2026-07-28` stdio tool support with per-request metadata, discovery,
+  version errors, complete-result/server identity fields, private zero-TTL catalog
+  hints, per-request operational-log filtering and cooperative cancellation;
+  preserve the default 2025 contracts and reject unsupported modern continuations.
+- independent SDK 2.1.1 installed-wheel modern-mode verification, including
+  discovery without fallback and repeated cancellation, in all three OS CI jobs.
 - official-client cooperative cancellation/recovery verification: SDK 1.29.1 uses
   an explicit typed notification with an observed request ID, while SDK 2.1.1
   sends cancellation automatically; a controlled single-slot fixture and negative
@@ -16,6 +22,9 @@
 
 ### Changed
 
+- make cancellation verification wait for bounded terminal-counter convergence
+  after execution-slot release; a reproduced scheduling race is not mistaken for
+  a leak, while negative controls still reject missing cancellation or stuck counters.
 - recorded immutable `v2.0.0a9` assets, exact-source provenance, fresh installed-wheel
   checks, and tag-ref build-only dispatch evidence; updated installation instructions
   while keeping older consumer evidence and remaining adoption gates explicit.
