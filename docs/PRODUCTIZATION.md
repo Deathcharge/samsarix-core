@@ -4,6 +4,52 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Official-client interoperability follow-up
+
+After the a9 release, current upstream metadata identified official MCP Python SDK
+`2.1.1` as released on 2026-08-25 and maintained `1.29.1` on 2026-08-24. Core's
+description of `2025-11-25` as the current stable protocol was stale. This increment
+keeps the supported revisions explicit instead of silently claiming newer features
+or widening the runtime. The SDK's current `auto` client can negotiate backward;
+that behavior needed actual external-client evidence, not just Core's own parser.
+
+- [x] Add `scripts/verify_mcp_client.py` using official SDK transport, sessions and
+  models; normalize v1/v2 Python naming through public wire aliases.
+- [x] Run the server from an exact wheel in a fresh offline Core-only environment,
+  outside the source checkout with isolated Python imports; reject SDK pin drift.
+- [x] Verify discovery, schema validity, Unicode/newlines, output/text agreement,
+  safe invalid-input results, synthetic private-input redaction, filtered logging,
+  progress, empty results, error recovery and client-context shutdown.
+- [x] Exercise SDK 2.x's default discovery-to-handshake fallback; assert the
+  negotiated revision rather than treating current SDK support as modern MCP support.
+- [x] Add independent client jobs for both SDK pins on Linux, Windows and macOS,
+  leaving SDK dependencies out of Core's runtime and normal development install.
+- [x] Bound session/checker/setup time and terminate the owned checker process tree
+  on timeout; add checker negative controls for incorrect results, missing progress,
+  private logs, version drift, ambiguous wheels, process failure and timeout cleanup.
+
+Both pins passed on Windows/Python 3.11.9 against the actual downloaded a9 wheel,
+SHA-256 `52ec76698f71584b29291e6b497ae94d8646721cafa38a49fed3ed7bf8e55e35`.
+The initial checker run exposed a misspelled metadata-key assertion; that checker
+defect was corrected before the passing runs. No Core runtime change was required.
+SDK 2.x's expected logging deprecation warning remains visible because the journey
+intentionally exercises a negotiated 2025 revision. The final full local suite passed
+327 tests with 95.23% branch-aware coverage, including 16 checker regressions.
+Black checked 37 files; Ruff, strict mypy (26 files) and Bandit passed. An isolated
+source-to-wheel build, strict Twine checks and the existing offline runtime/MCP/SQLite
+gate also passed. The SDK pins passed against the published artifact, not only a rebuild.
+Hosted exact-head matrix/build evidence is recorded in the pull request; this is
+not a claim that the separate repository consumer has upgraded.
+
+Limits: these client checks do not cover tasks, cancellation, desktop-client trust,
+HTTP/authentication or newer protocol features. Task APIs removed upstream in SDK
+2.x are not silently emulated or advertised as compatible. Evaluate newer protocol
+semantics and official-client cancellation next, separately from this verified
+backward-compatible journey. The SDK pins are exact but their transitive dependencies
+resolve at installation time. No production service, credentials, telemetry or
+external tool invocation is added. Reproduction commands and primary upstream
+references are in [the MCP guide](MCP.md#official-python-client-verification).
+
 ### 2.0.0a9 verified distribution
 
 The boundary fixes merged in [PR #44](https://github.com/Deathcharge/samsarix-core/pull/44)

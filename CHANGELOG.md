@@ -2,11 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- independent installed-wheel verification with official MCP Python SDK 1.29.1
+  and 2.1.1, including current-client negotiation fallback, parsed schema/results,
+  Unicode, private-input redaction, logging and progress; six cross-platform CI
+  jobs and negative controls with bounded checker process cleanup.
+
 ### Changed
 
 - recorded immutable `v2.0.0a9` assets, exact-source provenance, fresh installed-wheel
   checks, and tag-ref build-only dispatch evidence; updated installation instructions
   while keeping older consumer evidence and remaining adoption gates explicit.
+- describe MCP support by explicit protocol revision instead of the stale claim
+  that the implemented revision is current; distinguish ordinary tool compatibility
+  from experimental tasks and newer protocol features.
 
 ## 2.0.0a9 - 2026-08-31
 
