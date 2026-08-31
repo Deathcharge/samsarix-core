@@ -5,7 +5,9 @@ publication is a separate owner decision and is not performed by this repository
 
 ## Safety boundary
 
-The `Release` workflow accepts manual dispatches as build-only dry runs. It publishes
+The `Release` workflow accepts manual dispatches as build-only dry runs, including
+dispatches that select a tag ref. Sensitive steps require both a push event and a
+matching tag ref. It publishes
 only for a pushed `v*` tag, requires that tag to match `samsarix_core.__version__`, and
 requires the tag to point to the current default-branch head. The tag must already
 exist; the workflow never creates or moves it. The publication procedure separately

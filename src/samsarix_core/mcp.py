@@ -774,10 +774,12 @@ def _parse_json_line(
 def _is_concurrent_request(message: Mapping[str, Any]) -> bool:
     """Return whether a request may block while control messages are still needed."""
 
+    method = message.get("method")
     return (
         "id" in message
         and _valid_request_id(message.get("id"))
-        and message.get("method") in {"tools/call", "tasks/result"}
+        and isinstance(method, str)
+        and method in {"tools/call", "tasks/result"}
     )
 
 
@@ -819,7 +821,7 @@ async def _write_response(
     """Serialize and emit one size-bounded response under the writer lock."""
 
     encoded = _json_text(response)
-    if len(encoded.encode("utf-8")) > max_message_bytes:
+    if len(encoded.encode("utf-8")) + 1 > max_message_bytes:
         if "id" not in response:
             print("Samsarix Core dropped an oversized MCP notification", file=sys.stderr)
             return
@@ -827,6 +829,13 @@ async def _write_response(
         encoded = _json_text(
             MCPServer._error(fallback_id, _INTERNAL_ERROR, "MCP response exceeds limit")
         )
+        # A valid request ID can occupy almost the entire input frame. Preserve
+        # correlation when possible, but never let the error fallback exceed the
+        # same wire limit (which includes the newline delimiter).
+        if len(encoded.encode("utf-8")) + 1 > max_message_bytes:
+            encoded = _json_text(
+                MCPServer._error(None, _INTERNAL_ERROR, "MCP response exceeds limit")
+            )
     async with lock:
         if writer is None:
             sys.stdout.buffer.write((encoded + "\n").encode("utf-8"))
@@ -865,7 +874,14 @@ def _mcp_output_schema(schema: Mapping[str, Any]) -> tuple[dict[str, JSONValue],
 
 
 def _json_text(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    # Keep ordinary Unicode compact while escaping lone surrogates accepted by
+    # Python's JSON parser. Every accepted metadata string must have a UTF-8-safe
+    # wire representation, including request IDs and progress tokens.
+    return (
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        .encode("utf-8", errors="backslashreplace")
+        .decode("utf-8")
+    )
 
 
 def _valid_request_id(value: Any) -> bool:

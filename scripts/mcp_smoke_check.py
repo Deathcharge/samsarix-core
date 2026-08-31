@@ -19,13 +19,16 @@ def require(condition: bool, message: str) -> None:
 
 
 async def exchange(
-    process: asyncio.subprocess.Process, message: dict[str, Any]
+    process: asyncio.subprocess.Process,
+    message: dict[str, Any],
+    *,
+    expected_error_code: int | None = None,
 ) -> list[dict[str, Any]]:
     """Write one request and read bounded notifications until its exact response."""
 
     if process.stdin is None or process.stdout is None:
         raise RuntimeError("missing subprocess pipes")
-    process.stdin.write((json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8"))
+    process.stdin.write((json.dumps(message, ensure_ascii=True) + "\n").encode("utf-8"))
     await process.stdin.drain()
     messages: list[dict[str, Any]] = []
     for _ in range(16):
@@ -38,7 +41,14 @@ async def exchange(
         messages.append(response)
         if "id" in response:
             require(response["id"] == message["id"], "wrong or duplicate response ID")
-            require("error" not in response and "result" in response, "MCP request failed")
+            if expected_error_code is None:
+                require("error" not in response and "result" in response, "MCP request failed")
+            else:
+                require(
+                    response.get("error", {}).get("code") == expected_error_code
+                    and "result" not in response,
+                    "malformed MCP request was not safely rejected",
+                )
             return messages
         require(
             response.get("method") in {"notifications/progress", "notifications/message"},
@@ -48,6 +58,14 @@ async def exchange(
 
 
 async def journey(process: asyncio.subprocess.Process) -> None:
+    malformed_methods: tuple[Any, ...] = ([], {})
+    for method in malformed_methods:
+        await exchange(
+            process,
+            {"jsonrpc": "2.0", "id": "malformed", "method": method},
+            expected_error_code=-32600,
+        )
+    await exchange(process, {"jsonrpc": "2.0", "id": "\ud800", "method": "ping"})
     initialized = await exchange(
         process,
         {
@@ -163,7 +181,7 @@ async def verify_server(example: Path, *, timeout: float = 20) -> None:
 def main() -> None:
     example = Path(__file__).resolve().parents[1] / "examples" / "mcp_inventory_server.py"
     asyncio.run(verify_server(example))
-    print("MCP subprocess: discovery, sync Unicode, validation, async progress, EOF OK")
+    print("MCP subprocess: malformed frames, discovery, Unicode, validation, progress, EOF OK")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Fixed
+
+- bound derived validation diagnostics to 64 issues (including a truncation marker)
+  and 128 characters per path/message, preventing long dictionary keys from being
+  multiplied into unbounded nested errors; preserve ordinary error paths and valid
+  union alternatives;
+- convert overflowing float arguments into ordinary validation errors, preserve
+  ordered mixed-batch results, and normalize default/output contract failures;
+- reject array/object MCP methods without terminating stdio, safely serialize lone
+  surrogate metadata, and enforce the response cap on fallback frames and delimiters;
+- restrict release publication and attestation to tag-push events, keeping manual
+  dispatches build-only even when targeting a tag; clarify lazy task TTL cleanup.
+
+### Added
+
+- bounded diagnostic/numeric and malformed-frame regression checks in the offline
+  installed-wheel gate, including real MCP subprocess pipes and checker negative controls.
+
 ### Changed
 
 - recorded immutable `v2.0.0a8` assets, checksums, exact-source provenance and fresh

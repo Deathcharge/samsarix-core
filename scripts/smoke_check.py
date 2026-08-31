@@ -7,9 +7,14 @@ from __future__ import annotations
 
 import asyncio
 from importlib.metadata import version
+from typing import TypedDict
 
 import helix_core
 import samsarix_core
+
+
+class _SmokeRow(TypedDict):
+    value: int
 
 
 def _require(condition: bool, message: str) -> None:
@@ -174,6 +179,60 @@ async def verify_runtime() -> None:
         )
     finally:
         _require(await runtime.aclose(wait_for_sync=True, timeout=5), "runtime did not quiesce")
+
+    await verify_input_boundaries()
+
+
+async def verify_input_boundaries() -> None:
+    """Check derived-error bounds and numeric isolation on the installed wheel."""
+
+    @samsarix_core.samsarix_tool(read_only=True)
+    async def number(value: float) -> float:
+        """Return a finite number."""
+        return value
+
+    @samsarix_core.samsarix_tool(read_only=True)
+    async def inspect_rows(payload: dict[str, _SmokeRow]) -> int:
+        """Count validated rows."""
+        return len(payload)
+
+    async with samsarix_core.ToolRuntime(max_pending_invocations=1) as runtime:
+        runtime.register(number)
+        runtime.register(inspect_rows)
+        batch = await runtime.invoke_many(
+            [
+                samsarix_core.ToolCall("number", {"value": 10**1000}),
+                samsarix_core.ToolCall("number", {"value": 7}),
+            ]
+        )
+        _require(
+            len(batch) == 2
+            and batch[0].status is samsarix_core.ToolStatus.INVALID_ARGUMENTS
+            and batch[1].success
+            and batch[1].output == 7.0,
+            "numeric overflow disrupted a batch",
+        )
+        invalid = await runtime.invoke(
+            "inspect_rows", {"payload": {"k" * 4096: {f"x{i}": 0 for i in range(128)}}}
+        )
+        details = invalid.error.details if invalid.error is not None else None
+        issues = details.get("issues") if details is not None else None
+        _require(
+            invalid.status is samsarix_core.ToolStatus.INVALID_ARGUMENTS
+            and isinstance(issues, list)
+            and 0 < len(issues) <= 64
+            and all(
+                isinstance(issue, dict)
+                and isinstance(issue.get("path"), str)
+                and len(str(issue["path"])) <= 128
+                and isinstance(issue.get("message"), str)
+                and len(str(issue["message"])) <= 128
+                for issue in issues
+            )
+            and isinstance(issues[-1], dict)
+            and issues[-1].get("code") == "issues_truncated",
+            "validation diagnostics are not bounded",
+        )
 
 
 if __name__ == "__main__":

@@ -17,6 +17,16 @@ import samsarix_core
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 
+def test_sensitive_release_steps_require_push_and_tag():
+    workflow = (SCRIPTS.parent / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "sha256sum -- *.whl *.tar.gz > SHA256SUMS" in workflow
+    conditions = [line.strip() for line in workflow.splitlines() if line.strip().startswith("if:")]
+    assert (
+        conditions
+        == ["if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"] * 4
+    )
+
+
 def load_script(name):
     spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
@@ -65,6 +75,34 @@ async def test_runtime_smoke_detects_dropped_invalid_batch_items(monkeypatch):
     monkeypatch.setattr(samsarix_core.ToolRuntime, "invoke_many", drop_invalid)
     with pytest.raises(RuntimeError, match="invalid deadline disrupted a batch"):
         await load_script("smoke_check").verify_runtime()
+
+
+@pytest.mark.asyncio
+async def test_runtime_smoke_detects_unbounded_diagnostics(monkeypatch):
+    invoke = samsarix_core.ToolRuntime.invoke
+
+    async def oversized_diagnostics(self, name, *args, **kwargs):
+        result = await invoke(self, name, *args, **kwargs)
+        if name == "inspect_rows":
+            issue = {"path": "$" + "x" * 256, "code": "type_mismatch", "message": "bad"}
+            result = replace(result, error=replace(result.error, details={"issues": [issue]}))
+        return result
+
+    monkeypatch.setattr(samsarix_core.ToolRuntime, "invoke", oversized_diagnostics)
+    with pytest.raises(RuntimeError, match="validation diagnostics are not bounded"):
+        await load_script("smoke_check").verify_input_boundaries()
+
+
+@pytest.mark.asyncio
+async def test_runtime_smoke_detects_dropped_numeric_batch_items(monkeypatch):
+    invoke_many = samsarix_core.ToolRuntime.invoke_many
+
+    async def drop_bad_number(self, calls):
+        return await invoke_many(self, calls[1:])
+
+    monkeypatch.setattr(samsarix_core.ToolRuntime, "invoke_many", drop_bad_number)
+    with pytest.raises(RuntimeError, match="numeric overflow disrupted a batch"):
+        await load_script("smoke_check").verify_input_boundaries()
 
 
 def test_release_smoke_detects_metadata_mismatch(monkeypatch):
