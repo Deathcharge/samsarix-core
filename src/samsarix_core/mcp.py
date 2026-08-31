@@ -178,7 +178,7 @@ class MCPServer:
             if self._modern_enabled and (
                 self._modern_selected
                 or carries_version
-                or (not self._initialize_responded and method != "initialize")
+                or (not self._initialize_responded and method not in {"initialize", "ping"})
             ):
                 return await self._handle_modern(
                     request_id, method, params, notification_sender=notification_sender

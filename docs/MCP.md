@@ -43,6 +43,8 @@ the 2025 contract; a valid modern request selects the per-request contract. This
 implementation does not mix eras on that instance. Use a fresh instance/process
 to switch. Protocol version, capabilities and logging are still validated on
 every modern request; discovery never grants capabilities to later requests.
+An unversioned pre-initialization `ping` still receives the legacy empty result
+without selecting either era. A modern-versioned ping remains a removed method.
 
 The modern path implements:
 

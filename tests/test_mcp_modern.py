@@ -41,6 +41,28 @@ def legacy_initialize():
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modern_after_ping", [False, True])
+async def test_unversioned_preinitialize_ping_preserves_both_protocol_choices(modern_after_ping):
+    async with ToolRuntime() as runtime:
+        server = MCPServer(runtime, enable_modern=True)
+        assert await server.handle({"jsonrpc": "2.0", "id": "ping", "method": "ping"}) == {
+            "jsonrpc": "2.0",
+            "id": "ping",
+            "result": {},
+        }
+        if modern_after_ping:
+            assert (await server.handle(request("server/discover")))["result"][
+                "supportedVersions"
+            ] == [VERSION]
+            # With modern metadata, ping is still a removed method.
+            assert (await server.handle(request("ping")))["error"]["code"] == -32601
+        else:
+            assert (await server.handle(legacy_initialize()))["result"][
+                "protocolVersion"
+            ] == "2025-11-25"
+
+
 @samsarix_tool(read_only=True, open_world=False)
 def echo(value: str) -> str:
     """Return one local string."""

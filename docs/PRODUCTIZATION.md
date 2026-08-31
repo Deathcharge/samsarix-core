@@ -45,12 +45,12 @@ transient and still requires exact final counters within five seconds and at mos
 counter state; missing remote cancellation remains a failure. No runtime accounting
 was changed to manufacture an atomic observation.
 
-Final local verification: 383 tests passed with 95.41% branch-aware coverage,
-including 29 modern protocol cases and 43 checker tests. Black checked 40 files;
+Final local verification: 385 tests passed with 95.41% branch-aware coverage,
+including 31 modern protocol cases and 43 checker tests. Black checked 40 files;
 Ruff, strict mypy (28 files), Bandit and `git diff --check` passed. An isolated
 source-to-wheel build, strict Twine checks and the offline runtime/MCP/SQLite gate
 passed. The final locally built wheel SHA-256 was
-`646862ba77ac132bb8ac668fc9c418b70e77f5ac01e00aafec9f1903933449e1`.
+`b4e1037df0136da143a7c5ab584e2164d2efc32fe38d8dc3c3e5e50b22ae348f`.
 All three official-client runs passed against that exact wheel: SDK 1.29.1 legacy,
 SDK 2.1.1 legacy, and SDK 2.1.1 modern. Separately, the source-backed reproducer
 passed 12 successive real SDK 1.x cancellation sessions (24 cancellations) after
@@ -61,6 +61,13 @@ mode. The examples now pass the new keyword only when explicitly enabled; four
 regressions cover both launchers and modes. Both SDK pins then passed the updated
 legacy checker against the actual immutable a9 wheel, SHA-256
 `52ec76698f71584b29291e6b497ae94d8646721cafa38a49fed3ed7bf8e55e35`.
+CodeRabbit completed a full review of implementation commit
+`737ecbfc69b76fb47613ee70cdecfafa52a9cf33` and found one functional compatibility
+issue: a legacy pre-initialize ping was routed to modern metadata validation.
+The follow-up preserves that ping without choosing an era and adds regressions
+for both subsequent protocol choices; a versioned modern ping still fails.
+Final verification above includes that correction. This is not a claim that the
+follow-up commits received a second full external review.
 
 Release disposition: unreleased opt-in API, not part of the immutable a9 wheel.
 No new dependency or external service. The next release needs its own artifact and
