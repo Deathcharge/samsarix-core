@@ -19,9 +19,12 @@ import signal
 import subprocess
 import sys
 import tempfile
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from functools import partial
 from importlib.metadata import version
 from pathlib import Path
+from types import TracebackType
 from typing import Any, cast
 
 SDK_VERSIONS = ("1.29.1", "2.1.1")
@@ -152,6 +155,158 @@ async def run_client(server_python: Path, example: Path, sdk_version: str) -> No
                     await journey(session, logs)
 
 
+class RecordedSend:
+    """Observe the SDK's typed outgoing request ID without guessing or changing it."""
+
+    def __init__(self, stream: Any) -> None:
+        self.stream = stream
+        self.request_ids: list[str | int] = []
+
+    async def send(self, message: Any) -> None:
+        data = wire(message.message)
+        if (
+            data.get("method") == "tools/call"
+            and data.get("params", {}).get("name") == "wait_for_cancellation"
+        ):
+            identifier = data.get("id")
+            require(type(identifier) in (str, int), "SDK request ID was not observable")
+            self.request_ids.append(cast(str | int, identifier))
+        await self.stream.send(message)
+
+    async def __aenter__(self) -> RecordedSend:
+        await self.stream.__aenter__()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self.stream.__aexit__(exc_type, exc, traceback)
+
+
+async def cancellation_journey(
+    session: Any,
+    explicit_cancel: Callable[[], Awaitable[None]] | None,
+    *,
+    timeout: float = 5,
+) -> None:
+    initialized = wire(await session.initialize())
+    require(initialized.get("protocolVersion") == PROTOCOL, "unexpected cancellation protocol")
+    require(
+        initialized["serverInfo"]["name"] == "samsarix-cancellation-fixture",
+        "wrong cancellation fixture",
+    )
+    catalog = wire(await session.list_tools())
+    require(
+        {tool["name"] for tool in catalog["tools"]}
+        == {"wait_for_cancellation", "cancellation_state"},
+        "missing cancellation fixture tools",
+    )
+
+    async def progress(
+        started: asyncio.Event,
+        updates: list[tuple[float, float | None, str | None]],
+        value: float,
+        total: float | None,
+        message: str | None,
+    ) -> None:
+        updates.append((value, total, message))
+        started.set()
+
+    for count in (1, 2):
+        started = asyncio.Event()
+        updates: list[tuple[float, float | None, str | None]] = []
+
+        call = asyncio.create_task(
+            session.call_tool(
+                "wait_for_cancellation",
+                {"private_input": "synthetic-cancellation-private-sentinel"},
+                progress_callback=partial(progress, started, updates),
+            )
+        )
+        try:
+            # Observe actual tool execution, not an arbitrary sleep or guessed ID.
+            await asyncio.wait_for(started.wait(), timeout)
+            require(not call.done(), "cancellation call completed before cancellation")
+            if explicit_cancel is not None:
+                await explicit_cancel()
+            call.cancel()
+            try:
+                await asyncio.wait_for(call, timeout)
+            except asyncio.CancelledError:
+                pass
+            else:
+                raise RuntimeError("client cancellation did not propagate")
+
+            # This call needs the same sole slot. A locally cancelled client task
+            # alone cannot pass: the server must stop the work and release capacity.
+            recovered = await asyncio.wait_for(session.call_tool("cancellation_state", {}), timeout)
+            check_result(
+                recovered,
+                {
+                    "active": 0,
+                    "cancelled": count,
+                    "completed": 0,
+                    "runtime_cancelled": count,
+                    "runtime_timed_out": 0,
+                    "in_flight": 1,
+                    "pending": 1,
+                },
+            )
+            require(
+                updates == [(1, 2, "started")],
+                "unexpected cancellation progress or private content",
+            )
+            await session.send_ping()
+        finally:
+            if not call.done():
+                call.cancel()
+            await asyncio.wait_for(asyncio.gather(call, return_exceptions=True), timeout)
+
+
+async def run_cancellation_client(server_python: Path, sdk_version: str) -> None:
+    sdk = importlib.import_module("mcp")
+    types = importlib.import_module("mcp.types")
+    anyio = importlib.import_module("anyio")
+    stdio_client = importlib.import_module("mcp.client.stdio").stdio_client
+    scripts = Path(__file__).parent
+    parameters = sdk.StdioServerParameters(
+        command=str(server_python),
+        args=[
+            "-I",
+            str(scripts / "mcp_client_server.py"),
+            str(scripts / "mcp_cancellation_fixture.py"),
+        ],
+    )
+    with anyio.fail_after(20):
+        async with stdio_client(parameters) as (read, write):
+            recorded = RecordedSend(write)
+            async with sdk.ClientSession(
+                read, recorded if sdk_version.startswith("1.") else write
+            ) as session:
+
+                async def notify_cancel() -> None:
+                    require(bool(recorded.request_ids), "cancellation request ID was not observed")
+                    notification = types.CancelledNotification(
+                        params=types.CancelledNotificationParams(
+                            requestId=recorded.request_ids[-1], reason="verification cancellation"
+                        )
+                    )
+                    await session.send_notification(types.ClientNotification(notification))
+
+                await cancellation_journey(
+                    session, notify_cancel if sdk_version.startswith("1.") else None
+                )
+
+
+async def run_journeys(server_python: Path, sdk_version: str) -> None:
+    example = Path(__file__).parents[1] / "examples" / "mcp_inventory_server.py"
+    await run_client(server_python, example, sdk_version)
+    await run_cancellation_client(server_python, sdk_version)
+
+
 def run_client_process(command: list[str], workspace: Path, *, timeout: float = 60) -> None:
     """Bound the checker; the SDK server has its own independent lifetime watchdog."""
 
@@ -268,6 +423,11 @@ def verify(wheel: Path, sdk_version: str) -> None:
                 "wheel": wheel.name,
                 "sha256": digest.hexdigest(),
                 "result": "passed",
+                "cancellation": (
+                    "explicit_sdk_notification"
+                    if sdk_version.startswith("1.")
+                    else "automatic_sdk_notification"
+                ),
             }
         )
     )
@@ -275,8 +435,7 @@ def verify(wheel: Path, sdk_version: str) -> None:
 
 def main() -> None:
     if len(sys.argv) == 4 and sys.argv[1] == "--client":
-        example = Path(__file__).resolve().parents[1] / "examples" / "mcp_inventory_server.py"
-        asyncio.run(run_client(Path(sys.argv[2]), example, sys.argv[3]))
+        asyncio.run(run_journeys(Path(sys.argv[2]), sys.argv[3]))
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wheel", type=Path, nargs="?", help="exact wheel, or the sole dist/*.whl")

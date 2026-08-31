@@ -87,6 +87,8 @@ remain separate decisions.
 - [x] Add Linux, Windows and macOS package verification at Python 3.10 and 3.14.
 - [x] Add an independent official MCP client gate for maintained SDK 1.x and
   current SDK 2.x against isolated installed wheels on Linux, Windows and macOS.
+- [x] Prove cooperative cancellation and sole-slot recovery through both pinned
+  official clients, keeping explicit 1.x and automatic 2.x notification paths distinct.
 - [ ] Evaluate newer MCP protocol revisions separately; preserve the explicit
   2025 contracts and do not equate client fallback with modern-feature support.
 

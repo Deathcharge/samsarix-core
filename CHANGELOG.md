@@ -4,6 +4,10 @@
 
 ### Added
 
+- official-client cooperative cancellation/recovery verification: SDK 1.29.1 uses
+  an explicit typed notification with an observed request ID, while SDK 2.1.1
+  sends cancellation automatically; a controlled single-slot fixture and negative
+  controls distinguish server cleanup from local cancellation, timeout or early completion.
 - independent installed-wheel verification with official MCP Python SDK 1.29.1
   and 2.1.1, including current-client negotiation fallback, parsed schema/results,
   Unicode, private-input redaction, logging and progress; six cross-platform CI

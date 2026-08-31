@@ -324,7 +324,9 @@ see [release verification](docs/RELEASING.md) for scope and isolation details.
 A separate [official MCP client gate](docs/MCP.md#official-python-client-verification)
 tests SDK versions 1.29.1 and 2.1.1 on Linux, Windows and macOS. It runs the server
 from an isolated Core-only wheel installation and verifies the supported
-`2025-11-25` tool journey, including 2.x automatic negotiation fallback. This does
+`2025-11-25` tool journey, including 2.x automatic negotiation fallback and repeated
+cooperative cancellation with execution-slot recovery. SDK 1.x needs an explicit
+cancellation notification; the tested 2.x client sends it automatically. This does
 not claim newer protocol support, experimental-task interoperability or signed-in
 client approval. The SDK is a test-only dependency, not part of Core.
 
