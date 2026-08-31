@@ -321,6 +321,13 @@ runtime invocation/circuit recovery and the documented MCP server through subpro
 pipes. Reproduce that gate with `python scripts/verify_distribution.py path/to/wheel.whl`;
 see [release verification](docs/RELEASING.md) for scope and isolation details.
 
+A separate [official MCP client gate](docs/MCP.md#official-python-client-verification)
+tests SDK versions 1.29.1 and 2.1.1 on Linux, Windows and macOS. It runs the server
+from an isolated Core-only wheel installation and verifies the supported
+`2025-11-25` tool journey, including 2.x automatic negotiation fallback. This does
+not claim newer protocol support, experimental-task interoperability or signed-in
+client approval. The SDK is a test-only dependency, not part of Core.
+
 Run `python benchmarks/runtime_benchmark.py` or
 `python benchmarks/mcp_stdio_benchmark.py` for machine-readable local
 microbenchmarks. They are comparison aids, not universal performance claims or CI

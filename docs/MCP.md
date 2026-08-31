@@ -1,9 +1,10 @@
 # Model Context Protocol bridge
 
 Samsarix Core can expose its trusted local tools through the Model Context
-Protocol (MCP) without adding a runtime dependency. The bridge targets the
-current stable MCP protocol version, `2025-11-25`, and also negotiates
-`2025-06-18` clients.
+Protocol (MCP) without adding a runtime dependency. The bridge implements the
+explicit protocol revisions `2025-11-25` and `2025-06-18`. These are compatibility
+targets, not a claim to implement the newest MCP revision. Newer clients must
+negotiate a supported revision; see the official-client gate below.
 
 The supported server surface is intentionally narrow:
 
@@ -40,6 +41,66 @@ arguments or command-line flags that may be logged by a launcher.
 
 The complete server setup is in
 [`examples/mcp_inventory_server.py`](../examples/mcp_inventory_server.py).
+
+## Official Python client verification
+
+In addition to the dependency-free raw-pipe checker, CI builds Core and runs the
+documented inventory server with the official Python MCP SDK pinned separately to
+`1.29.1` and `2.1.1`, on Linux, Windows and macOS with Python 3.11. The SDK is not a
+Core runtime or development dependency: it is installed only in the client check
+environment. The server receives only the exact Core wheel in a fresh offline
+environment, runs outside the checkout with Python isolated mode, and must not
+have the MCP SDK installed.
+
+Use a separate client virtual environment, install `mcp==2.1.1`, then run from
+the Core checkout using that environment's Python:
+
+```bash
+python -m pip install "mcp==2.1.1"
+python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-2.0.0a9-py3-none-any.whl --sdk-version 2.1.1
+```
+
+Repeat in another client environment with both version arguments changed to
+`1.29.1`. Omit the wheel path only when `dist/` contains exactly one wheel. The
+checker rejects a mismatched SDK pin and reports the wheel SHA-256. Initial SDK
+installation accesses the package index and installs that SDK's dependencies;
+the subsequent Core installation is offline. SDK transitive dependencies are
+resolved at installation time, not represented as a fully locked environment.
+
+The journey uses official SDK transport/session methods and parsed models. It
+checks initialization, ping, tool discovery and behavioral hints, Draft 2020-12
+input/output schema validity, Unicode and escaped-newline calls, structured/text
+agreement, safe validation errors, content-free client-filtered logging, correlated
+progress, empty audit results, recovery after errors and client-context shutdown.
+SDK 2.x uses its high-level client's default `auto` negotiation: it probes discovery
+and falls back to the `2025-11-25` initialization handshake. Its session then runs
+the shared tool journey; no modern protocol behavior is inferred from that fallback.
+
+The client session has a 45-second deadline; the outer checker has a 60-second
+deadline and forcibly terminates the checker if SDK cleanup stalls. Because the SDK
+may start its server in a separate process group, a stdlib-only test bootstrap also
+enforces a 55-second server lifetime independently. The watchdog is cancelled on
+normal exit; hard exit code 124 is a failed check, never graceful-shutdown evidence.
+This bootstrap is only for the trusted read-only example, not production tools.
+Setup commands also have finite timeouts. Negative-control unit tests reject wrong results, missing
+progress, private log fields/values, SDK pin drift and checker failure, and exercise
+timeout cleanup, including independent server exit. No model credentials, signed-in desktop UI or external API calls
+are needed for the journey.
+
+This gate does **not** validate experimental tasks, client cancellation, a signed-in
+tool-approval UI, HTTP/authentication, every SDK version or newer MCP revisions.
+Core's separate tests cover its cancellation/task contract; those tests are not
+official-client interoperability evidence. SDK 2.x emits a logging deprecation
+warning because the checker deliberately exercises the older negotiated revision.
+Tasks in Core remain opt-in, revision-specific experimental behavior; the upstream
+SDK removed its experimental task API in 2.x. Do not infer task compatibility from
+ordinary tool-call success.
+
+References checked on 2026-08-31: official SDK releases
+[`v1.29.1`](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v1.29.1),
+[`v2.1.1`](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.1.1),
+the [2.x negotiation implementation](https://github.com/modelcontextprotocol/python-sdk/blob/v2.1.1/src/mcp/client/_probe.py),
+and the [2025-11-25 tool contract](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
 
 ## Declare behavior honestly
 

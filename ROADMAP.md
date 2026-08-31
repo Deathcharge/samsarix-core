@@ -85,6 +85,10 @@ remain separate decisions.
 - [x] Verify installed wheel runtime behavior and the documented MCP example through
   real subprocess pipes, with offline isolated installs and bounded checker cleanup.
 - [x] Add Linux, Windows and macOS package verification at Python 3.10 and 3.14.
+- [x] Add an independent official MCP client gate for maintained SDK 1.x and
+  current SDK 2.x against isolated installed wheels on Linux, Windows and macOS.
+- [ ] Evaluate newer MCP protocol revisions separately; preserve the explicit
+  2025 contracts and do not equate client fallback with modern-feature support.
 
 - [x] Build and install the wheel in a clean environment.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.
