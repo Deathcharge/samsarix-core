@@ -4,6 +4,52 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Completion audit after the a11 release
+
+On 2026-08-31, main `3ba07ecd56af0dd45c207a314f5f9019cdb3d0b7` was clean and
+matched origin. Its [CI run](https://github.com/Deathcharge/samsarix-core/actions/runs/33410168937)
+passed all 18 jobs. The preceding release/evidence increment was progress, not
+completion of the production/adoption goal. This audit corrected stale latest-release
+references and qualified a11 against the unchanged consumer; no runtime change or
+additional release is warranted by those findings.
+
+| Completion requirement | Evidence and remaining boundary |
+| --- | --- |
+| Independent product, installation and package shape | Public, dependency-free typed local-tool runtime; a11 downloaded wheel/archive and compatibility imports verified outside the checkout. No private consumer is required. |
+| Useful complete workflow | Public persistent SQLite MCP example proves default write denial, approved host policy, atomic reservation, restart replay, conflict handling and stock/ledger state; raw and official-client checks pass. |
+| Reliability, security boundaries and quality | Recorded 434 Core tests, 95.44% branch-aware coverage, formatting/lint/types/build checks and 18-job CI. Trusted in-process tools, cooperative thread cancellation and plaintext application storage remain explicit limitations. |
+| Verifiable distribution | Immutable a11 assets, exact-source build provenance and installed-wheel checks pass. This is GitHub evaluation distribution, not PyPI or a stable API commitment. |
+| README journey in under five minutes, entirely offline | **Not fully accepted.** Offline execution after artifacts are acquired is verified; an unassisted new user's timing and the entire onboarding experience are not. Downloads and build-tool acquisition require network access. Do not count CI runtime as user onboarding time. |
+| Current consumer adoption | **Open.** Fresh a11 candidate override: 37 passed, one unchanged old-version assertion failed, 91.03% installed-consumer branch coverage. Original manifest still pins Core metadata a6; no consumer upgrade or fresh hosted matrix was performed. |
+| Desktop acceptance | **Open.** Automation failed before window inspection even after reset; no current sign-in/trust state was observed. Operator consent and an actual approved tool journey are still required. |
+| Production suitability and demand | **Unproven.** No independently operated production deployment, user acceptance, stable API promise or SLA is established by these tests. |
+
+For the original five-minute acceptance criterion, have an unfamiliar evaluator
+follow the README without coaching and record prerequisites, start/end time,
+commands, output and any confusion. Report artifact acquisition separately from
+offline execution. If the complete criterion fails, retain that result and make
+an explicit product decision or repair onboarding; do not silently redefine it.
+The criterion below remains unchanged and unchecked by this audit.
+
+The [a11 qualification and exact consumer-session handoff](ADOPTION.md#a11-candidate-qualification-not-adoption)
+record the artifact identities, commands, sole failure and owner-controlled next
+steps. Recorded consumer CI jobs never started because of an account annotation;
+the present account state has not been inferred from that historical failure.
+No private repository, billing setting, desktop permission or immutable asset was
+changed. Highest-value next work is the consumer repin/CI and operator acceptance,
+then stabilization driven by observed usage. More framework features do not close
+these evidence gaps. The full goal remains open.
+
+Local verification for this documentation increment on Python 3.11.9:
+
+```text
+python -m pytest -> 434 passed; 95.44% branch-aware coverage
+python -m black --check src tests examples benchmarks scripts -> 40 unchanged
+python -m ruff check src tests examples benchmarks scripts -> passed
+python -m mypy -> passed, 28 source files
+git diff --check -> passed
+```
+
 ### 2.0.0a11 verified distribution
 
 Release preparation [PR #54](https://github.com/Deathcharge/samsarix-core/pull/54)
@@ -969,11 +1015,11 @@ clean-wheel behavioral evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
-The immutable GitHub prerelease `v2.0.0a10` is published from commit
-`e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a` with verified checksums, GitHub Actions
+The immutable GitHub prerelease `v2.0.0a11` is published from commit
+`d9ae73cf09e17a6ed3a6d2f092645dcac4743e22` with verified checksums, GitHub Actions
 build provenance, clean installed-wheel runtime, MCP and SQLite checks, and official
-legacy/modern client and cooperative cancellation journeys. The exact assets,
-workflow runs, verification, installation evidence, and recovery model are recorded in
+legacy/modern client, persistent MCP reservation and cooperative cancellation journeys.
+The exact assets, workflow runs, verification, installation evidence, and recovery model are recorded in
 `docs/RELEASING.md`. This passes the GitHub release gate only; it does not pass the
 PyPI, stable API, or third-party production-adoption gates.
 

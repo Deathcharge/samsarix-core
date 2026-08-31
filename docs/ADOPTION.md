@@ -13,14 +13,97 @@ access. Core never requires this private repository to install or run. Use the p
 [SQLite/MCP reservation example](SIDE_EFFECTS.md#use-the-persistent-store-from-an-mcp-client)
 for a credential-free stateful workflow.
 
-The latest published `2.0.0a10` prerelease has verified immutable artifacts, provenance,
+The latest published `2.0.0a11` prerelease has verified immutable artifacts, provenance,
 and installed-wheel runtime/deadline, bounded diagnostic/numeric, malformed-MCP
 subprocess and SQLite transaction/replay behavior, plus official-client legacy and
 opt-in modern MCP ordinary-tool/cancellation journeys against the downloaded wheel.
+It also packages the public persistent SQLite MCP launcher and official-client
+write/restart/replay acceptance checks in its source distribution.
 The repository consumer below still pins the earlier merged per-tool circuit-breaker
 commit, so its exact Git installation reports package metadata `2.0.0a6`. It has not
-been repinned to a8, a9 or a10 here. The a10 qualification experiment below is explicitly
-not a completed consumer upgrade. Release verification remains separate from adoption.
+been repinned to a8, a9, a10 or a11 here. The qualification experiments below are
+not completed consumer upgrades. Release verification remains separate from adoption.
+
+## a11 candidate qualification, not adoption
+
+On 2026-08-31, the consumer's local and GitHub main remained
+`be56db8476454d6f241a5da7d5e846d92d1bcefb`. A fresh archive of that commit supplied
+unchanged tests. The diagnostic consumer wheel from the a10 experiment below was
+reused only after verifying its SHA-256:
+`6059d41a0c5d539b2988a6ee71fac4cd30661c163992245039e768b9370345be`.
+It was not rebuilt or represented as the older historical release artifact.
+
+A fresh Python 3.11.9 environment installed the actual published Core a11 wheel,
+SHA-256 `dc694e104dcd979db1515b607ef3ee7e2e05d6af39bb159703351f64493d653f`,
+and that consumer wheel with `python -m pip --isolated install --no-index --no-deps`.
+Guard and Orchestration were separately installed from the exact Git pins below;
+their installed `direct_url.json` commit IDs matched. Core and consumer imports
+resolved to this environment's `site-packages`. Test tooling was pytest 8.4.2,
+pytest-asyncio 1.4.0 and pytest-cov 7.1.0. Dependency/tool acquisition used the network;
+the two-wheel installation did not. This intentionally overrides the untouched
+consumer manifest and is not a fresh installation of its declared dependency set.
+
+From the archived consumer root, using that environment's Python:
+
+```text
+python -m pip check  -> no broken requirements (not a Git-pin provenance check)
+python -I -m pytest -> 37 passed, 1 failed; 91.03% installed-consumer branch coverage
+```
+
+The sole failure was `test_pinned_core_version_is_compatible`: it expects
+`2.0.0a6`, while the candidate correctly reports `2.0.0a11`. No test was skipped,
+patched, xfailed or version-spoofed. Existing behavioral tests passed, including
+redaction, privacy, policy, cancellation, task, rate/circuit, replay and filesystem
+contracts. This does not prove modern MCP consumer support; its factory still
+selects the legacy protocol. The original consumer worktree remained clean and
+unchanged. No private implementation was copied into this repository.
+
+Read-only reinspection of consumer run `31460072311` found three failed jobs with
+zero executed steps. Check-run `94616059885` still carries GitHub's account
+payments/spending-limit annotation. That is evidence about the recorded run,
+not proof of the account's current billing state. No new consumer run was dispatched.
+Current declared-install compatibility and fresh Python 3.11-3.13 CI remain open.
+
+Desktop automation also failed before window inspection, including one reset/retry,
+with `failed to write kernel assets` / Windows error 3. No current desktop, sign-in,
+trust or approval state was observed. Earlier configuration discovery below is
+historical evidence only; SDK acceptance is not desktop consent acceptance.
+
+## Owner-session handoff for the consumer
+
+The following bounded prompt is intended for a separate session in the consumer
+repository. It has not been dispatched and does not authorize billing changes,
+production deployment or publication of private source:
+
+> Work only in `samsarix-integration-examples`; preserve unrelated changes and keep
+> its visibility private. Audit the current manifest and tests before editing.
+> Upgrade only Core to exact commit
+> `d9ae73cf09e17a6ed3a6d2f092645dcac4743e22` (published `v2.0.0a11`), updating the
+> matching package-version expectation to `2.0.0a11`. Preserve the existing Guard
+> and Orchestration pins unless a separately demonstrated incompatibility requires
+> owner review. Keep the consumer's legacy MCP default; do not claim modern support
+> merely because Core supports it. Install the declared dependencies in a fresh
+> environment and check installed Git commit identities, versions and import paths.
+> Run `python -m pip check`, `python -m ruff check .`, `python -m mypy`,
+> `python -m pytest`, `python -m bandit -q -r src`, `python -m build` and
+> `python -m twine check --strict dist/*`. The current suite has 38 tests: retain
+> its privacy, cancellation, task, replay and filesystem assertions. Verify both
+> installed CLI help paths and the documented redaction MCP journey from outside
+> the checkout against the built wheel. Obtain fresh consumer Python 3.11-3.13
+> CI evidence; recorded jobs stopped before checkout with a billing annotation.
+> Ask the owner to resolve any account gate without changing spending or payment
+> settings yourself. Commit/push/merge only under the owner session's authorization
+> and after required checks actually pass. Record exact commits and results;
+> never copy private implementation into public Core documentation.
+
+For desktop acceptance, the operator must handle sign-in, server trust and tool
+approval personally. Then record the client/version, consumer/Core commits and
+negotiated protocol, discovery, one approved redaction and its artifact, cancellation
+without an artifact, and a subsequent successful request. Record only non-sensitive
+outcomes: no real source documents, tokens or workspace paths. If automation cannot
+initialize, restore that facility or perform the checklist manually; do not bypass
+the client's security prompts. These actions are acceptance work, not a request to
+add another Core feature.
 
 ## a10 candidate qualification, not adoption
 
