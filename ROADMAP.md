@@ -67,7 +67,7 @@ remain separate decisions.
   It now also proves that a host-owned per-tool circuit opens after a private downstream
   failure, rejects the next request without execution or an artifact, and closes after
   one successful real redaction recovery probe without leaking private protocol content.
-- Next: upgrade the private same-owner consumer to the verified a10 release, rerun its own CI
+- Next: upgrade the private same-owner consumer to the verified a11 release, rerun its own CI
   matrix, and complete the signed-in Visual Studio Code trust/tool-approval journey. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
@@ -124,6 +124,9 @@ remain separate decisions.
   ordinary tools, exact-source provenance and fresh downloaded-wheel verification
   using both official SDK pins, legacy negotiation and modern discovery, including
   repeated cooperative cancellation/recovery. Retain the same adoption boundaries.
+- [x] Publish immutable GitHub prerelease `v2.0.0a11` containing the public persistent
+  MCP example and SDK-driven write/replay acceptance. Verify the downloaded source
+  archive's checkers against the downloaded wheel, preserving desktop/adoption gates.
 
 ## Samsarix adoption
 

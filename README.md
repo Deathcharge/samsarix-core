@@ -42,27 +42,27 @@ accounts, no API keys, no external service, and no hosted operating cost.
 Python 3.10 or newer is required.
 
 The latest published immutable prerelease is
-[`v2.0.0a10`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a10),
+[`v2.0.0a11`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a11),
 with an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a10 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a10-py3-none-any.whl \
+gh release download v2.0.0a11 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a11-py3-none-any.whl \
   --repo Deathcharge/samsarix-core \
   --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
-  --source-ref refs/tags/v2.0.0a10 \
-  --source-digest e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a \
+  --source-ref refs/tags/v2.0.0a11 \
+  --source-digest d9ae73cf09e17a6ed3a6d2f092645dcac4743e22 \
   --deny-self-hosted-runners &&
-python -m pip install samsarix_core-2.0.0a10-py3-none-any.whl
+python -m pip install samsarix_core-2.0.0a11-py3-none-any.whl
 ```
 
-Version `2.0.0a10` adds opt-in modern MCP ordinary-tool support while preserving
-the default 2025 protocol. The freshly downloaded release wheel passed the offline
-runtime, MCP subprocess and SQLite transaction/replay gate, plus official MCP SDK
-1.29.1 legacy, 2.1.1 legacy and 2.1.1 modern journeys with cancellation recovery.
-It includes the a9 diagnostic, numeric-overflow and malformed-frame fixes. Older
-releases do not gain new APIs from being rechecked with newer verification scripts.
+Version `2.0.0a11` packages the public persistent SQLite MCP example and its
+official-client acceptance checks in the source archive. Its downloaded wheel passed
+the offline runtime/MCP/SQLite gate and SDK 1.29.1 legacy, 2.1.1 legacy and 2.1.1 modern
+journeys, including cancellation recovery and restart-safe reservations, using the
+downloaded archive's scripts. It retains a10's opt-in modern MCP support and default
+2025 protocol. Older releases do not gain files or APIs from newer verification scripts.
 
 For a source checkout instead:
 
@@ -160,13 +160,14 @@ handshake. This option is included in the published a10 wheel, not a9. See the
 [modern protocol boundary](docs/MCP.md#opt-in-mcp-2026-07-28); the redesigned task
 extension, multi-round-trip operations and HTTP are not implemented.
 
-For a public end-to-end workflow with **real persistent writes**, the current checkout
+For a public end-to-end workflow with **real persistent writes**, the a11 source archive
 also supplies `sqlite_reservations.py init` and `serve`. It denies writes by default;
 the host must explicitly add `--allow-reservations`. Replays survive process restart,
 conflicting request IDs do not write, and database paths are not client arguments.
 See the [persistent MCP reservation walkthrough](docs/SIDE_EFFECTS.md#use-the-persistent-store-from-an-mcp-client).
-These new example commands are not in the immutable a10 source archive; use the
-current checkout with the verified a10 runtime. The preview server above is unchanged.
+These commands are included in a11's source archive, not its wheel or a10's source
+archive. The guide includes verified-download steps without requiring a Git checkout.
+The preview server above is unchanged.
 
 ## Proven external consumer
 

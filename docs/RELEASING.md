@@ -172,6 +172,63 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a11
+
+Published on 2026-08-31 at 15:34:52 UTC. This evaluation alpha distributes the public
+persistent MCP example and its independent official-client business checks in the
+source archive. Core behavior and dependencies are unchanged from the preceding
+merged runtime; no prior immutable asset is replaced.
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a11`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a11) |
+| Tagged commit | `d9ae73cf09e17a6ed3a6d2f092645dcac4743e22` |
+| Annotated tag object | `816b7231605410ed285396771b5fa2ee87fc1870` |
+| Release workflow | [run `33409205185`](https://github.com/Deathcharge/samsarix-core/actions/runs/33409205185) |
+| Main-ref build-only dry run | [run `33408964717`](https://github.com/Deathcharge/samsarix-core/actions/runs/33408964717) |
+| Tag-ref build-only dry run | [run `33409272414`](https://github.com/Deathcharge/samsarix-core/actions/runs/33409272414) |
+| Exact-main CI | [run `33408961403`](https://github.com/Deathcharge/samsarix-core/actions/runs/33408961403), all 18 jobs passed |
+| Tag-push CI | [run `33409205272`](https://github.com/Deathcharge/samsarix-core/actions/runs/33409205272), all 18 jobs passed |
+| Release state | published, prerelease, immutable |
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a11-py3-none-any.whl` | 55,674 | `dc694e104dcd979db1515b607ef3ee7e2e05d6af39bb159703351f64493d653f` |
+| `samsarix_core-2.0.0a11.tar.gz` | 226,087 | `1356cb86ad72e7c07250c1a5dcd660359d5bb05b22fffa90942eebb8e64e0098` |
+| `SHA256SUMS` | 202 | `63291a49a7a78230b6ebbd73301db8fadf8583740d042e018ca64fe364720aed` |
+
+`gh release verify` and `gh release verify-asset` for all three files passed.
+PowerShell `Get-FileHash -Algorithm SHA256` values and lengths matched API asset
+digests/sizes; the checksum manifest contained exactly the two distinct expected
+distribution names. Both distributions passed the command below with their respective
+filename; JSON output reported one verified attestation each:
+
+```bash
+gh attestation verify samsarix_core-2.0.0a11-py3-none-any.whl \
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.0.0a11 \
+  --source-digest d9ae73cf09e17a6ed3a6d2f092645dcac4743e22 \
+  --deny-self-hosted-runners --format json
+```
+
+After inspecting source-archive members and confirming extraction, the **downloaded
+archive's** `scripts/verify_distribution.py` and `scripts/verify_mcp_client.py` passed
+against the downloaded wheel on Windows/Python 3.11.9. All three pinned client modes
+reported the published wheel digest, persistent SQLite disk verification and the
+appropriate cancellation path. No checkout-only checker/example was substituted.
+The archive contains no SQLite data payloads. Initial launch attempts reported a
+missing extracted checker; those attempts failed and were not counted. Confirming
+the on-disk path and rerunning the unchanged checks passed. No release asset or
+verification constraint was changed. SDK 2.x's legacy logging warning stayed visible.
+
+Both manual dry runs skipped tag-only guards, attestation and publication; the tag
+push executed them successfully. [PR #54](https://github.com/Deathcharge/samsarix-core/pull/54)
+records preparation: 434 tests, 95.44% branch-aware coverage, formatting/lint/types,
+Core-source Bandit, isolated build, strict Twine and offline/official-client gates.
+This is verified GitHub evaluation distribution, not PyPI publication, a stable API,
+desktop consent, a private-consumer upgrade or production adoption.
+
 ## Published evidence: v2.0.0a10
 
 The modern MCP alpha was published on 2026-08-31 at 14:12:01 UTC. It adds opt-in

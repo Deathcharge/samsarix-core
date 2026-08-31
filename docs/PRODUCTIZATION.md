@@ -4,6 +4,39 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### 2.0.0a11 verified distribution
+
+Release preparation [PR #54](https://github.com/Deathcharge/samsarix-core/pull/54)
+merged at `d9ae73cf09e17a6ed3a6d2f092645dcac4743e22`. Branch CI `33408725720`,
+PR CI `33408728731`, exact-main CI `33408961403` and tag CI `33409205272` each
+passed all 18 jobs. Preparation changed version metadata/changelog/evidence only;
+the merge and tested branch trees were identical. The local preparation record below
+is historical; all publication gates listed there have now passed.
+
+- [x] New annotated tag, clean exact main, enabled immutability and successful publication.
+- [x] Fresh wheel/source/manifest downloads: release signature, all asset memberships,
+  exact names/counts, sizes, hashes and two-entry checksum manifest.
+- [x] Both build attestations constrained to the exact tag, source commit, Release
+  workflow and GitHub-hosted runners, without relaxed verification flags.
+- [x] Downloaded archive's own offline checker and examples passed against the
+  downloaded wheel, including persistent MCP stock/ledger assertions.
+- [x] Downloaded archive's official-client checker passed SDK 1.29.1 legacy,
+  2.1.1 legacy and 2.1.1 modern modes with SQLite business/replay and cancellation checks.
+- [x] Main-ref and tag-ref manual dispatches stayed build-only with privileged steps skipped.
+
+Published wheel SHA-256:
+`dc694e104dcd979db1515b607ef3ee7e2e05d6af39bb159703351f64493d653f`.
+Exact assets, run identities, commands and initial missing-extracted-script launch
+failures are recorded in [the release evidence](RELEASING.md#published-evidence-v200a11).
+Those initial failed launches were not counted as passes; the confirmed extracted
+paths subsequently passed unchanged verification. No old assets or private code changed.
+
+Disposition: published evaluation alpha with independently runnable source examples,
+not a production/stable claim. Highest-value remaining gates are consumer-owned
+upgrade/CI, actual desktop consent/invocation and evidence-led stabilization. No
+PyPI publication, paid infrastructure, telemetry, new runtime dependency or private
+repository change was made. The full production/adoption goal remains open.
+
 ### 2.0.0a11 release preparation
 
 The previous acceptance increment [PR #53](https://github.com/Deathcharge/samsarix-core/pull/53)

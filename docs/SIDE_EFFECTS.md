@@ -37,9 +37,25 @@ below is a separate, explicitly host-enabled write path.
 
 ## Use the persistent store from an MCP client
 
-These `init` / `serve` commands are new in the current source checkout; they are
-not in the immutable a10 source archive. They work with Core `2.0.0a10` installed.
-Use a host-owned directory and a new database filename:
+These `init` / `serve` commands ship in the `2.0.0a11` source archive (not the wheel
+or a10 source archive). Install the verified Core wheel as shown in the README.
+To obtain the example without a Git checkout, use a fresh download directory:
+
+```bash
+gh release download v2.0.0a11 --repo Deathcharge/samsarix-core --pattern "*.tar.gz"
+gh attestation verify samsarix_core-2.0.0a11.tar.gz \
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.0.0a11 \
+  --source-digest d9ae73cf09e17a6ed3a6d2f092645dcac4743e22 \
+  --deny-self-hosted-runners &&
+tar -xzf samsarix_core-2.0.0a11.tar.gz
+cd samsarix_core-2.0.0a11
+```
+
+See [full release verification](RELEASING.md#published-evidence-v200a11) for asset
+membership, exact checksums and provenance evidence. From that extracted directory
+or the current checkout, use a host-owned directory and a new database filename:
 
 ```bash
 python examples/sqlite_reservations.py init inventory.sqlite3 --stock 5
