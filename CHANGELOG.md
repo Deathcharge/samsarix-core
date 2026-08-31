@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a11 - 2026-08-31
+
 ### Added
 
 - public SQLite MCP reservation launcher using the existing application-owned store:
