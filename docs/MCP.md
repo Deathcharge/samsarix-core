@@ -27,7 +27,7 @@ It does not implement MCP resources, prompts, sampling, `tasks/list`, durable
 cross-process task persistence, HTTP transport, authentication, or authorization.
 Those remain host-application concerns.
 
-For real persistent effects, the current checkout's
+For real persistent effects, the a11 source archive's
 [SQLite MCP reservation walkthrough](SIDE_EFFECTS.md#use-the-persistent-store-from-an-mcp-client)
 uses the same public bridge with host-selected storage and explicit write opt-in.
 It is separate from the read-only inventory preview and works in both supported
@@ -139,7 +139,7 @@ the Core checkout using that environment's Python:
 
 ```bash
 python -m pip install "mcp==2.1.1"
-python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-2.0.0a10-py3-none-any.whl --sdk-version 2.1.1
+python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-2.0.0a11-py3-none-any.whl --sdk-version 2.1.1
 ```
 
 Repeat in another client environment with `mcp==1.29.1` and `--sdk-version 1.29.1`;
@@ -228,9 +228,10 @@ Tasks in Core remain opt-in, revision-specific experimental behavior; the upstre
 SDK removed its experimental task API in 2.x. Do not infer task compatibility from
 ordinary tool-call success.
 
-The persistent SDK journey is new source-checkout verification, not a retroactive
-change to a10's immutable source archive. It has been run against the published a10
-runtime; older wheels need the verification scripts/examples appropriate to their APIs.
+The persistent SDK journey ships in a11's source archive, not as a retroactive
+change to a10's immutable source archive. It passed against the published a10 and
+a11 runtimes; the a11 downloaded-wheel acceptance used the downloaded source archive's
+own scripts/examples. Older wheels need scripts/examples appropriate to their APIs.
 
 References checked on 2026-08-31: official SDK releases
 [`v1.29.1`](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v1.29.1),

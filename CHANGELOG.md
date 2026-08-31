@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- record verified immutable a11 publication and source-archive acceptance; update
+  wheel/example installation instructions without implying stable or consumer adoption.
+
 ## 2.0.0a11 - 2026-08-31
 
 ### Added
