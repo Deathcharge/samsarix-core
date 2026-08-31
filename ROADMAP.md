@@ -79,6 +79,8 @@ remain separate decisions.
 
 ## Release candidate
 
+- [x] Provide a reproducible mixed-dependency outage evaluation with actual execution
+  counts, unrelated-tool latency, isolation trade-offs, and bounded cleanup checks.
 - [x] Verify installed wheel runtime behavior and the documented MCP example through
   real subprocess pipes, with offline isolated installs and bounded checker cleanup.
 - [x] Add Linux, Windows and macOS package verification at Python 3.10 and 3.14.

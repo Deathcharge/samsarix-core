@@ -4,6 +4,9 @@
 
 ### Added
 
+- bounded mixed-dependency outage benchmark comparing global concurrency, per-tool
+  isolation, and circuit breaking, with repeated raw measurements, correctness and
+  cleanup regression tests, and explicit synthetic-workload limitations;
 - portable offline installed-wheel verification for actual runtime invocation,
   validation, ordered batches, circuit recovery, and real MCP subprocess Unicode,
   progress, logging and EOF behavior, with checker regression tests;
