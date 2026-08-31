@@ -42,26 +42,27 @@ accounts, no API keys, no external service, and no hosted operating cost.
 Python 3.10 or newer is required.
 
 The latest published immutable prerelease is
-[`v2.0.0a9`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a9),
+[`v2.0.0a10`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a10),
 with an installable wheel, source distribution, SHA-256 manifest, and verifiable
 GitHub Actions build provenance. A compact verified-wheel path is:
 
 ```bash
-gh release download v2.0.0a9 --repo Deathcharge/samsarix-core --pattern "*.whl"
-gh attestation verify samsarix_core-2.0.0a9-py3-none-any.whl \
+gh release download v2.0.0a10 --repo Deathcharge/samsarix-core --pattern "*.whl"
+gh attestation verify samsarix_core-2.0.0a10-py3-none-any.whl \
   --repo Deathcharge/samsarix-core \
   --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
-  --source-ref refs/tags/v2.0.0a9 \
-  --source-digest 8957b208db4ee08a32e9c66cf0cf50b7dc7422a4 \
-  --deny-self-hosted-runners
-python -m pip install samsarix_core-2.0.0a9-py3-none-any.whl
+  --source-ref refs/tags/v2.0.0a10 \
+  --source-digest e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a \
+  --deny-self-hosted-runners &&
+python -m pip install samsarix_core-2.0.0a10-py3-none-any.whl
 ```
 
-Version `2.0.0a9` bounds derived validation diagnostics, isolates overflowing float
-arguments, and hardens malformed MCP frames. The freshly downloaded release wheel
-passed the expanded runtime, MCP subprocess, and SQLite transaction/replay gate.
-Earlier immutable releases lack these fixes; their historical verification is not
-a claim that they pass the current gate.
+Version `2.0.0a10` adds opt-in modern MCP ordinary-tool support while preserving
+the default 2025 protocol. The freshly downloaded release wheel passed the offline
+runtime, MCP subprocess and SQLite transaction/replay gate, plus official MCP SDK
+1.29.1 legacy, 2.1.1 legacy and 2.1.1 modern journeys with cancellation recovery.
+It includes the a9 diagnostic, numeric-overflow and malformed-frame fixes. Older
+releases do not gain new APIs from being rechecked with newer verification scripts.
 
 For a source checkout instead:
 
@@ -155,7 +156,7 @@ Starting with `2.0.0a10`, Core additionally supports an opt-in `2026-07-28` ordi
 path: launch the example with `--modern`, or use `MCPServer(runtime,
 enable_modern=True)`. It supplies per-request version/capability validation,
 discovery, private cache hints and request-scoped logging without the legacy
-handshake. The published a9 wheel does not contain this option. See the
+handshake. This option is included in the published a10 wheel, not a9. See the
 [modern protocol boundary](docs/MCP.md#opt-in-mcp-2026-07-28); the redesigned task
 extension, multi-round-trip operations and HTTP are not implemented.
 

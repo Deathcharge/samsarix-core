@@ -253,8 +253,8 @@ and server identity; catalogs are sorted by name with private, zero-TTL cache hi
 Logging still requires host opt-in and additionally requires a valid per-request
 log level; no level is inherited from another request. Legacy tasks/required-task
 tools, continuation inputs, ping and session-global logging are not modern APIs.
-See [the exact supported surface](MCP.md#opt-in-mcp-2026-07-28). This option is not
-present in the published a9 artifact.
+See [the exact supported surface](MCP.md#opt-in-mcp-2026-07-28). This option is
+present in the published a10 artifact, not a9.
 
 With `enable_tasks=True` and MCP `2025-11-25`, `handle()` also advertises
 task-augmented `tools/call` plus cancellation, emits per-tool `execution.taskSupport`,

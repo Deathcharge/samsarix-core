@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a10` assets, exact-source provenance and fresh offline
+  and official-client verification; updated installation and adoption guidance
+  without implying a separate-consumer upgrade or stable release.
+
 ## 2.0.0a10 - 2026-08-31
 
 ### Added
