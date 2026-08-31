@@ -15,8 +15,9 @@ For a tag build, the workflow:
 
 1. builds the wheel and source distribution with `python -m build`;
 2. runs strict Twine metadata checks;
-3. installs the wheel without dependencies in a fresh environment and imports both
-   the Samsarix API and compatibility namespace;
+3. installs the wheel offline without dependencies in a temporary environment, verifies
+   public exports and runtime behavior, and drives the documented MCP example through
+   actual subprocess pipes;
 4. creates a `SHA256SUMS` manifest;
 5. generates GitHub Actions build-provenance attestations for both distributions; and
 6. creates a GitHub release containing the distributions and checksum manifest.
@@ -79,6 +80,38 @@ gh attestation verify "samsarix_core-${RELEASE_VERSION}.tar.gz" \
 Then install the verified wheel in a fresh supported Python environment and run the
 documented example before recording the release as complete.
 
+### Portable installed-wheel gate
+
+From a current source checkout (Python 3.10+), run:
+
+```bash
+python scripts/verify_distribution.py /absolute/path/to/samsarix_core-VERSION-py3-none-any.whl
+```
+
+Omit the argument only when `dist/` contains exactly one wheel. The verifier creates a
+temporary virtual environment, installs the exact artifact with `--no-index --no-deps`,
+runs `pip check`, and invokes both smoke scripts using Python isolated mode (`-I`) from
+outside the checkout. It does not change the caller's environment or access a package
+index. Environment creation and subprocesses have finite deadlines; the MCP checker
+kills and reaps its child on failure. No model, account, network service, or user data
+is needed. Only run the checker against trusted project wheels and examples.
+
+The gate verifies:
+
+- canonical/legacy export identity and installed metadata version consistency;
+- actual synchronous Unicode invocation, invalid-input rejection, and ordered batches;
+- redacted dependency failure, fail-fast circuit rejection, one later recovery probe,
+  closed state, trip/rejection metrics, and bounded runtime quiescence;
+- real MCP initialization before discovery/calls, UTF-8 and escaped-newline round-trip,
+  synchronous results, invalid-input error logging with content-free fields, async
+  progress correlation/order, and clean EOF shutdown without extra stdout.
+
+Package CI runs this gate on Linux, Windows, and macOS at Python 3.10 and 3.14;
+the full unit suite additionally covers Python 3.10 through 3.14 on Linux. The
+subprocess journey follows the [MCP stdio transport contract](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+This is package/OS-pipe compatibility evidence, not a signed-in desktop-client test,
+network-transport certification, or a performance guarantee.
+
 ## Recovery
 
 An immutable release is intentionally not edited in place. If a published artifact or
@@ -118,9 +151,16 @@ for the wheel and source distribution while identifying this public repository,
 
 A fresh Python 3.11.9 environment installed the downloaded wheel without dependencies
 and reported no broken requirements. Both public namespaces and distribution metadata
-reported `2.0.0a7` from the fresh environment's `site-packages`. The installed smoke
-probe produced a safe failure, rejected the immediate next call as `circuit_open`, and
-completed a successful real recovery probe after the configured interval. This is
+reported `2.0.0a7` from the fresh environment's `site-packages`.
+
+Evidence correction, 2026-08-31: the smoke script shipped at the a7 tag checked imports
+and model construction only. The earlier wording overstated that script's behavioral
+coverage. On this date, a freshly downloaded a7 wheel with the unchanged digest above
+passed `gh release verify-asset` and the expanded portable gate on Windows/Python 3.11.9.
+That new execution proved failure/open/recovery behavior, sync and batch invocation,
+input validation, and the real Unicode/progress/EOF MCP subprocess journey. The
+verification scripts are from the current checkout; the immutable a7 artifact was
+not modified. This is
 GitHub distribution, provenance, and clean-wheel behavior evidence, not PyPI
 publication, a stable-API declaration, a security audit, third-party production
 adoption, or an SLA.
