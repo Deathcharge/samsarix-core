@@ -4,6 +4,40 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Dependency-outage evaluation follow-up
+
+At clean main `6ded14d4a5a1a1754d5d080a8dad763161c19b3d`, 185 tests passed with
+94.73% branch-aware coverage on Windows/Python 3.11.9. The existing no-I/O
+microbenchmarks did not quantify interference from a failing dependency or the cost
+trade-off of limiting that dependency's concurrency. This was an evaluation-evidence
+gap, not a newly discovered runtime defect or a reason to expand the public API.
+
+- [x] Add a bounded synthetic mixed-vendor/cache workload using the real public API.
+- [x] Compare global capacity, a per-vendor bulkhead, and bulkhead plus circuit control
+  with the same finite request burst and an event-based saturation barrier.
+- [x] Verify exact successful cache outputs, real vendor executions, safe failures,
+  capacity/metrics, cancellation cleanup, and missing-control detection.
+- [x] Preserve every repeated measurement and the benchmark digest; document both
+  faster unrelated requests and the slower failure-drain trade-off of a bulkhead.
+
+The recorded five-repetition run made 64 vendor requests and 32 cache requests per
+scenario. All cache calls succeeded; circuit control reduced actual vendor executions
+from 64 to two, returning 62 safe failures rather than useful work. See
+`docs/BENCHMARKS.md` and its raw report for timings, methodology and limitations.
+This improves independent evaluation for tool-runtime adopters but is synthetic local
+evidence, not third-party production adoption. No runtime source, dependency, hosting,
+telemetry, published artifact or public API was changed.
+
+Final local checks passed: `python -m pytest` (208 tests, 94.81% branch-aware coverage),
+`python -m black --check src tests examples benchmarks scripts` (29 files),
+`python -m ruff check src tests examples benchmarks scripts`, `python -m mypy`
+(23 files), and `python -m bandit -q -r src`. An isolated `python -m build`, strict
+Twine check, and `scripts/verify_distribution.py` passed for the candidate wheel.
+An additional one-repetition run at 512 vendor calls, 512 cache calls and 1 ms delay
+passed all three scenarios with zero admission rejections, correct cache results and
+510 circuit rejections after two actual vendor executions in the guarded scenario.
+Hosted exact-head verification is recorded in the pull request.
+
 ### Current verification follow-up
 
 At clean main `4f5d04d3cf3c1f7b2dcec693154d502dd0f6f1b2`, the baseline suite passed
