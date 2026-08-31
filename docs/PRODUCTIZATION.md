@@ -4,6 +4,25 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### 2.0.0a10 release preparation
+
+Modern MCP support merged in [PR #49](https://github.com/Deathcharge/samsarix-core/pull/49)
+at `36da789cb82850f7378ef98abeeb1d8c9caaa613`. All 18 exact-main jobs passed in
+[run 33399732204](https://github.com/Deathcharge/samsarix-core/actions/runs/33399732204),
+including both legacy SDK pins and the additional SDK 2.1.1 modern step on Linux,
+Windows and macOS. The final tested branch and merge have identical file trees.
+The resolved review comment and exact verification results are recorded in
+[the PR evidence](https://github.com/Deathcharge/samsarix-core/pull/49#issuecomment-5479433290).
+
+This increment aligns package, runtime and citation versions at `2.0.0a10` and
+closes the matching changelog entry. It is release preparation, not a publication
+claim: the immutable a9 artifact remains unchanged and is still the documented
+download until a10 has its own verified assets. Release acceptance requires fresh
+source/package checks, all three installed-wheel official-client journeys, complete
+exact-head CI, a build-only default-branch dry run, immutable publication and fresh
+download/provenance checks. Neither a stable-release designation, a PyPI upload nor
+a separate-consumer upgrade is authorized or implied by this preparation.
+
 ### Opt-in 2026 MCP ordinary-tool compatibility
 
 The previous cancellation milestone merged in [PR #48](https://github.com/Deathcharge/samsarix-core/pull/48)

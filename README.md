@@ -151,7 +151,7 @@ decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
 read/write/destructive annotations, scalar-output wrapping, cancellation, stdio
 progress and logging, bounded task retention, admission limits, and security boundaries.
 
-The unreleased source additionally supports an opt-in `2026-07-28` ordinary-tool
+Starting with `2.0.0a10`, Core additionally supports an opt-in `2026-07-28` ordinary-tool
 path: launch the example with `--modern`, or use `MCPServer(runtime,
 enable_modern=True)`. It supplies per-request version/capability validation,
 discovery, private cache hints and request-scoped logging without the legacy
