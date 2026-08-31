@@ -83,6 +83,14 @@ ToolRuntime(
 - `await aclose(*, wait_for_sync=False, timeout=None) -> bool`
 
 Timeout precedence is invocation override, decorator timeout, then runtime default.
+Execution timeouts must be finite positive `int` or `float` values (excluding booleans),
+representable as a Python float. `None` inherits the next setting; it does not disable
+the execution timeout. A bad decorator timeout raises `ToolDefinitionError`; a bad
+runtime default raises `ValueError`. On an open runtime, an invalid invocation override
+returns `invalid_arguments` with code `invalid_timeout` before admission, policy or
+execution, and does not abort other batch items. NaN, infinity and overflowing integers
+are invalid, even when earlier versions accepted them or leaked `OverflowError`.
+
 The timeout includes policy evaluation and time waiting for a concurrency slot. Batch results preserve
 order. A batch larger than `max_batch_size` raises `ValueError` before any call is
 started. `aclose()` is idempotent.
@@ -149,11 +157,15 @@ timeouts from feeding an unbounded executor queue. Late exceptions are consumed
 without being exposed through the event loop.
 
 `wait_for_sync()` snapshots currently submitted sync calls and returns `False` if
-its optional non-negative timeout expires. For a race-free shutdown sequence, stop
+its optional finite non-negative timeout expires. Zero polls without waiting; `None`
+waits without a deadline. Invalid wait/close timeouts raise `ValueError` before closing
+the runtime or cancelling work. For a race-free shutdown sequence, stop
 external admission or close the runtime first. `aclose()` rejects new calls,
 cancels active async waits, cancels sync work that has not started, and returns
 whether submitted sync work is quiescent. Its default does not wait; pass
-`wait_for_sync=True` with a finite timeout when shutdown needs bounded quiescence.
+`wait_for_sync=True` with a finite timeout to bound the sync-worker wait. This timeout
+does not bound the preceding cancellation of async work; async cancellation cleanup
+must cooperate, and neither this nor the invocation timeout is a hard process deadline.
 Calling it again is safe. The async context manager uses the non-waiting default.
 
 `lifecycle_handler` is an optional synchronous callable receiving an immutable,
@@ -225,8 +237,12 @@ Direct host task cancellation continues to raise `asyncio.CancelledError`.
 With `enable_tasks=True` and MCP `2025-11-25`, `handle()` also advertises
 task-augmented `tools/call` plus cancellation, emits per-tool `execution.taskSupport`,
 and handles `tasks/get`, blocking `tasks/result`, and `tasks/cancel`. Requested TTLs
-are positive finite milliseconds and are clamped to `max_task_ttl_ms`. Retained
-state and results are in memory, bounded by `max_retained_tasks`, and removed after
+are positive finite milliseconds representable as a Python float and are clamped to
+`max_task_ttl_ms`. Invalid TTLs receive `-32602` without creating a task; overflowing
+integers do not produce an internal-server error. Duration configuration values
+(`default_task_ttl_ms`, `max_task_ttl_ms`, `task_poll_interval_ms`) must be positive
+integers representable as finite floats. Retained state and results are in memory,
+bounded by `max_retained_tasks`, and removed after
 their TTL. Arguments pass the runtime's resource preflight before being detached
 for background execution. `tasks.list` is intentionally unavailable without a requestor identity.
 Task IDs are cryptographically random; possession still grants access within that

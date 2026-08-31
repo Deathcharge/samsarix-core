@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar, overload
 
+from ._timeouts import normalize_timeout
 from .errors import ToolDefinitionError
 from .models import TaskSupport
 from .schema import compile_tool_contract
@@ -92,10 +93,9 @@ def samsarix_tool(
         ).strip()
         if not tool_description:
             raise ToolDefinitionError("Tools need a description or a non-empty docstring")
-        if timeout is not None and (
-            isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
-        ):
-            raise ToolDefinitionError("Tool timeouts must be positive numbers")
+        normalized_timeout = normalize_timeout(timeout)
+        if timeout is not None and normalized_timeout is None:
+            raise ToolDefinitionError("Tool timeouts must be finite positive numbers")
         if not isinstance(version, str) or not version.strip():
             raise ToolDefinitionError("Tool versions must be non-empty strings")
         if any(not isinstance(tag, str) or not tag.strip() for tag in tags):
@@ -130,7 +130,7 @@ def samsarix_tool(
         config = ToolConfig(
             name=tool_name,
             description=tool_description,
-            timeout=float(timeout) if timeout is not None else None,
+            timeout=normalized_timeout,
             version=version.strip(),
             tags=tuple(dict.fromkeys(tag.strip() for tag in tags)),
             title=title.strip() if title is not None else None,

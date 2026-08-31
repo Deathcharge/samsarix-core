@@ -724,3 +724,65 @@ def test_task_configuration_and_metadata_validation() -> None:
             asyncio.run(MCPServer(runtime).aclose(close_runtime=1))  # type: ignore[arg-type]
     finally:
         asyncio.run(runtime.aclose())
+
+
+@pytest.mark.parametrize(
+    "field", ["default_task_ttl_ms", "max_task_ttl_ms", "task_poll_interval_ms"]
+)
+def test_task_duration_configuration_rejects_float_overflow(field):
+    runtime = ToolRuntime()
+    try:
+        with pytest.raises(ValueError, match="finite"):
+            MCPServer(runtime, **{field: 10**1000})
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@pytest.mark.parametrize(
+    "ttl",
+    [
+        pytest.param(10**1000, id="overflowing-integer"),
+        pytest.param(-(10**1000), id="negative-overflowing-integer"),
+        pytest.param(math.nan, id="nan"),
+        pytest.param(math.inf, id="infinity"),
+    ],
+)
+async def test_invalid_task_ttl_keeps_protocol_and_retention_capacity_available(ttl):
+    executed = []
+
+    @samsarix_tool(task_support="optional")
+    async def echo(value: str) -> str:
+        """Execute only after task metadata has been validated."""
+
+        executed.append(value)
+        return value
+
+    runtime = ToolRuntime()
+    runtime.register(echo)
+    server = MCPServer(runtime, enable_tasks=True, max_retained_tasks=1)
+    try:
+        await initialize(server)
+        bad = await request(
+            server,
+            "request",
+            "tools/call",
+            {"name": "echo", "arguments": {"value": "private-ttl-input"}, "task": {"ttl": ttl}},
+        )
+        assert bad["error"]["code"] == -32602
+        assert "finite" in bad["error"]["message"]
+        assert "private-ttl-input" not in json.dumps(bad, allow_nan=False)
+        assert executed == [] and runtime.metrics().calls_total == 0
+        # Reuse the protocol request ID and the sole retained-task slot. A very
+        # large but representable TTL must still clamp to the configured maximum.
+        good = await request(
+            server,
+            "request",
+            "tools/call",
+            {"name": "echo", "arguments": {"value": "accepted"}, "task": {"ttl": 1e308}},
+        )
+        assert good["result"]["task"]["ttl"] == 3_600_000
+        result = await request(server, "result", "tasks/result", {"taskId": task_id(good)})
+        assert result["result"]["structuredContent"] == {"result": "accepted"}
+        assert executed == ["accepted"]
+    finally:
+        await server.aclose()
