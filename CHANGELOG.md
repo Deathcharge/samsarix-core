@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a9` assets, exact-source provenance, fresh installed-wheel
+  checks, and tag-ref build-only dispatch evidence; updated installation instructions
+  while keeping older consumer evidence and remaining adoption gates explicit.
+
 ## 2.0.0a9 - 2026-08-31
 
 ### Fixed

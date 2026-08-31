@@ -127,9 +127,91 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a9
+
+The input-boundary alpha was published on 2026-08-31 at 12:14:59 UTC. It fixes
+derived diagnostic amplification, numeric overflow and malformed MCP framing,
+and limits privileged release steps to actual tag pushes. It adds no runtime
+dependencies or public exports and does not declare a stable API.
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a9`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a9) |
+| Tagged commit | `8957b208db4ee08a32e9c66cf0cf50b7dc7422a4` |
+| Annotated tag object | `f0440074eb0cde489d855bf8a80adf28d27dce75` |
+| Release workflow | [run `33390759686`](https://github.com/Deathcharge/samsarix-core/actions/runs/33390759686) |
+| Main-ref build-only dry run | [run `33390605111`](https://github.com/Deathcharge/samsarix-core/actions/runs/33390605111) |
+| Tag-ref build-only dry run | [run `33390916184`](https://github.com/Deathcharge/samsarix-core/actions/runs/33390916184) |
+| Exact-main CI | [run `33390591214`](https://github.com/Deathcharge/samsarix-core/actions/runs/33390591214), all 12 jobs passed |
+| Release state | published, prerelease, immutable |
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a9-py3-none-any.whl` | 53,146 | `52ec76698f71584b29291e6b497ae94d8646721cafa38a49fed3ed7bf8e55e35` |
+| `samsarix_core-2.0.0a9.tar.gz` | 178,574 | `d51eb2de0b31f7984aad3e7fd798a6e8371f5a3ec19b9d4359c480b8e0c82e8b` |
+| `SHA256SUMS` | 200 | `5afa920eecc09cea350c90d8ad41ebb1a35555107d231aa6909bb2017452e8c9` |
+
+`gh release verify` passed, and `gh release verify-asset` passed for all three fresh
+downloads. Local SHA-256 hashes matched the release asset digests and the exact
+two-distribution manifest. Both distribution attestations passed the following
+constraints (repeat with `samsarix_core-2.0.0a9.tar.gz` for the source archive):
+
+```bash
+gh attestation verify samsarix_core-2.0.0a9-py3-none-any.whl \
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.0.0a9 \
+  --source-digest 8957b208db4ee08a32e9c66cf0cf50b7dc7422a4 \
+  --deny-self-hosted-runners --format json
+```
+
+The certificate identified the exact repository, workflow, tag, source commit,
+GitHub-hosted runner and push trigger, with a SLSA provenance v1 statement covering
+both distribution digests. The wheel's first attempt reported a public-good verifier
+initialization failure; an identical retry succeeded without weakening constraints.
+Provenance establishes origin and integrity, not absence of vulnerabilities.
+
+The main-ref dry run passed before publication. After publication, manual dispatch
+on `v2.0.0a9` also passed with both attestation and publication skipped. Thus the
+build-only claim has actual tag-ref execution evidence, not only a source assertion.
+Repository immutable releases were enabled before the tag push, and the resulting
+release reports `immutable: true`.
+
+Local source verification on Windows/Python 3.11.9 passed:
+
+```bash
+python -m pytest
+python -m black --check src tests examples benchmarks scripts
+python -m ruff check src tests examples benchmarks scripts
+python -m mypy
+python -m bandit -r src -q
+python -m build --outdir /new/temporary/build-directory
+python -m twine check --strict /new/temporary/build-directory/*
+python scripts/verify_distribution.py /fresh/download/samsarix_core-2.0.0a9-py3-none-any.whl
+git diff --check
+```
+
+The path placeholders above stand for separate task-created temporary directories;
+the final wheel check used the actual fresh GitHub download, not a local rebuild.
+Results: 311 tests passed, 95.23% branch-aware coverage, Black 35 files, strict mypy
+25 files, Ruff and Bandit passed, isolated source-to-wheel build and strict metadata
+checks passed. The downloaded wheel installed with no index or dependencies outside
+the checkout and passed `pip check`, namespace/version consistency, deadline/numeric
+batch isolation, bounded diagnostic truncation, redacted circuit recovery, real MCP
+malformed methods/surrogate ID/Unicode/progress/logging/EOF, and SQLite atomic
+commit/replay/conflict/restart checks. Hosted CI additionally covered Python 3.10-3.14
+and package checks on Linux, Windows and macOS at Python 3.10 and 3.14.
+
+The separate consumer still pins the earlier commit recorded in [adoption evidence](ADOPTION.md).
+No consumer upgrade, signed-in client approval, production deployment, PyPI upload
+or stable/SLA claim follows from these checks. Older tags/assets remain unchanged.
+The immutable tag's README records preparation; the current README points to these
+verified assets. Prefer this patched release over older artifacts with known defects;
+rollback to an older exact artifact also restores those defects.
+
 ## Published evidence: v2.0.0a8
 
-The diagnostic/numeric and malformed-MCP boundary fixes prepared for `2.0.0a9` are
+The diagnostic/numeric and malformed-MCP boundary fixes released in `2.0.0a9` are
 not in this artifact. Its known-digest wheel correctly fails the newer numeric
 checker. Verification below used the a8-era gate; do not interpret it as passing
 the current gate or replace immutable assets to incorporate fixes.

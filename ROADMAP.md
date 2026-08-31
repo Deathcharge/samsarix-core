@@ -67,13 +67,12 @@ remain separate decisions.
   It now also proves that a host-owned per-tool circuit opens after a private downstream
   failure, rejects the next request without execution or an artifact, and closes after
   one successful real redaction recovery probe without leaking private protocol content.
-- Next: complete the signed-in Visual Studio Code trust/tool-approval journey and rerun
-  the consumer matrix after GitHub Actions billing is restored. Use observed
+- Next: upgrade the separate consumer to the verified a9 release, rerun its own CI
+  matrix, and complete the signed-in Visual Studio Code trust/tool-approval journey. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
-- Review priority: Capture all 101 dirty/untracked paths.
-- Review priority: split legacy relocation.
-- Review priority: resolve license identity.
+- Initial worktree capture, legacy relocation, and Samsarix LLC/MPL-2.0 identity
+  reconciliation are complete; preserve their history and compatibility boundary.
 - Review priority: keep resource defaults aligned with adopter evidence.
 - Review priority: complete signed-in Visual Studio Code trust and invocation acceptance.
 
@@ -106,6 +105,10 @@ remain separate decisions.
 - [x] Publish immutable GitHub prerelease `v2.0.0a8` with finite-deadline rejection,
   SQLite write/replay and dependency-outage evidence, and real installed-wheel gates.
   This does not extend the older consumer pin's evidence to the new release.
+- [x] Publish immutable GitHub prerelease `v2.0.0a9` with bounded derived diagnostics,
+  float-overflow isolation, malformed-MCP frame handling, exact-source provenance,
+  and fresh installed-wheel checks. Prove manual dispatch on the tag remains
+  build-only. The separate consumer still needs its own upgrade and verification.
 
 ## Samsarix adoption
 
