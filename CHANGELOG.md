@@ -7,7 +7,8 @@
 - independent installed-wheel verification with official MCP Python SDK 1.29.1
   and 2.1.1, including current-client negotiation fallback, parsed schema/results,
   Unicode, private-input redaction, logging and progress; six cross-platform CI
-  jobs and negative controls with bounded checker process cleanup.
+  jobs and negative controls with bounded checker cleanup and an independent
+  test-server lifetime watchdog.
 
 ### Changed
 

@@ -24,8 +24,9 @@ that behavior needed actual external-client evidence, not just Core's own parser
   negotiated revision rather than treating current SDK support as modern MCP support.
 - [x] Add independent client jobs for both SDK pins on Linux, Windows and macOS,
   leaving SDK dependencies out of Core's runtime and normal development install.
-- [x] Bound session/checker/setup time and terminate the owned checker process tree
-  on timeout; add checker negative controls for incorrect results, missing progress,
+- [x] Bound session/checker/setup time, terminate a stuck checker and independently
+  bound the server lifetime even when the SDK starts a separate process group;
+  add checker negative controls for incorrect results, missing progress,
   private logs, version drift, ambiguous wheels, process failure and timeout cleanup.
 
 Both pins passed on Windows/Python 3.11.9 against the actual downloaded a9 wheel,
@@ -34,10 +35,13 @@ The initial checker run exposed a misspelled metadata-key assertion; that checke
 defect was corrected before the passing runs. No Core runtime change was required.
 SDK 2.x's expected logging deprecation warning remains visible because the journey
 intentionally exercises a negotiated 2025 revision. The final full local suite passed
-327 tests with 95.23% branch-aware coverage, including 16 checker regressions.
-Black checked 37 files; Ruff, strict mypy (26 files) and Bandit passed. An isolated
+329 tests with 95.23% branch-aware coverage, including 18 checker regressions.
+Black checked 38 files; Ruff, strict mypy (27 files) and Bandit passed. An isolated
 source-to-wheel build, strict Twine checks and the existing offline runtime/MCP/SQLite
 gate also passed. The SDK pins passed against the published artifact, not only a rebuild.
+Final process-boundary review found that the SDK isolates its server's process group;
+a stdlib-only 55-second server watchdog and normal-exit/forced-exit regression tests
+were added before merge. A watchdog exit is a failed check, not a passing shutdown.
 Hosted exact-head matrix/build evidence is recorded in the pull request; this is
 not a claim that the separate repository consumer has upgraded.
 

@@ -77,10 +77,14 @@ and falls back to the `2025-11-25` initialization handshake. Its session then ru
 the shared tool journey; no modern protocol behavior is inferred from that fallback.
 
 The client session has a 45-second deadline; the outer checker has a 60-second
-deadline and terminates its owned process tree if SDK cleanup stalls. Setup commands
-also have finite timeouts. Negative-control unit tests reject wrong results, missing
+deadline and forcibly terminates the checker if SDK cleanup stalls. Because the SDK
+may start its server in a separate process group, a stdlib-only test bootstrap also
+enforces a 55-second server lifetime independently. The watchdog is cancelled on
+normal exit; hard exit code 124 is a failed check, never graceful-shutdown evidence.
+This bootstrap is only for the trusted read-only example, not production tools.
+Setup commands also have finite timeouts. Negative-control unit tests reject wrong results, missing
 progress, private log fields/values, SDK pin drift and checker failure, and exercise
-timeout cleanup. No model credentials, signed-in desktop UI or external API calls
+timeout cleanup, including independent server exit. No model credentials, signed-in desktop UI or external API calls
 are needed for the journey.
 
 This gate does **not** validate experimental tasks, client cancellation, a signed-in

@@ -237,3 +237,38 @@ def test_checks_survive_python_optimization():
     )
     assert completed.returncode != 0
     assert b"sentinel-failure" in completed.stderr
+
+
+def test_independent_server_watchdog_exits_without_client_cleanup(tmp_path):
+    example = tmp_path / "unresponsive_example.py"
+    example.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+    bootstrap = SCRIPT.with_name("mcp_client_server.py")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import runpy; from pathlib import Path; runpy.run_path("
+            + repr(str(bootstrap))
+            + ')["run_server"](Path('
+            + repr(str(example))
+            + "), timeout=0.2)",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=10,
+    )
+    assert completed.returncode == 124
+
+
+def test_server_watchdog_is_cancelled_on_normal_exit(tmp_path):
+    example = tmp_path / "completed_example.py"
+    example.write_text("print('normal-exit')\n", encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT.with_name("mcp_client_server.py")), str(example)],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=10,
+    )
+    assert completed.returncode == 0
+    assert completed.stdout.strip() == b"normal-exit"

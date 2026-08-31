@@ -124,7 +124,10 @@ async def run_client(server_python: Path, example: Path, sdk_version: str) -> No
     async def logging_callback(params: Any) -> None:
         logs.append(wire(params))
 
-    parameters = sdk.StdioServerParameters(command=str(server_python), args=["-I", str(example)])
+    bootstrap = Path(__file__).with_name("mcp_client_server.py")
+    parameters = sdk.StdioServerParameters(
+        command=str(server_python), args=["-I", str(bootstrap), str(example)]
+    )
     # AnyIO's outer scope encloses both transport/session entry and cleanup in the
     # same task. The SDK owns and reaps its subprocess on context exit.
     with anyio.fail_after(45):
@@ -150,7 +153,7 @@ async def run_client(server_python: Path, example: Path, sdk_version: str) -> No
 
 
 def run_client_process(command: list[str], workspace: Path, *, timeout: float = 60) -> None:
-    """Bound the checker and clean up its owned process tree if SDK cleanup stalls."""
+    """Bound the checker; the SDK server has its own independent lifetime watchdog."""
 
     creationflags = 0
     if sys.platform == "win32":
@@ -179,6 +182,8 @@ def run_client_process(command: list[str], workspace: Path, *, timeout: float = 
                 )
             else:
                 try:
+                    # SDK-created server sessions may be outside this group.
+                    # mcp_client_server.py independently bounds their lifetime.
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
