@@ -4,6 +4,17 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### 2.0.0a9 release preparation
+
+The boundary fixes are submitted in [PR #44](https://github.com/Deathcharge/samsarix-core/pull/44)
+at `c4712d80bae085789ad4fadb2f74272f7e16f60f`. All 12 branch CI jobs and all 12
+pull-request CI jobs passed; package checks covered Linux, Windows and macOS.
+Release preparation synchronizes package/citation version `2.0.0a9`, dates the
+changelog, and distinguishes historical a8 verification from the expanded gate.
+This paragraph is preparation evidence, not a claim that a9 is already published.
+Publication still requires merged reviewed fixes, exact-main CI, build-only dry run,
+immutable-release checks, and fresh asset/provenance verification.
+
 ### Post-a8 input-boundary review and remediation
 
 An offline standard security review at clean `ced7be6ee96ba08af5ecb92bfc2683ee6466ab9b`

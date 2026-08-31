@@ -102,10 +102,13 @@ The gate verifies:
 
 - canonical/legacy export identity and installed metadata version consistency;
 - actual synchronous Unicode invocation, invalid-input/deadline rejection, and ordered
-  batches that survive an invalid timeout;
+  batches that survive an invalid timeout or overflowing float argument;
+- bounded nested diagnostic count/text and explicit truncation, using small regression
+  inputs rather than full-scale resource-exhaustion payloads;
 - redacted dependency failure, fail-fast circuit rejection, one later recovery probe,
   closed state, trip/rejection metrics, and bounded runtime quiescence;
-- real MCP initialization before discovery/calls, UTF-8 and escaped-newline round-trip,
+- real MCP malformed-method rejection, surrogate-ID round-trip, initialization before
+  discovery/calls, UTF-8 and escaped-newline round-trip,
   synchronous results, invalid-input error logging with content-free fields, async
   progress correlation/order, and clean EOF shutdown without extra stdout.
 - real temporary SQLite stock mutation, duplicate replay, conflicting-key rejection,
@@ -125,6 +128,11 @@ and publish a new tag. Consumers can roll back by installing a previously verifi
 release asset or exact commit. Core stores no remote runtime state.
 
 ## Published evidence: v2.0.0a8
+
+The diagnostic/numeric and malformed-MCP boundary fixes prepared for `2.0.0a9` are
+not in this artifact. Its known-digest wheel correctly fails the newer numeric
+checker. Verification below used the a8-era gate; do not interpret it as passing
+the current gate or replace immutable assets to incorporate fixes.
 
 The finite-deadline and transactional-example alpha was published on 2026-08-31.
 It packages the runtime fixes and evaluation/verification improvements described in

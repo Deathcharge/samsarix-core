@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a9 - 2026-08-31
+
 ### Fixed
 
 - bound derived validation diagnostics to 64 issues (including a truncation marker)
