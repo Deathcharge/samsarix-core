@@ -4,6 +4,45 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### 2.0.0a10 verified distribution
+
+Release preparation [PR #50](https://github.com/Deathcharge/samsarix-core/pull/50)
+merged at `e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a`. Branch CI
+`33400702245`, PR CI `33400707843` and exact-main CI `33400936385` each passed
+all 18 jobs; the tested branch and merge file trees were identical. Local release
+preparation passed 385 tests with 95.41% branch-aware coverage, Black (40 files),
+Ruff, strict mypy (28 files), Bandit, an isolated source-to-wheel build, strict
+Twine and all offline/official-client gates. Preparation changed version metadata
+and documentation only; its skipped CodeRabbit status is not an external review.
+
+- [x] Exact-main build-only Release dry run, with privileged tag steps skipped.
+- [x] Clean current main, enabled release immutability and a new annotated tag.
+- [x] Published immutable prerelease with wheel, source archive and checksum manifest.
+- [x] Fresh download: release signature, all three asset memberships, asset sizes
+  and digests, and the exact two-distribution manifest.
+- [x] Both provenance attestations constrained to the expected source commit, tag,
+  release workflow and GitHub-hosted runners; no relaxed verification flags.
+- [x] Offline installed-wheel runtime, MCP subprocess and SQLite transaction/replay gate.
+- [x] Official SDK 1.29.1 legacy, 2.1.1 legacy and 2.1.1 modern journeys against the
+  same downloaded wheel, including repeated cancellation and execution-slot recovery.
+- [x] Manual Release dispatch on the published tag remains build-only.
+
+Published wheel SHA-256:
+`e84b26935ab9f73a7c632085ec9401256ffb8be0d107ce456a2e6604fec9d638`.
+The source-archive attestation verifier initially failed public-good initialization;
+an unchanged retry passed. That transient is not suppressed or called a code fix.
+Exact assets, commands and workflow evidence are in
+[the release record](RELEASING.md#published-evidence-v200a10).
+
+Disposition: published, independently installable evaluation alpha. No runtime
+dependency, account, telemetry, paid service or production deployment was added.
+The highest-value next gates are separate-consumer upgrade and signed-in desktop-client
+acceptance; neither can be inferred from SDK tests. Consumer changes belong in that
+repository's own task, and desktop acceptance needs an actual client consent flow.
+Stable API commitments, PyPI publication and production
+adoption remain separate decisions/evidence. Modern HTTP/authentication, MRTR,
+subscriptions and the redesigned task extension remain unsupported.
+
 ### 2.0.0a10 release preparation
 
 Modern MCP support merged in [PR #49](https://github.com/Deathcharge/samsarix-core/pull/49)
@@ -14,14 +53,13 @@ Windows and macOS. The final tested branch and merge have identical file trees.
 The resolved review comment and exact verification results are recorded in
 [the PR evidence](https://github.com/Deathcharge/samsarix-core/pull/49#issuecomment-5479433290).
 
-This increment aligns package, runtime and citation versions at `2.0.0a10` and
-closes the matching changelog entry. It is release preparation, not a publication
-claim: the immutable a9 artifact remains unchanged and is still the documented
-download until a10 has its own verified assets. Release acceptance requires fresh
-source/package checks, all three installed-wheel official-client journeys, complete
-exact-head CI, a build-only default-branch dry run, immutable publication and fresh
-download/provenance checks. Neither a stable-release designation, a PyPI upload nor
-a separate-consumer upgrade is authorized or implied by this preparation.
+That increment aligned package, runtime and citation versions at `2.0.0a10` and
+closed the matching changelog entry. At that point it was preparation, not publication:
+a9 remained the documented download until a10 had verified assets. Source/package
+checks, three official-client journeys, complete exact-head CI, a default-branch dry
+run, immutable publication and fresh download/provenance checks were required before
+changing that claim. Those results are recorded above. No stable designation, PyPI
+upload or separate-consumer upgrade was implied by preparing a new alpha.
 
 ### Opt-in 2026 MCP ordinary-tool compatibility
 
@@ -88,9 +126,9 @@ for both subsequent protocol choices; a versioned modern ping still fails.
 Final verification above includes that correction. This is not a claim that the
 follow-up commits received a second full external review.
 
-Release disposition: unreleased opt-in API, not part of the immutable a9 wheel.
-No new dependency or external service. The next release needs its own artifact and
-provenance checks. HTTP/authentication, subscriptions, MRTR and redesigned tasks are
+At implementation merge this was an unreleased opt-in API, absent from the immutable
+a9 wheel; a10 publication is verified separately above. No new dependency or external
+service. HTTP/authentication, subscriptions, MRTR and redesigned tasks are
 explicitly unsupported; signed-in desktop acceptance and separate-consumer upgrade
 remain separate gates. Modern support does not claim broader schema adoption or
 forced termination/rollback of arbitrary tool effects.
@@ -731,9 +769,10 @@ clean-wheel behavioral evidence is recorded separately in `docs/ADOPTION.md`.
 
 ## Owner-, credential-, or production-blocked tasks
 
-The immutable GitHub prerelease `v2.0.0a8` is published from commit
-`dfaf41ee850ff94c7f106c60a6752865fb364ad4` with verified checksums, GitHub Actions
-build provenance, and clean installed-wheel runtime, MCP and SQLite checks. The exact assets,
+The immutable GitHub prerelease `v2.0.0a10` is published from commit
+`e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a` with verified checksums, GitHub Actions
+build provenance, clean installed-wheel runtime, MCP and SQLite checks, and official
+legacy/modern client and cooperative cancellation journeys. The exact assets,
 workflow runs, verification, installation evidence, and recovery model are recorded in
 `docs/RELEASING.md`. This passes the GitHub release gate only; it does not pass the
 PyPI, stable API, or third-party production-adoption gates.

@@ -5,12 +5,13 @@ claims. Samsarix Core has a merged independent repository consumer; it does not
 yet have a documented third-party production deployment, paid customer, usage
 volume, or service-level commitment.
 
-The latest published `2.0.0a9` prerelease has verified immutable artifacts, provenance,
+The latest published `2.0.0a10` prerelease has verified immutable artifacts, provenance,
 and installed-wheel runtime/deadline, bounded diagnostic/numeric, malformed-MCP
-subprocess and SQLite transaction/replay behavior.
+subprocess and SQLite transaction/replay behavior, plus official-client legacy and
+opt-in modern MCP ordinary-tool/cancellation journeys against the downloaded wheel.
 The repository consumer below still pins the earlier merged per-tool circuit-breaker
 commit, so its exact Git installation reports package metadata `2.0.0a6`. It has not
-been repinned or revalidated against a8 or a9 here. Release verification is tracked
+been repinned or revalidated against a8, a9 or a10 here. Release verification is tracked
 separately and is not presented as consumer-adoption evidence.
 
 ## Privacy-first redaction MCP consumer

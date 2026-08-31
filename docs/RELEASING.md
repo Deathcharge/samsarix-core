@@ -68,19 +68,32 @@ provenance:
 
 ```bash
 RELEASE_VERSION="<published-version>"
+SOURCE_COMMIT="<verified-tagged-commit>"
 gh release verify "v${RELEASE_VERSION}" --repo Deathcharge/samsarix-core
 gh release download "v${RELEASE_VERSION}" --repo Deathcharge/samsarix-core
 gh release verify-asset "v${RELEASE_VERSION}" "samsarix_core-${RELEASE_VERSION}-py3-none-any.whl" \
   --repo Deathcharge/samsarix-core
+gh release verify-asset "v${RELEASE_VERSION}" "samsarix_core-${RELEASE_VERSION}.tar.gz" \
+  --repo Deathcharge/samsarix-core
+gh release verify-asset "v${RELEASE_VERSION}" SHA256SUMS --repo Deathcharge/samsarix-core
 sha256sum --check SHA256SUMS
 gh attestation verify "samsarix_core-${RELEASE_VERSION}-py3-none-any.whl" \
-  --repo Deathcharge/samsarix-core
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref "refs/tags/v${RELEASE_VERSION}" --source-digest "${SOURCE_COMMIT}" \
+  --deny-self-hosted-runners
 gh attestation verify "samsarix_core-${RELEASE_VERSION}.tar.gz" \
-  --repo Deathcharge/samsarix-core
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref "refs/tags/v${RELEASE_VERSION}" --source-digest "${SOURCE_COMMIT}" \
+  --deny-self-hosted-runners
 ```
 
-Then install the verified wheel in a fresh supported Python environment and run the
-documented example before recording the release as complete.
+Require exactly the wheel, source archive and manifest as release assets, and exactly
+the two distinct distribution names in the manifest. Confirm local sizes/hashes against
+the release API's asset metadata as well. Use the recorded tagged commit, not a later
+moving default-branch head, as the source constraint. Then run the installed-wheel
+and official-client gates below before recording the release as complete.
 
 ### Portable installed-wheel gate
 
@@ -120,12 +133,97 @@ subprocess journey follows the [MCP stdio transport contract](https://modelconte
 This is package/OS-pipe compatibility evidence, not a signed-in desktop-client test,
 network-transport certification, or a performance guarantee.
 
+### Official-client release acceptance
+
+The offline gate does not replace the independent official-client checks. For releases
+with modern support (`2.0.0a10` onward), run all three modes against the exact freshly
+downloaded wheel, using the separate pinned client environments described in
+[the MCP guide](MCP.md#official-python-client-verification):
+
+```bash
+# Use the Python interpreter from the mcp==1.29.1 client environment:
+python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-VERSION-py3-none-any.whl --sdk-version 1.29.1
+# Use the Python interpreter from the mcp==2.1.1 client environment:
+python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-VERSION-py3-none-any.whl --sdk-version 2.1.1
+python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-VERSION-py3-none-any.whl --sdk-version 2.1.1 --modern
+```
+
+The server environment receives only Core, offline and outside the checkout. Require
+the same artifact digest in all three results. Modern verification must discover
+`2026-07-28` without falling back to the legacy handshake. All modes include repeated
+cooperative cancellation and recovery, not just local cancellation of a client waiter.
+CI runs these journeys on Linux, Windows and macOS before release. The Release workflow
+itself runs the offline gate; the downloaded-asset checks above are a separate acceptance
+step and must not be inferred from a green publication workflow.
+
 ## Recovery
 
 An immutable release is intentionally not edited in place. If a published artifact or
 contract is wrong, document the issue, prepare a new version, rerun the complete gate,
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
+
+## Published evidence: v2.0.0a10
+
+The modern MCP alpha was published on 2026-08-31 at 14:12:01 UTC. It adds opt-in
+`2026-07-28` ordinary-tool support with request metadata, discovery, complete results,
+private cache hints and request-local logging while preserving the default 2025
+protocol. The release includes independent official-client and cancellation gates;
+it does not implement modern tasks, MRTR, subscriptions, HTTP or authentication.
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a10`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a10) |
+| Tagged commit | `e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a` |
+| Annotated tag object | `d856d67eda6e52874386aa26c525c0bd9b751cfa` |
+| Release workflow | [run `33401186515`](https://github.com/Deathcharge/samsarix-core/actions/runs/33401186515) |
+| Main-ref build-only dry run | [run `33400943344`](https://github.com/Deathcharge/samsarix-core/actions/runs/33400943344) |
+| Tag-ref build-only dry run | [run `33401333266`](https://github.com/Deathcharge/samsarix-core/actions/runs/33401333266) |
+| Exact-main CI | [run `33400936385`](https://github.com/Deathcharge/samsarix-core/actions/runs/33400936385), all 18 jobs passed |
+| Tag-push CI | [run `33401186937`](https://github.com/Deathcharge/samsarix-core/actions/runs/33401186937), all 18 jobs passed |
+| Release state | published, prerelease, immutable |
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a10-py3-none-any.whl` | 55,138 | `e84b26935ab9f73a7c632085ec9401256ffb8be0d107ce456a2e6604fec9d638` |
+| `samsarix_core-2.0.0a10.tar.gz` | 205,944 | `7ad3ce3ed2e117a4ab3145c9d813714cfcbb5c1b6c08d641b196f5b36907e27d` |
+| `SHA256SUMS` | 202 | `990e476fa0523e4713201d3c2e8f1dcfa850b226da2635a5da942d2cb52364ea` |
+
+`gh release verify` and `gh release verify-asset` for all three files passed.
+PowerShell `Get-FileHash -Algorithm SHA256` values and file lengths matched the
+GitHub API asset digests/sizes. The manifest contained exactly two distinct expected
+distribution names and both hashes matched. Both archives passed the constrained
+attestation command below (substitute the source filename for its verification):
+
+```bash
+gh attestation verify samsarix_core-2.0.0a10-py3-none-any.whl \
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.0.0a10 \
+  --source-digest e4d0ed3a85a65a2f3e11a02e2f744f42ca0e5c4a \
+  --deny-self-hosted-runners --format json
+```
+
+The verified statements identify the tag-push Release workflow, exact source commit,
+GitHub-hosted runner and both artifact digests. Source-archive verification initially
+failed because the public-good verifier could not initialize; an unchanged retry
+passed. No verification constraint was removed.
+
+On Windows/Python 3.11.9, the fresh downloaded wheel passed
+`python scripts/verify_distribution.py <exact-downloaded-wheel>` and all three
+official-client commands above: SDK 1.29.1 legacy, 2.1.1 legacy and 2.1.1 modern,
+each reporting the published wheel digest. Each checker installed Core in its own
+fresh offline environment and ran outside the checkout. SDK 2.x's legacy logging
+deprecation warning was expected and left visible. Main- and tag-ref manual dry runs
+both skipped the default-head guard, version guard, attestation and publication steps.
+The tag-push workflow executed all four successfully.
+
+The tagged source passed 385 local tests with 95.41% branch-aware coverage, Black,
+Ruff, strict mypy, Bandit, an isolated build and strict Twine before publication;
+[PR #50](https://github.com/Deathcharge/samsarix-core/pull/50) records preparation
+commands and exact-head CI. No previous release/tag was replaced. This is a verified
+GitHub evaluation alpha, not a stable API, PyPI release, signed-in desktop acceptance,
+separate-consumer upgrade or production adoption claim.
 
 ## Published evidence: v2.0.0a9
 

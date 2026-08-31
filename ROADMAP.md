@@ -117,6 +117,10 @@ remain separate decisions.
   float-overflow isolation, malformed-MCP frame handling, exact-source provenance,
   and fresh installed-wheel checks. Prove manual dispatch on the tag remains
   build-only. The separate consumer still needs its own upgrade and verification.
+- [x] Publish immutable GitHub prerelease `v2.0.0a10` with opt-in MCP `2026-07-28`
+  ordinary tools, exact-source provenance and fresh downloaded-wheel verification
+  using both official SDK pins, legacy negotiation and modern discovery, including
+  repeated cooperative cancellation/recovery. Retain the same adoption boundaries.
 
 ## Samsarix adoption
 

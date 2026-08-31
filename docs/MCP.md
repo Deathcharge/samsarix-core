@@ -4,8 +4,8 @@ Samsarix Core can expose its trusted local tools through the Model Context
 Protocol (MCP) without adding a runtime dependency. The bridge implements the
 explicit protocol revisions `2025-11-25` and `2025-06-18`. These are compatibility
 targets. Starting with `2.0.0a10`, Core also offers opt-in `2026-07-28` ordinary-tool
-support through `MCPServer(..., enable_modern=True)`. The published a9 artifact
-does not contain that option. Default servers keep the 2025 handshake unchanged;
+support through `MCPServer(..., enable_modern=True)`. The published a10 artifact
+contains that option; a9 does not. Default servers keep the 2025 handshake unchanged;
 newer clients can negotiate backward or use the explicit modern option below.
 
 The supported server surface is intentionally narrow:
@@ -133,12 +133,12 @@ the Core checkout using that environment's Python:
 
 ```bash
 python -m pip install "mcp==2.1.1"
-python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-2.0.0a9-py3-none-any.whl --sdk-version 2.1.1
+python -I scripts/verify_mcp_client.py /absolute/path/to/samsarix_core-2.0.0a10-py3-none-any.whl --sdk-version 2.1.1
 ```
 
-Repeat in another client environment with both version arguments changed to
-`1.29.1`. Omit the wheel path only when `dist/` contains exactly one wheel. The
-checker rejects a mismatched SDK pin and reports the wheel SHA-256. Initial SDK
+Repeat in another client environment with `mcp==1.29.1` and `--sdk-version 1.29.1`;
+keep the Core wheel path unchanged. Omit it only when `dist/` contains exactly one
+wheel. The checker rejects a mismatched SDK pin and reports the wheel SHA-256. Initial SDK
 installation accesses the package index and installs that SDK's dependencies;
 the subsequent Core installation is offline. SDK transitive dependencies are
 resolved at installation time, not represented as a fully locked environment.
