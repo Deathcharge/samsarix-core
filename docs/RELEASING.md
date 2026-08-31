@@ -122,6 +122,60 @@ contract is wrong, document the issue, prepare a new version, rerun the complete
 and publish a new tag. Consumers can roll back by installing a previously verified
 release asset or exact commit. Core stores no remote runtime state.
 
+## Published evidence: v2.0.0a8
+
+The finite-deadline and transactional-example alpha was published on 2026-08-31.
+It packages the runtime fixes and evaluation/verification improvements described in
+the dated changelog, without adding runtime dependencies or declaring a stable API.
+
+| Evidence | Value |
+| --- | --- |
+| Release | [`v2.0.0a8`](https://github.com/Deathcharge/samsarix-core/releases/tag/v2.0.0a8) |
+| Tagged commit | `dfaf41ee850ff94c7f106c60a6752865fb364ad4` |
+| Annotated tag object | `a7c0e233e25b12945cd34c24b9d0840c422bc293` |
+| Release workflow | [run `33385827790`](https://github.com/Deathcharge/samsarix-core/actions/runs/33385827790) |
+| Build-only dry run | [run `33385679071`](https://github.com/Deathcharge/samsarix-core/actions/runs/33385679071) |
+| Exact-main CI | [run `33385672137`](https://github.com/Deathcharge/samsarix-core/actions/runs/33385672137), all 12 jobs passed |
+| Release state | published, prerelease, immutable |
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `samsarix_core-2.0.0a8-py3-none-any.whl` | 52,142 | `b75509388970c7f6be076b1b26805a51522f399e0eb99ceb291d088c54607a2f` |
+| `samsarix_core-2.0.0a8.tar.gz` | 168,280 | `cac0c4df50cee5801dcf2e2879426dd97e556e24ac2c72ba5164b19fc1e55989` |
+| `SHA256SUMS` | 200 | `ec5b9bbcb7929d8832cd0f7f2f94818e805753c89e9cc5ee7e0ac56a6cbc8bec` |
+
+`gh release verify` confirmed the release attestation, and `gh release verify-asset`
+verified all three freshly downloaded files. Their local hashes matched both the
+release's asset digests and the downloaded two-distribution checksum manifest.
+`gh attestation verify` passed for the wheel and sdist with explicit repository,
+signer-workflow, source-ref and source-digest constraints, denying self-hosted runners:
+
+```bash
+gh attestation verify samsarix_core-2.0.0a8-py3-none-any.whl \
+  --repo Deathcharge/samsarix-core \
+  --signer-workflow Deathcharge/samsarix-core/.github/workflows/release.yml \
+  --source-ref refs/tags/v2.0.0a8 \
+  --source-digest dfaf41ee850ff94c7f106c60a6752865fb364ad4 \
+  --deny-self-hosted-runners
+```
+
+The certificate identified the exact source commit, tag, Release workflow run and
+GitHub-hosted runner; the predicate was SLSA provenance v1. These are origin and
+integrity checks, not a vulnerability-free guarantee.
+
+On Windows/Python 3.11.9, `scripts/verify_distribution.py` installed the downloaded
+wheel with no index or dependencies into a fresh environment outside the checkout.
+`pip check`, canonical/legacy version identity, real runtime validation/deadlines,
+ordered batch recovery, redacted circuit failure/recovery, MCP subprocess Unicode,
+progress/logging/EOF, and SQLite commit/replay all passed. The source suite passed
+279 tests with 94.87% branch-aware coverage; hosted CI covered Python 3.10-3.14 and
+installed-wheel checks on Linux, Windows and macOS at Python 3.10 and 3.14.
+
+This does not update the separate consumer's exact pin, demonstrate third-party
+production adoption, publish to PyPI, or promise a stable API or SLA. The immutable
+tag's README records release preparation; the current README points to the now
+verified published assets. No released tag or asset was overwritten.
+
 ## Published evidence: v2.0.0a7
 
 The finite-deadline validation fix in `2.0.0a8` is not in this artifact. The current

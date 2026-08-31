@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- recorded immutable `v2.0.0a8` assets, checksums, exact-source provenance and fresh
+  installed-wheel verification; updated the published installation path.
+
 ## 2.0.0a8 - 2026-08-31
 
 ### Fixed
