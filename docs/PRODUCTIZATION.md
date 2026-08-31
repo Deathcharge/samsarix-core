@@ -4,6 +4,39 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### 2.0.0a11 release preparation
+
+The previous acceptance increment [PR #53](https://github.com/Deathcharge/samsarix-core/pull/53)
+merged at `565f4632ebcaa093239750b8876f48c3a60f9ba0`. Exact-main run `33407985374`
+passed all 18 jobs; its logs contain nine successful persistent SQLite SDK records
+covering all three client/protocol modes on Linux, Windows and macOS. That turn was
+verified progress, not completion of the production/adoption goal.
+
+The remaining distribution gap is concrete: a10's immutable source archive predates
+the persistent MCP launcher and SDK-driven business acceptance checks. Prepare
+`2.0.0a11` to distribute that public workflow through a versioned source archive,
+keeping Core's API/dependencies unchanged and retaining the alpha designation.
+This is not a rationale for adding another feature or changing private consumers.
+
+- [x] Align package, runtime and citation versions; close the matching changelog entry.
+- [x] Verify source suite, isolated build, strict metadata and the offline gate.
+- [ ] Verify all three official-client modes against the new-version wheel.
+- [ ] Require complete exact-head CI before merge, then exact-main CI and a build-only
+  Release dry run with privileged tag steps skipped.
+- [ ] Publish a new immutable prerelease; verify fresh asset downloads, exact hashes,
+  membership and source-constrained provenance before updating installation claims.
+
+At preparation time a10 remains the latest published version. No existing tag or
+asset will be moved or replaced. GitHub prerelease distribution does not imply PyPI
+publication, a stable API, desktop consent or third-party production adoption.
+
+Local preparation passed 434 tests with 95.44% branch-aware coverage, Black (40
+files), Ruff, strict mypy (28 files), Core-source Bandit and the diff check. The
+isolated source-to-wheel build, strict Twine and offline gate passed against local
+wheel `2532193c94f05a8b9507fa94a916793b286a404e872163d886a9db6689309834`.
+This local artifact is not the eventual published asset; exact release evidence
+will be recorded only after download and verification.
+
 ### Official-client acceptance for persistent reservations
 
 The previous turn made concrete progress: [PR #52](https://github.com/Deathcharge/samsarix-core/pull/52)
