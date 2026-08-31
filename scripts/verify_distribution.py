@@ -46,10 +46,12 @@ def verify(wheel: Path) -> None:
         subprocess.run(
             [str(python), "-I", "-m", "pip", "check"], cwd=workspace, check=True, timeout=30
         )
-        for script in ("smoke_check.py", "mcp_smoke_check.py"):
-            subprocess.run(
-                [str(python), "-I", str(scripts / script)], cwd=workspace, check=True, timeout=45
-            )
+        for script in (
+            scripts / "smoke_check.py",
+            scripts / "mcp_smoke_check.py",
+            scripts.parent / "examples" / "sqlite_reservations.py",
+        ):
+            subprocess.run([str(python), "-I", str(script)], cwd=workspace, check=True, timeout=45)
 
 
 def main() -> None:

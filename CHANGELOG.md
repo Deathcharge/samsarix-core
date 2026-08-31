@@ -4,6 +4,9 @@
 
 ### Added
 
+- application-owned SQLite reservation example with atomic stock/ledger commits,
+  bounded request retention, replay and conflicting-key semantics, concurrency,
+  rollback and lost-response regression tests, and offline installed-wheel coverage;
 - bounded mixed-dependency outage benchmark comparing global concurrency, per-tool
   isolation, and circuit breaking, with repeated raw measurements, correctness and
   cleanup regression tests, and explicit synthetic-workload limitations;
@@ -14,6 +17,7 @@
 
 ### Changed
 
+- explicitly label the policy-gate reservation as a preview rather than a real write.
 - corrected the a7 import-only smoke's overstated behavioral evidence and reverified
   the unchanged published wheel with the expanded gate.
 

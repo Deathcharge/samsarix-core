@@ -109,6 +109,12 @@ For a fail-closed request-local capability example, run
 `python examples/policy_gate.py`. A host policy receives a detached, validated call
 snapshot and returns `ToolPolicyDecision.ALLOW` or `DENY`; it is not an authentication
 service or a durable human-approval workflow.
+
+That example is a preview. For actual transactional writes, duplicate-request handling,
+and replay after restart, run `python examples/sqlite_reservations.py`. It uses a fresh
+temporary SQLite database and verifies that five items become three only once. See
+the [side-effect and replay guide](docs/SIDE_EFFECTS.md) before adapting it to real data.
+
 For a quota-constrained dependency with safe retry handling, run
 `python examples/rate_limited_api.py`.
 For a failing dependency with fail-fast recovery probing, run

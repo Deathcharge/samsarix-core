@@ -4,6 +4,41 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Transactional application example follow-up
+
+At clean main `048f26a608201d8a09a8d826f041f6598baaa0ee`, 208 tests passed with
+94.81% branch-aware coverage on Windows/Python 3.11.9. The docs advised making side
+effects idempotent, but the reservation examples only returned shaped responses.
+The next adoption gap was a real, reproducible write/replay journey, not a generic
+runtime persistence or retry layer.
+
+- [x] Add an application-owned SQLite inventory store and typed sync tools.
+- [x] Commit stock and its bounded request ledger atomically; replay identical keys,
+  reject conflicting key reuse, and preserve terminal business rejections.
+- [x] Prove concurrent duplicate/competing requests across runtime instances,
+  statement/commit rollback, finite lock waiting and replay in a separate process.
+- [x] Commit real data before deliberately withholding a sync response; prove that
+  timeout/cancellation retains the worker, quiescence is observable, and a later replay
+  never decrements stock again.
+- [x] Run the self-verifying demo with the isolated installed-wheel gate; keep the
+  earlier MCP preview read-only and clarify the policy-only example's simulation.
+
+`docs/SIDE_EFFECTS.md` specifies business outcomes separately from runtime status,
+host-owned authorization and database paths, single-tenant request identity, finite
+retention without automatic eviction, explicit connections and transaction boundaries,
+and unproven production properties. SQLite storage is confined to this example, not
+added to Core's API or runtime requirements. No external account, production data,
+service, network call or paid dependency is needed.
+
+Local final verification passed: 240 tests with 94.81% branch-aware Core coverage,
+Black (31 files), Ruff, strict mypy (24 files), and Bandit over Core plus the new
+SQLite example. The isolated sdist-to-wheel build and strict Twine checks passed;
+the fresh offline installed-wheel gate passed exports/runtime behavior, real MCP
+pipes, and the SQLite commit/replay demonstration. The policy preview was also run
+and produced the expected denial followed by an allowed preview. The 32 new example
+tests are behavioral evidence, not a claim of power-loss or third-party deployment
+validation. Exact-head hosted checks are recorded in the corresponding pull request.
+
 ### Dependency-outage evaluation follow-up
 
 At clean main `6ded14d4a5a1a1754d5d080a8dad763161c19b3d`, 185 tests passed with

@@ -23,15 +23,16 @@ _CURRENT_SCOPES: ContextVar[frozenset[str]] = ContextVar(
 
 
 @samsarix_tool(
+    title="Preview a policy-gated reservation",
     tags=("inventory", "write"),
     destructive=False,
     idempotent=True,
     open_world=False,
 )
 async def reserve_inventory(sku: str, quantity: int) -> dict[str, int | str]:
-    """Reserve local inventory after the host policy allows the call."""
+    """Simulate a policy-gated write without modifying inventory."""
 
-    return {"sku": sku, "quantity": quantity, "status": "reserved"}
+    return {"sku": sku, "quantity": quantity, "status": "preview"}
 
 
 async def require_inventory_write(context: ToolPolicyContext) -> ToolPolicyDecision:

@@ -49,6 +49,12 @@ cannot be force-stopped. Set connect/read/query/process timeouts in the tool its
 make cancellation-friendly async calls, and make side effects idempotent when the
 caller might retry after a timeout.
 
+For a runnable example of application-owned transactions and duplicate suppression,
+see [transactional tools and safe replay](SIDE_EFFECTS.md). Its SQLite reservation
+commits a stock change and its request ledger together, rejects conflicting key reuse,
+and replays an ambiguous committed result after timeout or restart. Core's idempotency
+annotation does not provide those guarantees by itself.
+
 Register a tool with `max_concurrency=N` when its downstream API, database pool, model
 deployment, or other resource has a lower safe concurrency than the runtime as a whole.
 Choose the limit from measured capacity and the dependency's quota. Samsarix acquires
