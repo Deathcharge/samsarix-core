@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.0.0a8 - 2026-08-31
+
 ### Fixed
 
 - reject NaN, infinite and overflowing execution timeouts consistently at decorator,
@@ -27,10 +29,10 @@
 
 ### Changed
 
-- explicitly label the policy-gate reservation as a preview rather than a real write.
+- explicitly label the policy-gate reservation as a preview rather than a real write;
 - corrected the a7 import-only smoke's overstated behavioral evidence and reverified
-  the unchanged published wheel with the expanded gate.
-
+  the unchanged published wheel with the earlier expanded gate; the later deadline
+  gate correctly rejects a7 and is required for this release;
 - recorded immutable `v2.0.0a7` release checksums, provenance, and clean
   installed-wheel circuit-breaker recovery evidence.
 
