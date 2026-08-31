@@ -287,25 +287,37 @@ async def test_domain_rejections_are_recorded_and_replay_original_outcome(exampl
     assert snapshot(store) == (20, 2)
 
 
-async def test_separate_runtime_connections_cannot_duplicate_or_oversell(example, store):
+async def test_separate_runtime_connections_cannot_duplicate_or_oversell(
+    example, store, monkeypatch
+):
+    # This checks successful transaction serialization, not a shared runner's latency.
+    # Busy/timeout failures are separately tested with short controlled deadlines.
+    # Keep all success and exact stock/ledger assertions; never retry or swallow failures.
+    monkeypatch.setattr(example, "BUSY_TIMEOUT_SECONDS", 5.0)
     other_store = example.InventoryStore(store.path)
     async with (
         example.create_runtime(store) as first,
         example.create_runtime(other_store) as second,
     ):
         duplicates = await asyncio.gather(
-            first.invoke("reserve_inventory", ARGUMENTS),
-            second.invoke("reserve_inventory", ARGUMENTS),
+            first.invoke("reserve_inventory", ARGUMENTS, timeout=10),
+            second.invoke("reserve_inventory", ARGUMENTS, timeout=10),
         )
-        assert all(result.success for result in duplicates)
+        assert all(result.success for result in duplicates), [
+            result.to_dict() for result in duplicates
+        ]
         assert (
             duplicates[0].output == duplicates[1].output == {"status": "reserved", "available": 3}
         )
         competitors = await asyncio.gather(
-            first.invoke("reserve_inventory", {**ARGUMENTS, "request_id": "order-002"}),
-            second.invoke("reserve_inventory", {**ARGUMENTS, "request_id": "order-003"}),
+            first.invoke("reserve_inventory", {**ARGUMENTS, "request_id": "order-002"}, timeout=10),
+            second.invoke(
+                "reserve_inventory", {**ARGUMENTS, "request_id": "order-003"}, timeout=10
+            ),
         )
-    assert all(result.success for result in competitors)
+    assert all(result.success for result in competitors), [
+        result.to_dict() for result in competitors
+    ]
     assert sorted(result.output["status"] for result in competitors) == [
         "insufficient_stock",
         "reserved",

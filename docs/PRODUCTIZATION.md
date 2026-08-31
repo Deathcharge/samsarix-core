@@ -64,6 +64,30 @@ or structured/text agreement checks. Tests also require cleanup after transport 
 and nonzero interruption handling. SQLite data/sidecars were confirmed ignored by Git
 and absent from the built source archive.
 
+Initial branch CI `33404782348` passed 17 jobs but the pre-existing concurrent-store
+test failed on Python 3.12 at its all-success assertion; its original assertion did
+not retain the failing result. The same commit's PR CI `33404788751` passed all 18.
+The exact original error is therefore not established. The atomicity test had coupled
+its success requirement to the demo's 250 ms SQLite wait and two-second invocation
+deadline, even though safe busy/timeout rejection is an allowed outcome. The test now
+uses explicit five-second lock waits and ten-second invocation limits, while keeping
+every success, replay, no-oversell and exact-ledger assertion unchanged and including
+failed results in diagnostics. Separate controlled lock/deadline tests retain short
+bounds. No exception is swallowed, no retry is added, and production/example defaults
+are unchanged. This is test timing isolation, not a claimed fix for a demonstrated
+Core runtime defect; new exact-head CI must pass before merge.
+
+After the timing/diagnostic change, the complete local suite again passed all 409
+tests (95.44% branch-aware coverage). Twelve local repetitions before that change
+had also passed; they did not reproduce or explain the original CI failure.
+The included external review completed for feature commit
+`92623134ab81f8302fe873241ada63132f64828b` with no actionable code comments.
+Its docstring-coverage warning (20.93% across touched functions, including tests)
+is retained as non-blocking documentation polish, not described as a passed check.
+The host-facing entry points document their contracts; named regression tests and
+assertions carry the test intent. Its local-trust warning agrees with the documented
+single-host boundary. That review does not cover the later test-only timing change.
+
 The launcher is an unreleased example change in the current checkout and uses the
 already published a10 runtime. It is not retroactively inserted into a10's immutable
 source archive. No Core public export, runtime dependency or server-side persistence
