@@ -76,21 +76,44 @@ SDK 2.x uses its high-level client's default `auto` negotiation: it probes disco
 and falls back to the `2025-11-25` initialization handshake. Its session then runs
 the shared tool journey; no modern protocol behavior is inferred from that fallback.
 
-The client session has a 45-second deadline; the outer checker has a 60-second
+The same command then opens a separate official `ClientSession` against a controlled
+in-memory cancellation fixture, using the same installed Core interpreter. It waits
+for actual start progress, cancels the call, and invokes a state tool that needs the
+same sole execution slot. Two consecutive cycles must show zero active/completed
+waiters, exact tool/runtime cancellation counts, zero runtime timeouts, and only the
+state tool's own in-flight/pending call. A successful ping follows each cycle.
+Thus cancelling a local Python task without stopping server work cannot pass.
+
+The tested paths deliberately differ:
+
+| SDK pin | Cancellation path proved |
+| --- | --- |
+| `1.29.1` | Explicit typed SDK `notifications/cancelled`, then cancellation of the local waiting task. A forwarding observer reads the actual outgoing SDK request ID; it never guesses an ID, treats a progress token as an ID, or accesses SDK private counters. |
+| `2.1.1` | Cancellation of the local waiting task triggers the SDK's automatic cancellation notification; the checker does not inject one. |
+
+In SDK 1.29.1, cancelling a local waiter or hitting its read timeout does not itself
+send a server cancellation notification. Hosts using that version must explicitly
+notify the server if they need cooperative remote cancellation. This is client
+behavior, not something Core can infer from a still-open stdio connection. The
+checker prints the tested cancellation mode with its wheel digest.
+
+The inventory session has a 45-second deadline; the cancellation session has a
+20-second deadline with five-second start/recovery bounds. The outer checker has a 60-second
 deadline and forcibly terminates the checker if SDK cleanup stalls. Because the SDK
 may start its server in a separate process group, a stdlib-only test bootstrap also
 enforces a 55-second server lifetime independently. The watchdog is cancelled on
 normal exit; hard exit code 124 is a failed check, never graceful-shutdown evidence.
-This bootstrap is only for the trusted read-only example, not production tools.
+This bootstrap is only for the trusted example and controlled fixture, not production tools.
 Setup commands also have finite timeouts. Negative-control unit tests reject wrong results, missing
 progress, private log fields/values, SDK pin drift and checker failure, and exercise
 timeout cleanup, including independent server exit. No model credentials, signed-in desktop UI or external API calls
 are needed for the journey.
 
-This gate does **not** validate experimental tasks, client cancellation, a signed-in
-tool-approval UI, HTTP/authentication, every SDK version or newer MCP revisions.
-Core's separate tests cover its cancellation/task contract; those tests are not
-official-client interoperability evidence. SDK 2.x emits a logging deprecation
+This gate does **not** validate experimental tasks, cancellation of synchronous or
+non-cooperative functions, a signed-in tool-approval UI, HTTP/authentication, every
+SDK version or newer MCP revisions. Cancellation is not rollback of committed side
+effects. The fixture performs no durable writes; Core's separate tests cover its
+task and surviving-sync-worker contracts. SDK 2.x emits a logging deprecation
 warning because the checker deliberately exercises the older negotiated revision.
 Tasks in Core remain opt-in, revision-specific experimental behavior; the upstream
 SDK removed its experimental task API in 2.x. Do not infer task compatibility from
@@ -101,6 +124,9 @@ References checked on 2026-08-31: official SDK releases
 [`v2.1.1`](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.1.1),
 the [2.x negotiation implementation](https://github.com/modelcontextprotocol/python-sdk/blob/v2.1.1/src/mcp/client/_probe.py),
 and the [2025-11-25 tool contract](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
+Cancellation references: the [protocol requirements](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation),
+[1.29.1 request handling](https://github.com/modelcontextprotocol/python-sdk/blob/v1.29.1/src/mcp/shared/session.py),
+and [2.1.1 request abandonment](https://github.com/modelcontextprotocol/python-sdk/blob/v2.1.1/src/mcp/shared/jsonrpc_dispatcher.py).
 
 ## Declare behavior honestly
 

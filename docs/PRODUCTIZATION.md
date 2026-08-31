@@ -4,6 +4,47 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Official-client cancellation and recovery
+
+PR #47 merged at `84c305a9e98b4841ff3b231ebd4ab8bad01a3299`, with all 18
+exact-main CI jobs passing in [run 33394265552](https://github.com/Deathcharge/samsarix-core/actions/runs/33394265552).
+That established ordinary-call interoperability; it did not prove official-client
+cancellation. Inspection of the pinned SDKs found an important host distinction:
+1.29.1 abandons local waiting without notifying the server, whereas 2.1.1 sends a
+courtesy cancellation notification. The checker now exercises both honest paths.
+
+- [x] Add an in-memory fixture with one execution slot and public tool/runtime
+  cleanup counters; wait for actual start progress rather than an arbitrary delay.
+- [x] For 1.x, observe the exact ID in the SDK's typed outgoing request and send a
+  typed cancellation notification before stopping the local waiter. No private SDK
+  state or assumed progress-token/request-ID equality is used.
+- [x] For 2.x, cancel only the local waiting task and require the SDK to send its
+  notification. No injected cancellation can mask a broken automatic path.
+- [x] Require two cancellation/recovery cycles with no active/completed waiters,
+  exact cancellation counts, zero runtime timeouts and the same sole execution slot
+  acquired by a follow-up tool. Bound start and recovery checks to five seconds.
+- [x] Add negative controls for absent remote cancellation, leaked capacity,
+  missing start, early completion, swallowed cancellation, timeout substitution and
+  private progress; directly test the fixture and transparent request-ID observer.
+
+Both real SDK versions passed against the unchanged published a9 wheel on
+Windows/Python 3.11.9, SHA-256
+`52ec76698f71584b29291e6b497ae94d8646721cafa38a49fed3ed7bf8e55e35`.
+A real SDK 1.x negative control omitted only the explicit notification: after
+observed start and local cancellation, the recovery call remained blocked and hit
+its 0.5-second test bound. That expected failure confirms local cancellation alone
+does not establish remote cleanup; it was not suppressed in the passing journey.
+Local verification passed 340 tests with 95.23% branch-aware coverage, including
+29 official-checker tests. Black checked 39 files, strict mypy checked 28 files,
+Ruff and Bandit passed, and a fresh source-to-wheel build, strict Twine checks and
+the existing offline runtime/MCP/SQLite gate passed. Hosted exact-head evidence
+belongs to the pull request.
+No Core runtime or public export change was needed; the existing six SDK CI jobs
+now include this additional session. The independent server watchdog still bounds
+failed cleanup. This is cooperative async cancellation evidence, not sync-thread
+termination, durable rollback, task cancellation or signed-in user consent.
+Reproduction uses the unchanged official-client command in [the MCP guide](MCP.md#official-python-client-verification).
+
 ### Official-client interoperability follow-up
 
 After the a9 release, current upstream metadata identified official MCP Python SDK
@@ -45,10 +86,10 @@ were added before merge. A watchdog exit is a failed check, not a passing shutdo
 Hosted exact-head matrix/build evidence is recorded in the pull request; this is
 not a claim that the separate repository consumer has upgraded.
 
-Limits: these client checks do not cover tasks, cancellation, desktop-client trust,
+At that milestone, the client checks did not cover tasks, cancellation, desktop-client trust,
 HTTP/authentication or newer protocol features. Task APIs removed upstream in SDK
-2.x are not silently emulated or advertised as compatible. Evaluate newer protocol
-semantics and official-client cancellation next, separately from this verified
+2.x are not silently emulated or advertised as compatible. Newer protocol semantics
+and official-client cancellation were next priorities, separately from that verified
 backward-compatible journey. The SDK pins are exact but their transitive dependencies
 resolve at installation time. No production service, credentials, telemetry or
 external tool invocation is added. Reproduction commands and primary upstream

@@ -3,7 +3,7 @@
 
 """Bound the test server lifetime independently of the official SDK's process group.
 
-This is verification scaffolding for the trusted, read-only inventory example,
+This is verification scaffolding for trusted examples and controlled fixtures,
 not a production server launcher or graceful-shutdown mechanism.
 """
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import importlib.util
 import json
@@ -16,8 +17,8 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "verify_mcp_client.py"
 
 
-def load_script():
-    spec = importlib.util.spec_from_file_location("official_mcp_verification", SCRIPT)
+def load_script(name="verify_mcp_client"):
+    spec = importlib.util.spec_from_file_location(name, SCRIPT.with_name(f"{name}.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -272,3 +273,186 @@ def test_server_watchdog_is_cancelled_on_normal_exit(tmp_path):
     )
     assert completed.returncode == 0
     assert completed.stdout.strip() == b"normal-exit"
+
+
+class CancellationSession:
+    def __init__(self, *, automatic=True, fault=None):
+        self.automatic = automatic
+        self.fault = fault
+        self.active = 0
+        self.cancelled = 0
+        self.pings = 0
+
+    async def initialize(self):
+        return Model(
+            {
+                "protocolVersion": "2025-11-25",
+                "serverInfo": {"name": "samsarix-cancellation-fixture"},
+            }
+        )
+
+    async def list_tools(self):
+        return Model(
+            {"tools": [{"name": name} for name in ("wait_for_cancellation", "cancellation_state")]}
+        )
+
+    async def send_ping(self):
+        self.pings += 1
+
+    async def notify_cancel(self):
+        self.active -= 1
+        self.cancelled += 1
+
+    async def call_tool(self, name, arguments, progress_callback=None):
+        if name == "wait_for_cancellation":
+            self.active += 1
+            try:
+                if self.fault != "missing_start":
+                    message = (
+                        arguments["private_input"]
+                        if self.fault == "private_progress"
+                        else "started"
+                    )
+                    await progress_callback(1, 2, message)
+                if self.fault == "early_completion":
+                    return result({"result": "finished"})
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                if self.automatic:
+                    await self.notify_cancel()
+                if self.fault == "swallowed_cancel":
+                    return result({"result": "finished"})
+                raise
+        if self.fault == "leaked_slot":
+            await asyncio.Event().wait()
+        return result(
+            {
+                "active": self.active,
+                "cancelled": self.cancelled,
+                "completed": 0,
+                "runtime_cancelled": self.cancelled,
+                "runtime_timed_out": int(self.fault == "timed_out"),
+                "in_flight": 1,
+                "pending": 1,
+            }
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("automatic", [False, True])
+async def test_cancellation_checker_requires_two_remote_cancellations_and_recovery(automatic):
+    session = CancellationSession(automatic=automatic)
+    await load_script().cancellation_journey(session, None if automatic else session.notify_cancel)
+    assert session.cancelled == session.pings == 2
+    assert session.active == 0
+
+
+@pytest.mark.asyncio
+async def test_local_cancellation_without_notification_is_not_remote_success():
+    session = CancellationSession(automatic=False)
+    with pytest.raises(RuntimeError, match="structured tool result"):
+        await load_script().cancellation_journey(session, None)
+    assert session.active == 1
+    assert session.cancelled == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fault,message",
+    [
+        ("early_completion", "completed before cancellation"),
+        ("swallowed_cancel", "did not propagate"),
+        ("timed_out", "structured tool result"),
+        ("private_progress", "private content"),
+    ],
+)
+async def test_cancellation_checker_rejects_false_success_and_private_progress(fault, message):
+    with pytest.raises(RuntimeError, match=message):
+        await load_script().cancellation_journey(CancellationSession(fault=fault), None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing_start", "leaked_slot"])
+async def test_cancellation_checker_bounds_missing_start_and_leaked_capacity(fault):
+    with pytest.raises(asyncio.TimeoutError):
+        await load_script().cancellation_journey(
+            CancellationSession(fault=fault), None, timeout=0.05
+        )
+
+
+@pytest.mark.asyncio
+async def test_sdk_request_observer_preserves_messages_and_retains_only_target_ids():
+    class Stream:
+        def __init__(self):
+            self.items = []
+            self.closed = False
+
+        async def send(self, item):
+            self.items.append(item)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            self.closed = True
+
+    stream = Stream()
+    items = [
+        SimpleNamespace(message=Model(data))
+        for data in (
+            {"id": 10, "method": "initialize"},
+            {
+                "id": "observed-actual-id",
+                "method": "tools/call",
+                "params": {
+                    "name": "wait_for_cancellation",
+                    "arguments": {"private_input": "secret"},
+                },
+            },
+            {"method": "notifications/cancelled", "params": {"requestId": "observed-actual-id"}},
+        )
+    ]
+    async with load_script().RecordedSend(stream) as observer:
+        for item in items:
+            await observer.send(item)
+        assert observer.request_ids == ["observed-actual-id"]
+    assert stream.items == items
+    assert all(a is b for a, b in zip(stream.items, items, strict=True))
+    assert stream.closed
+
+
+@pytest.mark.asyncio
+async def test_controlled_fixture_records_cancellation_and_releases_sole_slot():
+    fixture = load_script("mcp_cancellation_fixture")
+    async with fixture.create_runtime() as runtime:
+        assert runtime.max_concurrency == 1
+        started = asyncio.Event()
+
+        async def progress(_):
+            started.set()
+
+        call = asyncio.create_task(
+            runtime.invoke(
+                "wait_for_cancellation", {"private_input": "secret"}, progress_handler=progress
+            )
+        )
+        try:
+            await asyncio.wait_for(started.wait(), 1)
+            call.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await call
+            inspected = await asyncio.wait_for(runtime.invoke("cancellation_state", {}), 1)
+            assert inspected.output == {
+                "active": 0,
+                "cancelled": 1,
+                "completed": 0,
+                "runtime_cancelled": 1,
+                "runtime_timed_out": 0,
+                "in_flight": 1,
+                "pending": 1,
+            }
+            assert runtime.metrics().in_flight == 0
+            assert runtime.metrics().pending_invocations == 0
+        finally:
+            call.cancel()
+            await asyncio.gather(call, return_exceptions=True)
