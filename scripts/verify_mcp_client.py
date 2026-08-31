@@ -16,10 +16,12 @@ import importlib
 import json
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
 from collections.abc import Awaitable, Callable
+from contextlib import closing, suppress
 from datetime import timedelta
 from functools import partial
 from importlib.metadata import version
@@ -31,6 +33,7 @@ SDK_VERSIONS = ("1.29.1", "2.1.1")
 PROTOCOL = "2025-11-25"
 MODERN_PROTOCOL = "2026-07-28"
 SERVER_INFO = "io.modelcontextprotocol/serverInfo"
+SQLITE_SERVER = "samsarix-sqlite-inventory"
 
 
 def require(condition: bool, message: str) -> None:
@@ -166,8 +169,16 @@ async def journey(session: Any, logs: list[dict[str, Any]], *, modern: bool = Fa
 
 
 async def run_client(
-    server_python: Path, example: Path, sdk_version: str, *, modern: bool = False
+    server_python: Path,
+    example: Path,
+    sdk_version: str,
+    *,
+    modern: bool = False,
+    arguments: tuple[str, ...] = (),
+    conversation: Callable[[Any, list[dict[str, Any]]], Awaitable[None]] | None = None,
 ) -> None:
+    """Let the pinned SDK own one bounded server session and its transport cleanup."""
+
     sdk = importlib.import_module("mcp")
     anyio = importlib.import_module("anyio")
     logs: list[dict[str, Any]] = []
@@ -178,8 +189,9 @@ async def run_client(
     bootstrap = Path(__file__).with_name("mcp_client_server.py")
     parameters = sdk.StdioServerParameters(
         command=str(server_python),
-        args=["-I", str(bootstrap), str(example), *(["--modern"] if modern else [])],
+        args=["-I", str(bootstrap), str(example), *arguments, *(["--modern"] if modern else [])],
     )
+    check = conversation or partial(journey, modern=modern)
     # AnyIO's outer scope encloses both transport/session entry and cleanup in the
     # same task. The SDK owns and reaps its subprocess on context exit.
     with anyio.fail_after(45):
@@ -193,7 +205,7 @@ async def run_client(
                         client.session.discover_result is None,
                         "unexpected modern protocol adoption",
                     )
-                await journey(client.session, logs, modern=modern)
+                await check(client.session, logs)
         else:
             stdio_client = importlib.import_module("mcp.client.stdio").stdio_client
             async with stdio_client(parameters) as (read, write):
@@ -203,7 +215,174 @@ async def run_client(
                     read_timeout_seconds=timedelta(seconds=10),
                     logging_callback=logging_callback,
                 ) as session:
-                    await journey(session, logs)
+                    await check(session, logs)
+
+
+async def sqlite_journey(
+    session: Any,
+    logs: list[dict[str, Any]],
+    *,
+    modern: bool,
+    allow_reservations: bool,
+    available: int,
+) -> None:
+    """Require real SDK models for host denial, durable replay and business refusals."""
+
+    if modern:
+        require(session.discover_result is not None, "SQLite client fell back to initialization")
+        discovery = check_modern_result(session.discover_result, SQLITE_SERVER)
+        require(discovery.get("supportedVersions") == [MODERN_PROTOCOL], "wrong SQLite protocol")
+        capabilities = discovery["capabilities"]
+    else:
+        initialized = wire(await session.initialize())
+        require(initialized.get("protocolVersion") == PROTOCOL, "wrong SQLite protocol")
+        require(initialized["serverInfo"]["name"] == SQLITE_SERVER, "wrong SQLite identity")
+        capabilities = initialized["capabilities"]
+    require(
+        "tasks" not in capabilities and "logging" not in capabilities, "unexpected capabilities"
+    )
+    listing = await session.list_tools()
+    catalog = wire(listing)
+    if modern:
+        check_modern_result(listing, SQLITE_SERVER)
+        require(
+            catalog.get("ttlMs") == 0 and catalog.get("cacheScope") == "private",
+            "unsafe SQLite cache hints",
+        )
+    tools = {tool["name"]: tool for tool in catalog["tools"]}
+    require(
+        len(catalog["tools"]) == 2 and set(tools) == {"check_inventory", "reserve_inventory"},
+        "wrong SQLite tools",
+    )
+    validator = importlib.import_module("jsonschema").Draft202012Validator
+    for name, tool in tools.items():
+        for field in ("inputSchema", "outputSchema"):
+            validator.check_schema(tool[field])
+        read_only = name == "check_inventory"
+        require(
+            tool["annotations"]
+            == {
+                "readOnlyHint": read_only,
+                "destructiveHint": not read_only,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
+            "misleading SQLite annotations",
+        )
+        require(
+            set(tool["inputSchema"]["properties"])
+            == ({"sku"} if read_only else {"sku", "quantity", "request_id"}),
+            "unexpected SQLite input fields",
+        )
+
+    async def call(
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        expected: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        reply = await session.call_tool(name, arguments)
+        data = check_modern_result(reply, SQLITE_SERVER) if modern else wire(reply)
+        if error is not None:
+            require(
+                data.get("isError") is True
+                and data.get("_meta", {}).get("com.samsarix/status") == error,
+                "wrong SQLite execution error",
+            )
+        else:
+            require(expected is not None, "missing expected SQLite result")
+            check_result(reply, cast(dict[str, Any], expected))
+            validator(tools[name]["outputSchema"]).validate(data["structuredContent"])
+
+    await call("check_inventory", {"sku": "cable-usb-c"}, expected={"available": available})
+    await call("check_inventory", {"sku": "missing"}, expected={"available": None})
+    arguments: dict[str, Any] = {"sku": "cable-usb-c", "quantity": 2, "request_id": "order-001"}
+    if allow_reservations:
+        for _ in range(2):
+            await call(
+                "reserve_inventory", arguments, expected={"status": "reserved", "available": 3}
+            )
+        for changed, status in (
+            ({"quantity": 3}, "idempotency_conflict"),
+            ({"request_id": "order-002"}, "capacity_exceeded"),
+        ):
+            await call(
+                "reserve_inventory",
+                {**arguments, **changed},
+                expected={"status": status, "available": None},
+            )
+        await call("reserve_inventory", {**arguments, "quantity": True}, error="invalid_arguments")
+    else:
+        await call("reserve_inventory", arguments, error="denied")
+    await call(
+        "check_inventory",
+        {"sku": "cable-usb-c"},
+        expected={"available": 3 if allow_reservations else available},
+    )
+    require(not logs, "SQLite example emitted unsolicited logs")
+
+
+def check_sqlite_snapshot(database: Path, *, written: bool) -> None:
+    """Independently require exact disk contents; successful SDK replies are insufficient."""
+
+    with closing(sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)) as db:
+        stock = db.execute("SELECT sku, available FROM inventory").fetchall()
+        rows = db.execute(
+            "SELECT request_id, sku, quantity, status, available FROM reservations"
+        ).fetchall()
+    require(stock == [("cable-usb-c", 3 if written else 5)], "wrong SQLite persisted stock")
+    require(
+        rows == ([("order-001", "cable-usb-c", 2, "reserved", 3)] if written else []),
+        "wrong SQLite persisted ledger",
+    )
+
+
+async def run_sqlite_clients(
+    server_python: Path, sdk_version: str, *, modern: bool = False
+) -> None:
+    """Use four fresh SDK-owned processes on one disposable host-owned database."""
+
+    example = Path(__file__).parents[1] / "examples" / "sqlite_reservations.py"
+    with tempfile.TemporaryDirectory(prefix="samsarix-sdk-sqlite-") as temporary:
+        database = Path(temporary) / "inventory space-\u6771\u4eac.sqlite3"
+        initialize = await asyncio.create_subprocess_exec(
+            str(server_python),
+            "-I",
+            str(example),
+            "init",
+            str(database),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            output, error = await asyncio.wait_for(initialize.communicate(), timeout=10)
+            require(initialize.returncode == 0 and not error, "SQLite initialization failed")
+            require(
+                json.loads(output) == {"status": "created", "sku": "cable-usb-c", "available": 5},
+                "incorrect SQLite initialization output",
+            )
+        finally:
+            if initialize.returncode is None:
+                with suppress(ProcessLookupError):
+                    initialize.kill()
+            await asyncio.wait_for(initialize.wait(), timeout=5)
+        check_sqlite_snapshot(database, written=False)
+        for allow, available in ((False, 5), (True, 5), (True, 3), (False, 3)):
+            arguments: tuple[str, ...] = ("serve", str(database), "--max-requests", "1")
+            if allow:
+                arguments += ("--allow-reservations",)
+            await run_client(
+                server_python,
+                example,
+                sdk_version,
+                modern=modern,
+                arguments=arguments,
+                conversation=partial(
+                    sqlite_journey, modern=modern, allow_reservations=allow, available=available
+                ),
+            )
+            check_sqlite_snapshot(database, written=allow or available == 3)
 
 
 class RecordedSend:
@@ -405,6 +584,7 @@ async def run_journeys(server_python: Path, sdk_version: str, *, modern: bool = 
     example = Path(__file__).parents[1] / "examples" / "mcp_inventory_server.py"
     await run_client(server_python, example, sdk_version, modern=modern)
     await run_cancellation_client(server_python, sdk_version, modern=modern)
+    await run_sqlite_clients(server_python, sdk_version, modern=modern)
 
 
 def run_client_process(command: list[str], workspace: Path, *, timeout: float = 60) -> None:
@@ -525,6 +705,7 @@ def verify(wheel: Path, sdk_version: str, *, modern: bool = False) -> None:
                 "wheel": wheel.name,
                 "sha256": digest.hexdigest(),
                 "result": "passed",
+                "sqlite": "host_denial_write_restart_replay_disk_verified",
                 "cancellation": (
                     "explicit_sdk_notification"
                     if sdk_version.startswith("1.")

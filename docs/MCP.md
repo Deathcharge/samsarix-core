@@ -127,7 +127,7 @@ The complete server setup is in
 ## Official Python client verification
 
 In addition to the dependency-free raw-pipe checker, CI builds Core and runs the
-documented inventory server with the official Python MCP SDK pinned separately to
+documented inventory servers with the official Python MCP SDK pinned separately to
 `1.29.1` and `2.1.1`, on Linux, Windows and macOS with Python 3.11. The SDK is not a
 Core runtime or development dependency: it is installed only in the client check
 environment. The server receives only the exact Core wheel in a fresh offline
@@ -158,6 +158,23 @@ SDK 2.x uses its high-level client's default `auto` negotiation: it probes disco
 and falls back to the `2025-11-25` initialization handshake. Its session then runs
 the shared tool journey; no modern protocol behavior is inferred from that fallback.
 
+The current checkout also verifies the persistent SQLite workflow through those same
+SDK methods, independently of the raw-pipe encoder/parser. It initializes a temporary
+host-owned database, then opens four fresh client/server sessions: default-denied
+write, explicitly enabled write, enabled replay after restart, and denied saved replay
+after removing host opt-in. Each session checks the real catalog, valid input/output
+schemas, destructive/idempotent annotations, result/text agreement, empty lookup,
+and absence of unsolicited logs. Writable sessions distinguish business conflicts and
+full-ledger refusals from execution errors and reject boolean quantities.
+
+After initialization and every session, a separate read-only SQLite connection checks
+the exact stock and ledger, including SKU and request identity. Five items must become
+three once, with exactly one ledger row. A passing conversation without a durable write
+cannot pass this gate. Each of the three SDK/protocol modes runs its own database; modern
+sessions require discovery without legacy fallback. The final report includes
+`sqlite: host_denial_write_restart_replay_disk_verified` only after all checks pass.
+This is test-owned temporary data, not desktop approval or third-party adoption.
+
 The same command then opens a separate official `ClientSession` against a controlled
 in-memory cancellation fixture, using the same installed Core interpreter. It waits
 for actual start progress, cancels the call, and invokes a state tool that needs the
@@ -185,15 +202,18 @@ notify the server if they need cooperative remote cancellation. This is client
 behavior, not something Core can infer from a still-open stdio connection. The
 checker prints the tested cancellation mode with its wheel digest.
 
-The inventory session has a 45-second deadline; the cancellation session has a
+Each inventory session has a 45-second deadline; the cancellation session has a
 20-second deadline with five-second start/recovery bounds. The outer checker has a 60-second
 deadline and forcibly terminates the checker if SDK cleanup stalls. Because the SDK
 may start its server in a separate process group, a stdlib-only test bootstrap also
 enforces a 55-second server lifetime independently. The watchdog is cancelled on
 normal exit; hard exit code 124 is a failed check, never graceful-shutdown evidence.
 This bootstrap is only for the trusted example and controlled fixture, not production tools.
+SQLite initialization has a ten-second deadline with kill/reap cleanup on failure.
+The added sessions remain inside the unchanged 60-second whole-checker bound.
 Setup commands also have finite timeouts. Negative-control unit tests reject wrong results, missing
-progress, private log fields/values, SDK pin drift and checker failure, and exercise
+progress, private log fields/values, SDK pin drift, missing durable writes, misleading
+write hints, incorrect business/error results and checker failure, and exercise
 timeout cleanup, including independent server exit. No model credentials, signed-in desktop UI or external API calls
 are needed for the journey.
 
@@ -201,12 +221,16 @@ The default legacy gate does **not** validate experimental tasks, cancellation o
 non-cooperative functions, a signed-in tool-approval UI, HTTP/authentication, every
 SDK version or newer MCP revisions. The explicit `--modern` mode above separately
 covers the 2026 ordinary-tool path. Cancellation is not rollback of committed side
-effects. The fixture performs no durable writes; Core's separate tests cover its
+effects. The cancellation fixture performs no durable writes; Core's separate tests cover its
 task and surviving-sync-worker contracts. SDK 2.x emits a logging deprecation
 warning because the checker deliberately exercises the older negotiated revision.
 Tasks in Core remain opt-in, revision-specific experimental behavior; the upstream
 SDK removed its experimental task API in 2.x. Do not infer task compatibility from
 ordinary tool-call success.
+
+The persistent SDK journey is new source-checkout verification, not a retroactive
+change to a10's immutable source archive. It has been run against the published a10
+runtime; older wheels need the verification scripts/examples appropriate to their APIs.
 
 References checked on 2026-08-31: official SDK releases
 [`v1.29.1`](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v1.29.1),

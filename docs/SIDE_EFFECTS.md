@@ -106,6 +106,12 @@ reject a fake passing conversation with no durable write and a missing denial si
 This is reproducible public reference evidence, not third-party adoption or power-loss
 durability certification.
 
+The current [official-client gate](MCP.md#official-python-client-verification) also
+runs this business journey with SDK 1.29.1 legacy, SDK 2.1.1 legacy and SDK 2.1.1 modern
+clients. Each mode uses four fresh SDK-owned sessions and independent disk assertions,
+including write denial after an earlier successful write. SDK-owned process cleanup
+is not itself proof of graceful EOF; the raw-pipe gate above checks that separately.
+
 ## The application contract
 
 The host selects the database path when it constructs `InventoryStore`; clients can

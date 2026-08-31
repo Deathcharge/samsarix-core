@@ -8,8 +8,10 @@ import copy
 import importlib.util
 import json
 import runpy
+import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -594,3 +596,232 @@ async def test_controlled_fixture_records_cancellation_and_releases_sole_slot():
         finally:
             call.cancel()
             await asyncio.gather(call, return_exceptions=True)
+
+
+class SQLiteSession:
+    """SDK-shaped negative-control fixture; real SDK subprocesses run in the client gate."""
+
+    def __init__(self, *, modern=False, allow=False, available=5, fault=None):
+        self.modern, self.allow, self.available, self.fault = modern, allow, available, fault
+        self.calls = []
+        self.discover_result = self.stamp(
+            Model({"supportedVersions": ["2026-07-28"], "capabilities": {"tools": {}}})
+        )
+        if fault == "fallback":
+            self.discover_result = None
+
+    def stamp(self, model):
+        if self.modern:
+            model.data["resultType"] = "complete"
+            model.data.setdefault("_meta", {})["io.modelcontextprotocol/serverInfo"] = {
+                "name": "wrong" if self.fault == "identity" else "samsarix-sqlite-inventory"
+            }
+        return model
+
+    async def initialize(self):
+        assert not self.modern, "modern journey must not fall back"
+        return Model(
+            {
+                "protocolVersion": "2025-11-25",
+                "serverInfo": {"name": "samsarix-sqlite-inventory"},
+                "capabilities": {"tools": {}},
+            }
+        )
+
+    async def list_tools(self):
+        tools = []
+        for name, readonly in (("check_inventory", True), ("reserve_inventory", False)):
+            fields = {"sku"} if readonly else {"sku", "quantity", "request_id"}
+            if self.fault == "path":
+                fields.add("database")
+            tools.append(
+                {
+                    "name": name,
+                    "inputSchema": {"type": "object", "properties": dict.fromkeys(fields, {})},
+                    "outputSchema": {"type": "object"},
+                    "annotations": {
+                        "readOnlyHint": readonly or self.fault == "write_hint",
+                        "destructiveHint": not readonly,
+                        "idempotentHint": True,
+                        "openWorldHint": False,
+                    },
+                }
+            )
+        if self.fault == "duplicate":
+            tools.append(copy.deepcopy(tools[0]))
+        return self.stamp(Model({"tools": tools, "ttlMs": 0, "cacheScope": "private"}))
+
+    async def call_tool(self, name, arguments):
+        self.calls.append((name, arguments))
+        if name == "check_inventory":
+            return self.stamp(
+                result({"available": self.available if arguments["sku"] == "cable-usb-c" else None})
+            )
+        status = None
+        if not self.allow:
+            status = "denied"
+        elif type(arguments["quantity"]) is not int:
+            status = "invalid_arguments"
+        if status:
+            return self.stamp(
+                Model(
+                    {
+                        "isError": self.fault != "accepted_error",
+                        "_meta": {"com.samsarix/status": status},
+                    }
+                )
+            )
+        business = "reserved"
+        if arguments["quantity"] != 2:
+            business = "idempotency_conflict"
+        elif arguments["request_id"] != "order-001":
+            business = "capacity_exceeded"
+        else:
+            self.available = 3
+        reply = result({"status": business, "available": 3 if business == "reserved" else None})
+        if self.fault == "business_error" and business != "reserved":
+            reply.data["isError"] = True
+        if self.fault == "bad_text":
+            reply.data["content"][0]["text"] = "{}"
+        return self.stamp(reply)
+
+
+@pytest.mark.parametrize("modern", [False, True])
+@pytest.mark.parametrize("allow,available", [(False, 5), (True, 5), (True, 3), (False, 3)])
+async def test_sqlite_sdk_journey_requires_host_policy_and_business_contract(
+    monkeypatch, modern, allow, available
+):
+    script = load_script()
+    monkeypatch.setattr(
+        script.importlib, "import_module", lambda _: SimpleNamespace(Draft202012Validator=Validator)
+    )
+    session = SQLiteSession(modern=modern, allow=allow, available=available)
+    await script.sqlite_journey(
+        session, [], modern=modern, allow_reservations=allow, available=available
+    )
+    writes = [args for name, args in session.calls if name == "reserve_inventory"]
+    assert len(writes) == (5 if allow else 1)
+    if allow:
+        assert writes[0] == writes[1]
+
+
+@pytest.mark.parametrize(
+    "fault,message",
+    [
+        ("fallback", "fell back"),
+        ("identity", "identity"),
+        ("path", "input fields"),
+        ("write_hint", "annotations"),
+        ("duplicate", "SQLite tools"),
+        ("accepted_error", "execution error"),
+        ("business_error", "tool failure"),
+        ("bad_text", "disagreement"),
+        ("logs", "unsolicited logs"),
+    ],
+)
+async def test_sqlite_sdk_journey_rejects_false_success(monkeypatch, fault, message):
+    script = load_script()
+    monkeypatch.setattr(
+        script.importlib, "import_module", lambda _: SimpleNamespace(Draft202012Validator=Validator)
+    )
+    session = SQLiteSession(modern=True, allow=True, fault=fault)
+    with pytest.raises(RuntimeError, match=message):
+        await script.sqlite_journey(
+            session,
+            [{}] if fault == "logs" else [],
+            modern=True,
+            allow_reservations=True,
+            available=5,
+        )
+
+
+@pytest.mark.parametrize("modern", [False, True])
+@pytest.mark.parametrize("write", [False, True])
+async def test_sqlite_sdk_runner_checks_disk_and_launch_configuration(monkeypatch, modern, write):
+    script = load_script()
+    launches = []
+
+    async def client(server_python, example, sdk_version, **options):
+        assert example.name == "sqlite_reservations.py"
+        assert sdk_version == "2.1.1" and options["modern"] is modern
+        args = options["arguments"]
+        assert args[0] == "serve" and args[2:4] == ("--max-requests", "1")
+        launches.append(args)
+        if write and len(launches) == 2:
+            with closing(sqlite3.connect(args[1])) as db, db:
+                db.execute("UPDATE inventory SET available = 3")
+                db.execute(
+                    "INSERT INTO reservations VALUES ('order-001','cable-usb-c',2,'reserved',3)"
+                )
+
+    monkeypatch.setattr(script, "run_client", client)
+    if write:
+        await script.run_sqlite_clients(Path(sys.executable), "2.1.1", modern=modern)
+        assert ["--allow-reservations" in args for args in launches] == [False, True, True, False]
+        assert len({args[1] for args in launches}) == 1
+    else:
+        with pytest.raises(RuntimeError, match="persisted stock"):
+            await script.run_sqlite_clients(Path(sys.executable), "2.1.1", modern=modern)
+        assert len(launches) == 2
+    assert not await asyncio.to_thread(Path(launches[0][1]).exists), "store was not cleaned up"
+
+
+@pytest.mark.parametrize(
+    "mutation,message",
+    [
+        ("UPDATE inventory SET sku = 'other'", "persisted stock"),
+        (
+            "INSERT INTO reservations VALUES ('extra','cable-usb-c',2,'reserved',3)",
+            "persisted ledger",
+        ),
+    ],
+)
+def test_sqlite_sdk_snapshot_rejects_wrong_sku_and_extra_ledger(tmp_path, mutation, message):
+    example = runpy.run_path(str(SCRIPT.parents[1] / "examples" / "sqlite_reservations.py"))
+    database = tmp_path / "store.sqlite3"
+    example["create_database"](database)
+    with closing(sqlite3.connect(database)) as db, db:
+        db.execute(mutation)
+    with pytest.raises(RuntimeError, match=message):
+        load_script().check_sqlite_snapshot(database, written=False)
+
+
+@pytest.mark.parametrize("failure", ["exit", "timeout"])
+async def test_sqlite_sdk_initialization_failure_is_redacted_and_reaped(monkeypatch, failure):
+    """No client may start after failed initialization; a timed-out child must be killed."""
+
+    script = load_script()
+
+    class Process:
+        returncode = 7 if failure == "exit" else None
+        killed = False
+        reaped = False
+
+        async def communicate(self):
+            if failure == "timeout":
+                raise asyncio.TimeoutError
+            return b"", b"private-host-error"
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -1
+
+        async def wait(self):
+            self.reaped = True
+            return self.returncode
+
+    process = Process()
+
+    async def launch(*args, **kwargs):
+        assert args[3] == "init"
+        return process
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("client launched after initialization failure")
+
+    monkeypatch.setattr(script.asyncio, "create_subprocess_exec", launch)
+    monkeypatch.setattr(script, "run_client", forbidden)
+    with pytest.raises(asyncio.TimeoutError if failure == "timeout" else RuntimeError) as error:
+        await script.run_sqlite_clients(Path(sys.executable), "2.1.1")
+    assert "private-host-error" not in str(error.value)
+    assert process.reaped and process.killed is (failure == "timeout")

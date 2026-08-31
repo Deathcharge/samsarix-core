@@ -4,6 +4,49 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Official-client acceptance for persistent reservations
+
+The previous turn made concrete progress: [PR #52](https://github.com/Deathcharge/samsarix-core/pull/52)
+merged at `c798523ac9b1129a03e433208885a5c910bfc065`; the exact-main run
+`33406144596` passed all 18 jobs. This continuation rechecked the clean worktree,
+merge identity and live CI result rather than inferring completion from that milestone.
+
+P1 acceptance gap: raw subprocess tests proved real reservations, but the official
+client gate only exercised the read-only example and a cancellation fixture. Those
+checks did not prove SDK parsing/schema validation and host policy around actual
+persistent writes. Decision: extend the existing client gate, not the Core runtime.
+The official [SDK documentation](https://github.com/modelcontextprotocol/python-sdk)
+and [modern tool contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)
+were rechecked on 2026-08-31; the existing pins/protocol scope stay unchanged.
+
+- [x] Four fresh SDK-owned client/server sessions on a host-owned temporary database:
+  default denial, enabled write, restart replay, then saved-replay denial without opt-in.
+- [x] Validate catalog schemas, real-write annotations, structured/text agreement,
+  missing inventory, conflicts, ledger capacity, invalid input and quiet logging.
+- [x] Inspect exact stock and request/SKU ledger rows independently after every session.
+- [x] Keep SDK models/transports separate from Core's encoder/parser and server install;
+  preserve the parent deadline and independent server watchdog.
+- [x] Add negative controls for missing writes, misleading hints, duplicate tools,
+  path fields, incorrect error handling, bad text, extra ledger rows and init cleanup.
+- [x] All three real SDK modes passed against the published a10 wheel with unchanged
+  digest `e84b26935ab9f73a7c632085ec9401256ffb8be0d107ce456a2e6604fec9d638`.
+- [x] Complete local source/build verification; require exact-head CI before merge
+  and record commit/run identities in the pull request.
+
+Local verification passed 434 tests with 95.44% Core branch-aware coverage (25 new
+checker regressions), Black on 40 files, Ruff, strict mypy on 28 files including
+Linux/Darwin platform checks, Bandit on Core source and `git diff --check`. An
+isolated source-to-wheel build, strict Twine and the offline real-process gate passed.
+The local wheel digest is
+`057284248d594a54f8b8ce12201054bbf163b33d8c6fa620541f7fe4ad432236`;
+this is local verification evidence, not a replacement published artifact.
+
+The earlier raw-pipe-only evidence below remains historical. This addition proves
+an SDK-driven business workflow, not desktop consent, external adoption, power-loss
+recovery or production readiness. No Core API, dependency, example behavior, workflow
+configuration, private repository or immutable release asset is changed. The new
+checker is source-only until a later approved release; old assets remain immutable.
+
 ### Public persistent MCP workflow and adoption revalidation
 
 The previous release milestone merged in [PR #51](https://github.com/Deathcharge/samsarix-core/pull/51)
