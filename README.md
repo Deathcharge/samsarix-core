@@ -53,9 +53,12 @@ gh attestation verify samsarix_core-2.0.0a8-py3-none-any.whl \
 python -m pip install samsarix_core-2.0.0a8-py3-none-any.whl
 ```
 
-Version `2.0.0a8` fixes non-finite and overflowing timeout handling; older a7 wheels
-do not include that fix. The downloaded a8 wheel passed the expanded offline
-runtime, MCP subprocess, and transactional SQLite verification gate.
+Version `2.0.0a8` fixes non-finite and overflowing timeout handling and passed its
+release-time runtime, MCP subprocess, and SQLite gate. The current source prepares
+`2.0.0a9`, which additionally bounds derived diagnostics, isolates overflowing float
+arguments, and hardens malformed MCP frames. The immutable a8 wheel lacks these
+new fixes and correctly fails the newer numeric checker; use the fixed source while
+the new prerelease is being verified.
 
 For a source checkout instead:
 
