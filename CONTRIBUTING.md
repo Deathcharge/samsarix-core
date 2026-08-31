@@ -17,12 +17,19 @@ python -m pip install -e ".[dev]"
 Run the full local gate:
 
 ```bash
-python -m black --check src tests examples
-python -m ruff check src tests examples
+python -m black --check src tests examples benchmarks scripts
+python -m ruff check src tests examples benchmarks scripts
 python -m mypy
 python -m pytest
 python -m build
+python -m twine check --strict dist/*
+python scripts/verify_distribution.py
 ```
+
+The distribution verifier requires exactly one wheel in `dist/`, or an explicit wheel
+path. It installs offline in a temporary environment and checks runtime and real MCP
+subprocess behavior without importing from the source checkout. See
+[release verification](docs/RELEASING.md) for the cross-platform gate.
 
 New behavior needs focused tests, accurate docs, no network requirement in the
 unit suite, and no reduction below the configured 90% branch-aware coverage floor.

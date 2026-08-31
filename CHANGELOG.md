@@ -2,7 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- portable offline installed-wheel verification for actual runtime invocation,
+  validation, ordered batches, circuit recovery, and real MCP subprocess Unicode,
+  progress, logging and EOF behavior, with checker regression tests;
+- Linux, Windows and macOS package CI at Python 3.10 and 3.14.
+
 ### Changed
+
+- corrected the a7 import-only smoke's overstated behavioral evidence and reverified
+  the unchanged published wheel with the expanded gate.
 
 - recorded immutable `v2.0.0a7` release checksums, provenance, and clean
   installed-wheel circuit-breaker recovery evidence.

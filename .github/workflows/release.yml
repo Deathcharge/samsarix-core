@@ -40,10 +40,11 @@ jobs:
       - name: Check distribution metadata
         run: python -m twine check --strict dist/*
       - name: Smoke-test the wheel
+        run: python scripts/verify_distribution.py
+      - name: Install the wheel for tag-version verification
         run: |
           python -m venv .release-smoke
           .release-smoke/bin/python -m pip install --no-deps dist/*.whl
-          .release-smoke/bin/python scripts/smoke_check.py
       - name: Require the tag to match the package version
         if: startsWith(github.ref, 'refs/tags/v')
         env:

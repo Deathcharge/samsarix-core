@@ -79,6 +79,10 @@ remain separate decisions.
 
 ## Release candidate
 
+- [x] Verify installed wheel runtime behavior and the documented MCP example through
+  real subprocess pipes, with offline isolated installs and bounded checker cleanup.
+- [x] Add Linux, Windows and macOS package verification at Python 3.10 and 3.14.
+
 - [x] Build and install the wheel in a clean environment.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.
 - [x] Publish immutable GitHub prerelease `v2.0.0a1` after package identity, licensing,

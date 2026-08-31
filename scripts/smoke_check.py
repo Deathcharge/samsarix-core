@@ -1,9 +1,12 @@
 # Copyright 2026 Samsarix LLC
 # SPDX-License-Identifier: MPL-2.0
 
-"""Verify the installed wheel's public canonical and compatibility exports."""
+"""Verify installed public exports and real runtime behavior without dependencies."""
 
 from __future__ import annotations
+
+import asyncio
+from importlib.metadata import version
 
 import helix_core
 import samsarix_core
@@ -51,6 +54,10 @@ def main() -> None:
         "legacy package version differs",
     )
     _require(
+        version("samsarix-core") == samsarix_core.__version__,
+        "distribution and import versions differ",
+    )
+    _require(
         samsarix_core.ToolRateLimit(calls=1, period_seconds=1).burst_capacity == 1,
         "rate-limit model behavior differs",
     )
@@ -63,7 +70,89 @@ def main() -> None:
         samsarix_core.ToolCircuitState.CLOSED.value == "closed",
         "circuit state value differs",
     )
-    print(samsarix_core.__version__)
+    asyncio.run(verify_runtime())
+    print(
+        f"{samsarix_core.__version__}: exports, invocation, validation, batch, circuit recovery OK"
+    )
+
+
+async def verify_runtime() -> None:
+    """Exercise actual sync/async calls, validation and a failure/recovery lifecycle."""
+
+    @samsarix_core.samsarix_tool(read_only=True)
+    def echo(value: str) -> str:
+        """Echo one bounded text value."""
+        return value
+
+    executions = 0
+    available = False
+
+    @samsarix_core.samsarix_tool(read_only=True)
+    async def dependency() -> str:
+        """Probe a deterministic fake dependency."""
+        nonlocal executions
+        executions += 1
+        if not available:
+            raise ConnectionError("private-smoke-secret")
+        return "recovered"
+
+    runtime = samsarix_core.ToolRuntime(max_concurrency=2)
+    runtime.register(echo)
+    runtime.register(
+        dependency,
+        circuit_breaker=samsarix_core.ToolCircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout_seconds=1,
+        ),
+    )
+    try:
+        value = "caf\u00e9-\u6771\u4eac-\U0001f680\nsecond line"
+        echoed = await runtime.invoke("echo", {"value": value})
+        _require(echoed.success and echoed.output == value, "sync Unicode echo failed")
+        invalid = await runtime.invoke("echo", {"value": 42})
+        _require(
+            invalid.status is samsarix_core.ToolStatus.INVALID_ARGUMENTS,
+            "invalid input was not rejected",
+        )
+        batch = await runtime.invoke_many(
+            [samsarix_core.ToolCall("echo", {"value": item}) for item in ("first", "second")]
+        )
+        _require(
+            len(batch) == 2
+            and all(item.success for item in batch)
+            and [item.output for item in batch] == ["first", "second"],
+            "ordered batch failed",
+        )
+        failed = await runtime.invoke("dependency", {})
+        _require(failed.status is samsarix_core.ToolStatus.FAILED, "failure was not structured")
+        _require("private-smoke-secret" not in str(failed.to_dict()), "failure leaked content")
+        blocked = await runtime.invoke("dependency", {})
+        _require(
+            blocked.status is samsarix_core.ToolStatus.CIRCUIT_OPEN and executions == 1,
+            "open circuit did not suppress execution",
+        )
+        details = blocked.error.details if blocked.error is not None else None
+        delay = details.get("retry_after_ms") if details is not None else None
+        if isinstance(delay, bool) or not isinstance(delay, int) or not 1 <= delay <= 1_001:
+            raise RuntimeError("circuit did not supply a bounded retry delay")
+        available = True
+        await asyncio.sleep(delay / 1_000 + 0.01)
+        recovered = await runtime.invoke("dependency", {})
+        _require(
+            recovered.success and recovered.output == "recovered" and executions == 2,
+            "recovery probe failed",
+        )
+        _require(
+            runtime.circuit_state("dependency") is samsarix_core.ToolCircuitState.CLOSED,
+            "successful probe did not close the circuit",
+        )
+        metrics = runtime.metrics()
+        _require(
+            (metrics.failed, metrics.circuit_open, metrics.circuit_breaker_trips) == (1, 1, 1),
+            "circuit accounting differs",
+        )
+    finally:
+        _require(await runtime.aclose(wait_for_sync=True, timeout=5), "runtime did not quiesce")
 
 
 if __name__ == "__main__":

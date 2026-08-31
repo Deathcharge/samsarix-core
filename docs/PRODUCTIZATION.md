@@ -1,8 +1,37 @@
 # Samsarix Core Productization Record
 
-Last updated: 2026-08-02
+Last updated: 2026-08-31
 
 ## Current repository assessment
+
+### Current verification follow-up
+
+At clean main `4f5d04d3cf3c1f7b2dcec693154d502dd0f6f1b2`, the baseline suite passed
+177 tests with 94.73% branch coverage on Windows/Python 3.11.9. Two release-evidence
+gaps remained despite the green source suite: the shared wheel smoke only checked
+exports/model construction, and hosted package verification ran only on Linux.
+The previously claimed automated circuit-recovery smoke was therefore overstated.
+
+- [x] Replace the import-only gate with real installed sync/async, validation, batch,
+  redacted circuit failure/recovery, metrics and quiescence checks.
+- [x] Exercise the documented inventory MCP server through actual subprocess pipes,
+  including UTF-8, operational logging, progress ordering, and EOF shutdown.
+- [x] Prove checker failures for wrong output/version, malformed stdout, ambiguous
+  artifacts, and a hung child; retain checks under Python optimization.
+- [x] Add fresh offline-wheel CI at Python 3.10 and 3.14 on Linux, Windows, and macOS.
+- [x] Re-download and verify the unchanged a7 wheel with the expanded gate locally;
+  keep artifact publication and new verification-script provenance distinct.
+
+These changes strengthen reproducible package evaluation for Python tool developers.
+They add no runtime dependencies, API surface, telemetry, hosting, or external service.
+See `docs/RELEASING.md` for commands and the explicit historical evidence correction.
+Local final verification: 185 tests passed with 94.73% branch-aware coverage; Black,
+Ruff, strict mypy (22 files), source Bandit, isolated build and strict Twine checks
+passed. Both the new candidate and freshly downloaded immutable a7 wheel passed the
+offline installed-package gate on Windows/Python 3.11.9. Hosted results are recorded
+on the corresponding pull request rather than inferred from this local execution.
+
+### Original assessment
 
 The repository began as a broad "unified agent runtime" containing orchestration,
 reasoning, tool, metrics, and LLM-provider prototypes. The initial implementation
