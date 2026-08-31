@@ -126,6 +126,11 @@ The gate verifies:
   progress correlation/order, and clean EOF shutdown without extra stdout.
 - real temporary SQLite stock mutation, duplicate replay, conflicting-key rejection,
   replay after runtime recreation, and final stock verification before cleanup.
+- the current checkout's persistent SQLite MCP launcher in both protocol eras:
+  default write/replay denial, explicit writes, restart replay, full-ledger refusal,
+  invalid argument rejection and independent stock/ledger verification after each process.
+  The new launcher is not part of the immutable a10 source archive; historical release
+  checks describe the checker version executed at publication, not later additions.
 
 Package CI runs this gate on Linux, Windows, and macOS at Python 3.10 and 3.14;
 the full unit suite additionally covers Python 3.10 through 3.14 on Linux. The

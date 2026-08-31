@@ -2,11 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- public SQLite MCP reservation launcher using the existing application-owned store:
+  explicit initialization, read-only defaults, host write opt-in, bounded ledger,
+  both protocol eras and durable replay across server processes;
+- installed-wheel real-process and independent disk-state verification for that
+  workflow, plus host-policy, CLI, schema-startup and checker negative controls.
+
 ### Changed
 
 - recorded immutable `v2.0.0a10` assets, exact-source provenance and fresh offline
   and official-client verification; updated installation and adoption guidance
   without implying a separate-consumer upgrade or stable release.
+- identify the existing consumer as private and same-owner; record the unsuppressed
+  37-pass/one-old-version-failure a10 candidate qualification separately from adoption.
+- exclude application-owned SQLite data and sidecars from Git and source archives.
 
 ## 2.0.0a10 - 2026-08-31
 

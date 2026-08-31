@@ -160,10 +160,19 @@ handshake. This option is included in the published a10 wheel, not a9. See the
 [modern protocol boundary](docs/MCP.md#opt-in-mcp-2026-07-28); the redesigned task
 extension, multi-round-trip operations and HTTP are not implemented.
 
+For a public end-to-end workflow with **real persistent writes**, the current checkout
+also supplies `sqlite_reservations.py init` and `serve`. It denies writes by default;
+the host must explicitly add `--allow-reservations`. Replays survive process restart,
+conflicting request IDs do not write, and database paths are not client arguments.
+See the [persistent MCP reservation walkthrough](docs/SIDE_EFFECTS.md#use-the-persistent-store-from-an-mcp-client).
+These new example commands are not in the immutable a10 source archive; use the
+current checkout with the verified a10 runtime. The preview server above is unchanged.
+
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)
-version 0.2.12 pins Core commit `2744d69eb58aef8412d15fbee9485b6d22eb30a5`
+is a **private, same-owner repository**, not a publicly reproducible third-party
+adopter. Its version 0.2.12 pins Core commit `2744d69eb58aef8412d15fbee9485b6d22eb30a5`
 and uses only the
 public API to expose a privacy-first, resumable redaction workflow over MCP. Its
 consumer-owned tests exercise initialization, discovery, stdio invocation,
@@ -198,6 +207,10 @@ Inspector 0.21.2; a portable VS Code workspace is configuration-discovered, with
 signed-in trust and tool approval still awaiting operator acceptance.
 
 This is compatibility evidence, not a claim of third-party production adoption.
+An isolated a10 candidate check passed 37 of its 38 unchanged tests; its old-version
+assertion correctly failed. That diagnostic is not a consumer upgrade or a passing
+consumer release gate. Public evaluators can instead reproduce the SQLite/MCP journey
+above without access to any other Samsarix repository.
 See the [adoption record](docs/ADOPTION.md) for exact commits, commands, artifact
 digests, limitations, and rollback.
 

@@ -67,7 +67,7 @@ remain separate decisions.
   It now also proves that a host-owned per-tool circuit opens after a private downstream
   failure, rejects the next request without execution or an artifact, and closes after
   one successful real redaction recovery probe without leaking private protocol content.
-- Next: upgrade the separate consumer to the verified a9 release, rerun its own CI
+- Next: upgrade the private same-owner consumer to the verified a10 release, rerun its own CI
   matrix, and complete the signed-in Visual Studio Code trust/tool-approval journey. Use observed
   demand and confirmed contract gaps—not framework parity—to prioritize broader
   schema support.
@@ -91,8 +91,11 @@ remain separate decisions.
   official clients, keeping explicit 1.x and automatic 2.x notification paths distinct.
 - [x] Evaluate MCP `2026-07-28` and add an opt-in ordinary-tool stdio path, preserving
   default 2025 contracts and proving modern discovery separately from client fallback.
-- [ ] Release the opt-in modern path after exact-head verification; keep task
+- [x] Release the opt-in modern path after exact-head verification; keep task
   extensions, multi-round-trip operations and network transport separate decisions.
+- [x] Provide a public MCP workflow over the existing SQLite reservation store, with
+  host-gated writes, real process-restart replay, independent disk assertions and
+  no dependency on the private consumer. Keep candidate qualification distinct from adoption.
 
 - [x] Build and install the wheel in a clean environment.
 - [x] Prove one real repository consumer and a versioned compatibility fixture.

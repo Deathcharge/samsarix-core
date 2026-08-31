@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from samsarix_core import ToolPolicyDecision, ToolStatus
+from samsarix_core import ToolPolicyDecision, ToolStatus, samsarix_tool
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "sqlite_reservations.py"
 ARGUMENTS = {"sku": "cable-usb-c", "quantity": 2, "request_id": "order-001"}
@@ -44,6 +44,177 @@ def snapshot(store):
             db.execute("SELECT available FROM inventory").fetchone()[0],
             db.execute("SELECT COUNT(*) FROM reservations").fetchone()[0],
         )
+
+
+async def test_mcp_host_defaults_deny_writes_and_replays(example, store):
+    server = example.create_server(store)
+    try:
+        read = await server.runtime.invoke("check_inventory", {"sku": "cable-usb-c"})
+        denied = await server.runtime.invoke("reserve_inventory", ARGUMENTS)
+        assert read.success and read.output == {"available": 5}
+        assert denied.status is ToolStatus.DENIED
+        assert snapshot(store) == (5, 0)
+        store.reserve(**ARGUMENTS)
+        replay = await server.runtime.invoke("reserve_inventory", ARGUMENTS)
+        assert replay.status is ToolStatus.DENIED
+        assert snapshot(store) == (3, 1)
+    finally:
+        await server.aclose()
+
+
+@pytest.mark.parametrize("modern", [False, True])
+async def test_explicit_mcp_host_writes_keep_transactional_contract(example, store, modern):
+    server = example.create_server(store, allow_reservations=True, enable_modern=modern)
+    try:
+        first = await server.runtime.invoke("reserve_inventory", ARGUMENTS)
+        replay = await server.runtime.invoke("reserve_inventory", ARGUMENTS)
+        conflict = await server.runtime.invoke("reserve_inventory", {**ARGUMENTS, "quantity": 3})
+        assert first.success and replay.success and conflict.success
+        assert first.output == replay.output == {"status": "reserved", "available": 3}
+        assert conflict.output == {"status": "idempotency_conflict", "available": None}
+        assert snapshot(store) == (3, 1)
+    finally:
+        await server.aclose()
+
+
+async def test_mcp_host_policy_denies_unexpected_registration(example, store):
+    executed = []
+
+    @samsarix_tool(read_only=True)
+    def extra_tool() -> str:
+        """Exercise fail-closed registration handling."""
+
+        executed.append(True)
+        return "unexpected"
+
+    server = example.create_server(store, allow_reservations=True)
+    server.runtime.register(extra_tool)
+    try:
+        result = await server.runtime.invoke("extra_tool")
+        assert result.status is ToolStatus.DENIED
+        assert executed == []
+    finally:
+        await server.aclose()
+
+
+@pytest.mark.parametrize("option", ["allow_reservations", "enable_modern"])
+@pytest.mark.parametrize("value", [1, "yes", None])
+def test_mcp_host_rejects_non_boolean_flags(example, store, option, value):
+    with pytest.raises(TypeError, match="booleans"):
+        example.create_server(store, **{option: value})
+    assert snapshot(store) == (5, 0)
+
+
+def test_cli_initialization_and_refused_overwrite(example, tmp_path, capsys):
+    database = tmp_path / "private-host-file.sqlite3"
+    assert example.main(["init", str(database), "--stock", "9"]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "created",
+        "sku": "cable-usb-c",
+        "available": 9,
+    }
+    before = database.read_bytes()
+    assert example.main(["init", str(database)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "FileExistsError" in captured.err
+    assert str(database) not in captured.err
+    assert database.read_bytes() == before
+
+
+@pytest.mark.parametrize("stock", ["-1", "1000001"])
+def test_cli_invalid_stock_does_not_create_a_file(example, tmp_path, capsys, stock):
+    database = tmp_path / "invalid.sqlite3"
+    assert example.main(["init", str(database), "--stock", stock]) == 2
+    assert not database.exists()
+    assert capsys.readouterr().out == ""
+
+
+def test_cli_missing_store_does_not_create_database_or_emit_protocol_noise(
+    example, tmp_path, capsys
+):
+    database = tmp_path / "private-missing.sqlite3"
+    assert example.main(["serve", str(database)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "FileNotFoundError" in captured.err
+    assert str(database) not in captured.err
+    assert not database.exists()
+
+
+@pytest.mark.parametrize("kind", ["not_sqlite", "missing_table", "missing_column"])
+def test_mcp_startup_checks_required_schema_without_mutating_file(example, tmp_path, capsys, kind):
+    database = tmp_path / "private-incompatible.sqlite3"
+    if kind == "not_sqlite":
+        database.write_bytes(b"private not a database")
+    else:
+        with closing(sqlite3.connect(database)) as db:
+            db.execute("CREATE TABLE inventory (sku TEXT, available INTEGER)")
+            if kind == "missing_column":
+                db.execute("CREATE TABLE reservations (request_id TEXT)")
+    before = database.read_bytes()
+    assert example.main(["serve", str(database), "--allow-reservations"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "check host configuration" in captured.err
+    assert "private" not in captured.err
+    assert database.read_bytes() == before
+
+
+async def test_mcp_server_waits_for_workers_after_stdio_exit(example, store, monkeypatch):
+    calls = []
+    runtime = example.create_runtime(store)
+    server = example.MCPServer(runtime)
+    original_close = runtime.aclose
+
+    async def close(**kwargs):
+        calls.append(kwargs)
+        return await original_close(**kwargs)
+
+    async def serve(candidate, **kwargs):
+        assert candidate is server
+        assert kwargs == {
+            "max_message_bytes": 16_384,
+            "max_in_flight_requests": 8,
+            "close_runtime": False,
+        }
+
+    monkeypatch.setattr(example, "create_server", lambda *args, **kwargs: server)
+    monkeypatch.setattr(example, "serve_stdio", serve)
+    monkeypatch.setattr(runtime, "aclose", close)
+    await example.run_server(store)
+    assert calls == [{"wait_for_sync": True, "timeout": 5}]
+
+
+@pytest.mark.parametrize("quiescent", [False, True])
+async def test_mcp_server_checks_cleanup_even_on_transport_failure(
+    example, store, monkeypatch, quiescent
+):
+    server = example.create_server(store)
+    closed = []
+    original_close = server.runtime.aclose
+
+    async def close(**kwargs):
+        closed.append(kwargs)
+        await original_close(**kwargs)
+        return quiescent
+
+    async def fail(*args, **kwargs):
+        raise ValueError("simulated transport failure")
+
+    monkeypatch.setattr(example, "create_server", lambda *args, **kwargs: server)
+    monkeypatch.setattr(example, "serve_stdio", fail)
+    monkeypatch.setattr(server.runtime, "aclose", close)
+    with pytest.raises(ValueError if quiescent else RuntimeError):
+        await example.run_server(store)
+    assert closed == [{"wait_for_sync": True, "timeout": 5}]
+
+
+def test_cli_interruption_has_nonzero_exit_and_no_stdout(example, monkeypatch, capsys):
+    def interrupt():
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(example, "demonstrate_temporary", interrupt)
+    assert example.main([]) == 130
+    captured = capsys.readouterr()
+    assert captured.out == "" and "same request ID" in captured.err
 
 
 async def test_reservation_demo_executes_and_replays_real_writes(example, store):

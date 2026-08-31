@@ -4,6 +4,73 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Public persistent MCP workflow and adoption revalidation
+
+The previous release milestone merged in [PR #51](https://github.com/Deathcharge/samsarix-core/pull/51)
+at `0b9d978b3fe333443ad8e4a51f2d914dd4fa22b6`; all 18 exact-main jobs passed
+in [run 33402169288](https://github.com/Deathcharge/samsarix-core/actions/runs/33402169288).
+The next audit found two evidence boundaries rather than reasons to claim completion:
+the desktop automation runtime could not initialize, including after session reset,
+and GitHub's API confirmed the linked consumer is private and owned by the same
+maintainer. No desktop sign-in/trust state was inferred, no security prompt was
+automated, and no private source or credentials were copied into this public project.
+
+The unchanged consumer was nevertheless qualified locally against the actual a10
+wheel in a fresh isolated environment: 37 tests passed and its old-version assertion
+failed. The failure was preserved and the original repository stayed untouched. Exact
+artifact/source identities and limits are in [the adoption record](ADOPTION.md#a10-candidate-qualification-not-adoption).
+This is neither a consumer repin nor third-party adoption. The older cached wheel did
+not match its historical digest and was not reused; the diagnostic used a fresh build
+from the recorded consumer commit instead.
+
+P1 usefulness/evidence gap: public adopters could run the raw SQLite write example,
+but the advertised inventory MCP server only previewed reservations, and the real
+cross-repository MCP workflow required private access. Decision: compose the existing
+public store and Core bridge into a complete public MCP journey. Keep the preview
+unchanged, preserve the temporary no-argument demo, and avoid a new database abstraction,
+network service, account, provider dependency or copy of the private consumer.
+
+- [x] Add `init` / `serve` CLI modes with host-selected paths, refused overwrite,
+  no automatic database recreation and startup checks for required tables/columns.
+- [x] Deny reservation execution and saved-result replay by default; enable writes
+  only with the host flag, and reject unexpected registrations through the host policy.
+- [x] Reuse the existing typed read/write contracts, atomic ledger, parameterized
+  SQL, execution bounds and request retention. Keep client approval separate from
+  host opt-in; neither is authentication for a network service.
+- [x] Support legacy and opt-in modern ordinary tools, without tasks or logging.
+- [x] Verify eight actual server processes with independent persisted stock/ledger
+  checks: denial, one write, replay after restart, conflicting key, full ledger,
+  invalid input, empty lookup and EOF. Keep this in the offline installed-wheel gate.
+- [x] Add CLI/policy/schema regression tests and negative controls that detect absent
+  durable writes and missing default denial.
+- [x] Exclude local SQLite files/sidecars from Git and distribution archives; document
+  plaintext storage, initialization failures, replay retention and shutdown limitations.
+- [x] Finish local source and artifact verification; require exact-head hosted checks
+  before merge and record those run IDs in the pull request.
+
+Local verification passed 409 tests with 95.44% Core branch-aware coverage, Black
+(40 files), Ruff, strict mypy including Linux/Darwin platform checks (28 files),
+Bandit and `git diff --check`. An isolated build, strict Twine, the expanded offline
+gate and all three existing official-client journeys passed. The locally built wheel
+SHA-256 was `bca3c0d3251319701950a567dc3fe06455deedcf9b50aafa477e8307bce5772d`;
+it is not a replacement published asset. The expanded gate also passed against the
+actual published a10 wheel, confirming the new launcher composes its public runtime.
+Official-client checks still use the separate read-only protocol example; the new
+SQLite journey is independently checked through raw subprocess pipes and actual disk
+state, not represented as a signed-in or SDK-driven business acceptance test.
+Initial checker mistakes (matching the generic word "database" in schema descriptions
+and requiring a particular JSON key order) were corrected without weakening path-field
+or structured/text agreement checks. Tests also require cleanup after transport failure
+and nonzero interruption handling. SQLite data/sidecars were confirmed ignored by Git
+and absent from the built source archive.
+
+The launcher is an unreleased example change in the current checkout and uses the
+already published a10 runtime. It is not retroactively inserted into a10's immutable
+source archive. No Core public export, runtime dependency or server-side persistence
+layer was added. Desktop acceptance needs working automation and an actual operator
+consent flow; consumer upgrades remain in that repository's own task. These gaps do
+not justify weakening release claims or adding speculative platform features.
+
 ### 2.0.0a10 verified distribution
 
 Release preparation [PR #50](https://github.com/Deathcharge/samsarix-core/pull/50)
