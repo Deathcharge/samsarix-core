@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 
 from samsarix_core import MCPServer, ToolRuntime, report_progress, samsarix_tool, serve_stdio
@@ -48,10 +49,14 @@ def create_runtime() -> ToolRuntime:
     return runtime
 
 
-async def main() -> None:
-    server = MCPServer(create_runtime(), name="samsarix-cancellation-fixture")
+async def main(*, enable_modern: bool = False) -> None:
+    server = MCPServer(
+        create_runtime(), name="samsarix-cancellation-fixture", enable_modern=enable_modern
+    )
     await serve_stdio(server)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--modern", action="store_true")
+    asyncio.run(main(enable_modern=parser.parse_args().modern))

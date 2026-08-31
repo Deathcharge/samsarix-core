@@ -218,6 +218,7 @@ MCPServer(
     title: str = "Samsarix Core",
     version: str = __version__,
     instructions: str | None = None,
+    enable_modern: bool = False,
     enable_logging: bool = False,
     default_log_level: str = "warning",
     enable_tasks: bool = False,
@@ -242,6 +243,18 @@ MCP `2025-11-25` and `2025-06-18`. Application-level tool failures are successfu
 JSON-RPC responses with `isError: true`; malformed protocol calls use standard
 JSON-RPC error objects. An MCP-cancelled call returns `None` and emits no response.
 Direct host task cancellation continues to raise `asyncio.CancelledError`.
+
+Unreleased: `enable_modern=True` also accepts MCP `2026-07-28` per-request
+metadata and `server/discover`, ordinary tool discovery/invocation, progress and
+cancellation. Each instance selects either modern behavior or legacy initialization;
+it does not interleave eras. Every modern request must independently supply its
+protocol version and capabilities. Modern results include `resultType: "complete"`
+and server identity; catalogs are sorted by name with private, zero-TTL cache hints.
+Logging still requires host opt-in and additionally requires a valid per-request
+log level; no level is inherited from another request. Legacy tasks/required-task
+tools, continuation inputs, ping and session-global logging are not modern APIs.
+See [the exact supported surface](MCP.md#opt-in-mcp-2026-07-28). This option is not
+present in the published a9 artifact.
 
 With `enable_tasks=True` and MCP `2025-11-25`, `handle()` also advertises
 task-augmented `tools/call` plus cancellation, emits per-tool `execution.taskSupport`,

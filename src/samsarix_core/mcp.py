@@ -29,6 +29,11 @@ from .schema import enforce_value_limits
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 SUPPORTED_PROTOCOL_VERSIONS = (MCP_PROTOCOL_VERSION, "2025-06-18")
+MODERN_PROTOCOL_VERSION = "2026-07-28"
+_PROTOCOL_META = "io.modelcontextprotocol/protocolVersion"
+_CAPABILITIES_META = "io.modelcontextprotocol/clientCapabilities"
+_LOG_LEVEL_META = "io.modelcontextprotocol/logLevel"
+_SERVER_INFO_META = "io.modelcontextprotocol/serverInfo"
 
 _INVALID_REQUEST = -32600
 _METHOD_NOT_FOUND = -32601
@@ -60,6 +65,10 @@ class MCPServer:
     and opt-in experimental task-augmented execution. Transport and authentication
     remain application concerns; :func:`serve_stdio` provides a bounded local
     stdio transport for trusted process launchers.
+
+    ``enable_modern=True`` additionally permits the 2026-07-28 per-request tool
+    protocol. One instance selects either modern requests or legacy initialization;
+    modern calls never inherit capabilities or logging settings from earlier calls.
     """
 
     def __init__(
@@ -70,6 +79,7 @@ class MCPServer:
         title: str = "Samsarix Core",
         version: str = __version__,
         instructions: str | None = None,
+        enable_modern: bool = False,
         enable_logging: bool = False,
         default_log_level: str = "warning",
         enable_tasks: bool = False,
@@ -87,6 +97,8 @@ class MCPServer:
             raise ValueError("MCP server instructions must be a non-empty string")
         if not isinstance(enable_logging, bool):
             raise TypeError("enable_logging must be a boolean")
+        if not isinstance(enable_modern, bool):
+            raise TypeError("enable_modern must be a boolean")
         if not isinstance(enable_tasks, bool):
             raise TypeError("enable_tasks must be a boolean")
         if not isinstance(default_log_level, str):
@@ -100,6 +112,8 @@ class MCPServer:
         self.version = version.strip()
         self.instructions = instructions.strip() if instructions is not None else None
         self._logging_enabled = enable_logging
+        self._modern_enabled = enable_modern
+        self._modern_selected = False
         self._tasks_enabled = enable_tasks
         self._task_store = MCPTaskStore(
             max_tasks=max_retained_tasks,
@@ -148,13 +162,27 @@ class MCPServer:
             return self._error(request_id, _INVALID_PARAMS, "Request params must be an object")
 
         if is_notification:
-            if method == "notifications/initialized" and self._initialize_responded:
+            if (
+                method == "notifications/initialized"
+                and self._initialize_responded
+                and not self._modern_selected
+            ):
                 self._initialized = True
             elif method == "notifications/cancelled":
                 self._cancel_request(params)
             return None
 
         try:
+            metadata = params.get("_meta")
+            carries_version = isinstance(metadata, Mapping) and _PROTOCOL_META in metadata
+            if self._modern_enabled and (
+                self._modern_selected
+                or carries_version
+                or (not self._initialize_responded and method != "initialize")
+            ):
+                return await self._handle_modern(
+                    request_id, method, params, notification_sender=notification_sender
+                )
             if method == "initialize":
                 return self._success(request_id, self._initialize(params))
             if method == "ping":
@@ -198,6 +226,128 @@ class MCPServer:
         except Exception:
             return self._error(request_id, _INTERNAL_ERROR, "Internal server error")
 
+    def _server_info(self) -> dict[str, JSONValue]:
+        return {
+            "name": self.name,
+            "title": self.title,
+            "version": self.version,
+            "websiteUrl": "https://samsarix.com",
+        }
+
+    def _unsupported_version(
+        self, request_id: Any, requested: str, supported: tuple[str, ...]
+    ) -> dict[str, JSONValue]:
+        response = self._error(request_id, -32022, "Unsupported protocol version")
+        error = cast(dict[str, JSONValue], response["error"])
+        error["data"] = {"requested": requested, "supported": list(supported)}
+        return response
+
+    def _modern_result(self, result: dict[str, JSONValue]) -> dict[str, JSONValue]:
+        result["resultType"] = "complete"
+        metadata = cast(dict[str, JSONValue], result.setdefault("_meta", {}))
+        metadata[_SERVER_INFO_META] = self._server_info()
+        return result
+
+    async def _handle_modern(
+        self,
+        request_id: Any,
+        method: str,
+        params: Mapping[str, Any],
+        *,
+        notification_sender: NotificationSender | None,
+    ) -> dict[str, JSONValue] | None:
+        """Serve the opt-in, per-request 2026 tool contract without session leakage.
+
+        One server instance selects its era on the first valid modern request or
+        legacy initialize. Metadata is still required and validated on *every*
+        modern request; discovering never grants capabilities to later requests.
+        """
+
+        if type(request_id) not in (str, int):
+            return self._error(None, _INVALID_REQUEST, "Request id must be a string or integer")
+        if method == "initialize" and self._modern_selected:
+            requested = params.get("protocolVersion")
+            if not isinstance(requested, str):
+                raise _InvalidParams("initialize requires a protocolVersion string")
+            if requested == MODERN_PROTOCOL_VERSION:
+                raise _MethodNotFound("Modern MCP does not use initialize")
+            return self._unsupported_version(request_id, requested, (MODERN_PROTOCOL_VERSION,))
+        metadata = params.get("_meta")
+        if not isinstance(metadata, Mapping):
+            raise _InvalidParams("Modern MCP requires per-request _meta")
+        requested = metadata.get(_PROTOCOL_META)
+        if not isinstance(requested, str) or not requested:
+            raise _InvalidParams("Modern MCP requires a protocolVersion string in _meta")
+        if not isinstance(metadata.get(_CAPABILITIES_META), Mapping):
+            raise _InvalidParams("Modern MCP requires clientCapabilities in _meta")
+        supported = (
+            SUPPORTED_PROTOCOL_VERSIONS
+            if self._initialize_responded
+            else (MODERN_PROTOCOL_VERSION,)
+        )
+        if self._initialize_responded and requested in supported:
+            raise _InvalidParams("Use the negotiated legacy handshake without modern metadata")
+        if requested not in supported:
+            return self._unsupported_version(request_id, requested, supported)
+        log_level = metadata.get(_LOG_LEVEL_META)
+        if _LOG_LEVEL_META in metadata and (
+            not isinstance(log_level, str) or log_level not in _LOG_LEVEL_ORDER
+        ):
+            raise _InvalidParams("Modern MCP logLevel must be a recognized logging level")
+        self._modern_selected = True
+        if method == "server/discover":
+            capabilities: dict[str, JSONValue] = {"tools": {"listChanged": False}}
+            if self._logging_enabled:
+                capabilities["logging"] = {}
+            result: dict[str, JSONValue] = {
+                "supportedVersions": [MODERN_PROTOCOL_VERSION],
+                "capabilities": capabilities,
+                "ttlMs": 0,
+                "cacheScope": "private",
+            }
+            if self.instructions is not None:
+                result["instructions"] = self.instructions
+            return self._success(request_id, self._modern_result(result))
+        if method == "tools/list":
+            if params.get("cursor") is not None:
+                raise _InvalidParams(
+                    "Pagination cursors are not supported by this bounded registry"
+                )
+            tools = [
+                self._tool_definition(spec)
+                for spec in sorted(self.runtime.registry.list(), key=lambda spec: spec.name)
+                if spec.task_support != "required"
+            ]
+            return self._success(
+                request_id,
+                self._modern_result(
+                    {"tools": cast(JSONValue, tools), "ttlMs": 0, "cacheScope": "private"}
+                ),
+            )
+        if method == "tools/call":
+            if any(field in params for field in ("task", "inputResponses", "requestState")):
+                raise _InvalidParams("Task and multi-round-trip tool calls are not supported")
+            name, _ = self._tool_call_parts(params)
+            try:
+                spec = self.runtime.registry.get(name)
+            except ToolNotFoundError:
+                spec = None
+            if spec is not None and spec.task_support == "required":
+                raise _MethodNotFound("This tool requires the legacy task protocol")
+            response = await self._tracked_request(
+                request_id,
+                lambda: self._call_tool(
+                    params,
+                    notification_sender=notification_sender,
+                    modern=True,
+                    log_level=cast(str | None, log_level),
+                ),
+            )
+            if response is not None and isinstance(response.get("result"), dict):
+                self._modern_result(cast(dict[str, JSONValue], response["result"]))
+            return response
+        return self._error(request_id, _METHOD_NOT_FOUND, "Unsupported modern MCP method")
+
     async def _tracked_request(
         self,
         request_id: Any,
@@ -227,6 +377,8 @@ class MCPServer:
         """Cancel one active call named by a valid client request id."""
 
         request_id = params.get("requestId")
+        if self._modern_selected and type(request_id) not in (str, int):
+            return
         if not _valid_request_id(request_id):
             return
         active = self._in_flight_requests.get(cast(str | int | float, request_id))
@@ -265,12 +417,7 @@ class MCPServer:
         result: dict[str, JSONValue] = {
             "protocolVersion": negotiated,
             "capabilities": capabilities,
-            "serverInfo": {
-                "name": self.name,
-                "title": self.title,
-                "version": self.version,
-                "websiteUrl": "https://samsarix.com",
-            },
+            "serverInfo": self._server_info(),
         }
         if self.instructions is not None:
             result["instructions"] = self.instructions
@@ -415,6 +562,8 @@ class MCPServer:
         *,
         notification_sender: NotificationSender | None,
         related_task_id: str | None = None,
+        modern: bool = False,
+        log_level: str | None = None,
     ) -> dict[str, JSONValue]:
         name, arguments = self._tool_call_parts(params)
 
@@ -442,6 +591,7 @@ class MCPServer:
                 result,
                 notification_sender,
                 related_task_id=related_task_id,
+                minimum_log_level=log_level if modern else self._minimum_log_level,
             )
             return self._tool_result(result, related_task_id=related_task_id)
         finally:
@@ -454,13 +604,14 @@ class MCPServer:
         notification_sender: NotificationSender | None,
         *,
         related_task_id: str | None = None,
+        minimum_log_level: str | None = None,
     ) -> bool:
         """Best-effort one content-free terminal event for an invocation."""
 
-        if not self._logging_enabled or notification_sender is None:
+        if not self._logging_enabled or notification_sender is None or minimum_log_level is None:
             return False
         level = "info" if result.success else "error"
-        if _LOG_LEVEL_ORDER[level] < _LOG_LEVEL_ORDER[self._minimum_log_level]:
+        if _LOG_LEVEL_ORDER[level] < _LOG_LEVEL_ORDER[minimum_log_level]:
             return False
         try:
             registered_name = self.runtime.registry.get(result.tool_name).name

@@ -151,6 +151,14 @@ decorated tools. See the [MCP bridge guide](docs/MCP.md) for lifecycle support,
 read/write/destructive annotations, scalar-output wrapping, cancellation, stdio
 progress and logging, bounded task retention, admission limits, and security boundaries.
 
+The unreleased source additionally supports an opt-in `2026-07-28` ordinary-tool
+path: launch the example with `--modern`, or use `MCPServer(runtime,
+enable_modern=True)`. It supplies per-request version/capability validation,
+discovery, private cache hints and request-scoped logging without the legacy
+handshake. The published a9 wheel does not contain this option. See the
+[modern protocol boundary](docs/MCP.md#opt-in-mcp-2026-07-28); the redesigned task
+extension, multi-round-trip operations and HTTP are not implemented.
+
 ## Proven external consumer
 
 [Samsarix Integration Examples](https://github.com/Deathcharge/samsarix-integration-examples)

@@ -29,6 +29,8 @@ from typing import Any, cast
 
 SDK_VERSIONS = ("1.29.1", "2.1.1")
 PROTOCOL = "2025-11-25"
+MODERN_PROTOCOL = "2026-07-28"
+SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 
 
 def require(condition: bool, message: str) -> None:
@@ -53,17 +55,44 @@ def check_result(result: Any, expected: dict[str, Any]) -> None:
     require(json.loads(content[0]["text"]) == expected, "text/structured result disagreement")
 
 
-async def journey(session: Any, logs: list[dict[str, Any]]) -> None:
+def check_modern_result(result: Any, name: str) -> dict[str, Any]:
+    data = wire(result)
+    require(data.get("resultType") == "complete", "missing modern complete result")
+    require(data.get("_meta", {}).get(SERVER_INFO, {}).get("name") == name, "wrong modern identity")
+    return data
+
+
+async def journey(session: Any, logs: list[dict[str, Any]], *, modern: bool = False) -> None:
     """Use SDK methods and models, never this repository's JSON-RPC encoder/parser."""
 
-    initialized = wire(await session.initialize())
-    require(initialized.get("protocolVersion") == PROTOCOL, "unexpected negotiated protocol")
-    require(
-        initialized["serverInfo"]["name"] == "samsarix-inventory-example",
-        "wrong example server",
-    )
-    await session.send_ping()
-    catalog = wire(await session.list_tools())
+    if modern:
+        require(session.discover_result is not None, "modern client fell back to initialization")
+        discovered = check_modern_result(session.discover_result, "samsarix-inventory-example")
+        require(discovered.get("supportedVersions") == [MODERN_PROTOCOL], "wrong modern versions")
+        require(
+            "tasks" not in discovered["capabilities"], "legacy tasks advertised to modern client"
+        )
+    else:
+        initialized = wire(await session.initialize())
+        require(initialized.get("protocolVersion") == PROTOCOL, "unexpected negotiated protocol")
+        require(
+            initialized["serverInfo"]["name"] == "samsarix-inventory-example",
+            "wrong example server",
+        )
+        await session.send_ping()
+    catalog_result = await session.list_tools()
+    catalog = wire(catalog_result)
+    if modern:
+        check_modern_result(catalog_result, "samsarix-inventory-example")
+        require(
+            catalog.get("ttlMs") == 0 and catalog.get("cacheScope") == "private",
+            "unsafe cache hints",
+        )
+        require(
+            [tool["name"] for tool in catalog["tools"]]
+            == sorted(tool["name"] for tool in catalog["tools"]),
+            "nondeterministic tool order",
+        )
     tools = {tool["name"]: tool for tool in catalog["tools"]}
     require(
         set(tools) == {"check_inventory", "reserve_inventory", "audit_inventory"},
@@ -79,13 +108,24 @@ async def journey(session: Any, logs: list[dict[str, Any]]) -> None:
     for sku, available in (("cable-usb-c", 18), ("caf\u00e9-\u6771\u4eac-\U0001f680\n", 0)):
         result = await session.call_tool("check_inventory", {"sku": sku})
         check_result(result, {"sku": sku, "available": available})
+        if modern:
+            check_modern_result(result, "samsarix-inventory-example")
         validator(tools["check_inventory"]["outputSchema"]).validate(
             wire(result)["structuredContent"]
         )
 
-    await session.set_logging_level("error")
+    if not modern:
+        await session.set_logging_level("error")
+    else:
+        require(not logs, "modern request without logLevel emitted a log")
     sentinel = "synthetic-client-private-sentinel"
-    invalid = wire(await session.call_tool("check_inventory", {"sku": {"private": sentinel}}))
+    options = {"meta": {"io.modelcontextprotocol/logLevel": "error"}} if modern else {}
+    invalid_result = await session.call_tool(
+        "check_inventory", {"sku": {"private": sentinel}}, **options
+    )
+    invalid = wire(invalid_result)
+    if modern:
+        check_modern_result(invalid_result, "samsarix-inventory-example")
     require(invalid.get("isError") is True, "invalid input accepted through official client")
     require(invalid["_meta"]["com.samsarix/status"] == "invalid_arguments", "wrong error status")
     require(len(logs) == 1, "expected one error log")
@@ -116,10 +156,18 @@ async def journey(session: Any, logs: list[dict[str, Any]]) -> None:
     empty = await session.call_tool("audit_inventory", {"skus": []})
     check_result(empty, {"checked": 0, "known": 0})
     require(len(logs) == 1, "error-level filter admitted successful calls")
-    await session.send_ping()
+    if modern:
+        # This error has no logLevel: an earlier request must not enable its log.
+        await session.call_tool("check_inventory", {"sku": {"private": sentinel}})
+        require(len(logs) == 1, "modern log level leaked between requests")
+        check_modern_result(await session.list_tools(), "samsarix-inventory-example")
+    else:
+        await session.send_ping()
 
 
-async def run_client(server_python: Path, example: Path, sdk_version: str) -> None:
+async def run_client(
+    server_python: Path, example: Path, sdk_version: str, *, modern: bool = False
+) -> None:
     sdk = importlib.import_module("mcp")
     anyio = importlib.import_module("anyio")
     logs: list[dict[str, Any]] = []
@@ -129,7 +177,8 @@ async def run_client(server_python: Path, example: Path, sdk_version: str) -> No
 
     bootstrap = Path(__file__).with_name("mcp_client_server.py")
     parameters = sdk.StdioServerParameters(
-        command=str(server_python), args=["-I", str(bootstrap), str(example)]
+        command=str(server_python),
+        args=["-I", str(bootstrap), str(example), *(["--modern"] if modern else [])],
     )
     # AnyIO's outer scope encloses both transport/session entry and cleanup in the
     # same task. The SDK owns and reaps its subprocess on context exit.
@@ -139,10 +188,12 @@ async def run_client(server_python: Path, example: Path, sdk_version: str) -> No
             # Exercise the current client's default discover-to-initialize fallback,
             # not a forced legacy mode or a hand-built initialization exchange.
             async with client_type(parameters, logging_callback=logging_callback) as client:
-                require(
-                    client.session.discover_result is None, "unexpected modern protocol adoption"
-                )
-                await journey(client.session, logs)
+                if not modern:
+                    require(
+                        client.session.discover_result is None,
+                        "unexpected modern protocol adoption",
+                    )
+                await journey(client.session, logs, modern=modern)
         else:
             stdio_client = importlib.import_module("mcp.client.stdio").stdio_client
             async with stdio_client(parameters) as (read, write):
@@ -186,18 +237,65 @@ class RecordedSend:
         await self.stream.__aexit__(exc_type, exc, traceback)
 
 
+async def recovered_state(session: Any, count: int) -> Any:
+    """Require cleanup convergence, not an atomic semaphore/counter update.
+
+    The next tool can acquire the released execution slot before the cancelled
+    invoke coroutine resumes to record its terminal counter and release admission.
+    Only that precise transient is allowed; the caller bounds the entire check.
+    """
+
+    expected = {
+        "active": 0,
+        "cancelled": count,
+        "completed": 0,
+        "runtime_cancelled": count,
+        "runtime_timed_out": 0,
+        "in_flight": 1,
+        "pending": 1,
+    }
+    for _ in range(100):
+        result = await session.call_tool("cancellation_state", {})
+        actual = wire(result).get("structuredContent")
+        if actual == expected:
+            check_result(result, expected)
+            return result
+        if (
+            isinstance(actual, dict)
+            and actual.get("runtime_cancelled") in (count - 1, count)
+            and actual.get("pending") in (1, 2)
+        ):
+            transient = {
+                **expected,
+                "runtime_cancelled": actual["runtime_cancelled"],
+                "pending": actual["pending"],
+            }
+            check_result(result, transient)
+        else:
+            check_result(result, expected)
+        await asyncio.sleep(0.01)
+    raise RuntimeError("cancellation cleanup counters did not converge")
+
+
 async def cancellation_journey(
     session: Any,
     explicit_cancel: Callable[[], Awaitable[None]] | None,
     *,
     timeout: float = 5,
+    modern: bool = False,
 ) -> None:
-    initialized = wire(await session.initialize())
-    require(initialized.get("protocolVersion") == PROTOCOL, "unexpected cancellation protocol")
-    require(
-        initialized["serverInfo"]["name"] == "samsarix-cancellation-fixture",
-        "wrong cancellation fixture",
-    )
+    if modern:
+        discovered = check_modern_result(session.discover_result, "samsarix-cancellation-fixture")
+        require(
+            discovered.get("supportedVersions") == [MODERN_PROTOCOL], "wrong cancellation protocol"
+        )
+    else:
+        initialized = wire(await session.initialize())
+        require(initialized.get("protocolVersion") == PROTOCOL, "unexpected cancellation protocol")
+        require(
+            initialized["serverInfo"]["name"] == "samsarix-cancellation-fixture",
+            "wrong cancellation fixture",
+        )
     catalog = wire(await session.list_tools())
     require(
         {tool["name"] for tool in catalog["tools"]}
@@ -242,31 +340,25 @@ async def cancellation_journey(
 
             # This call needs the same sole slot. A locally cancelled client task
             # alone cannot pass: the server must stop the work and release capacity.
-            recovered = await asyncio.wait_for(session.call_tool("cancellation_state", {}), timeout)
-            check_result(
-                recovered,
-                {
-                    "active": 0,
-                    "cancelled": count,
-                    "completed": 0,
-                    "runtime_cancelled": count,
-                    "runtime_timed_out": 0,
-                    "in_flight": 1,
-                    "pending": 1,
-                },
-            )
+            recovered = await asyncio.wait_for(recovered_state(session, count), timeout)
             require(
                 updates == [(1, 2, "started")],
                 "unexpected cancellation progress or private content",
             )
-            await session.send_ping()
+            if modern:
+                check_modern_result(recovered, "samsarix-cancellation-fixture")
+                await session.list_tools()
+            else:
+                await session.send_ping()
         finally:
             if not call.done():
                 call.cancel()
             await asyncio.wait_for(asyncio.gather(call, return_exceptions=True), timeout)
 
 
-async def run_cancellation_client(server_python: Path, sdk_version: str) -> None:
+async def run_cancellation_client(
+    server_python: Path, sdk_version: str, *, modern: bool = False
+) -> None:
     sdk = importlib.import_module("mcp")
     types = importlib.import_module("mcp.types")
     anyio = importlib.import_module("anyio")
@@ -278,6 +370,7 @@ async def run_cancellation_client(server_python: Path, sdk_version: str) -> None
             "-I",
             str(scripts / "mcp_client_server.py"),
             str(scripts / "mcp_cancellation_fixture.py"),
+            *(["--modern"] if modern else []),
         ],
     )
     with anyio.fail_after(20):
@@ -286,6 +379,13 @@ async def run_cancellation_client(server_python: Path, sdk_version: str) -> None
             async with sdk.ClientSession(
                 read, recorded if sdk_version.startswith("1.") else write
             ) as session:
+                if modern:
+                    # A direct modern discovery/adoption; no initialize fallback.
+                    session.adopt(
+                        types.DiscoverResult.model_validate(
+                            await session.send_discover(MODERN_PROTOCOL)
+                        )
+                    )
 
                 async def notify_cancel() -> None:
                     require(bool(recorded.request_ids), "cancellation request ID was not observed")
@@ -297,14 +397,14 @@ async def run_cancellation_client(server_python: Path, sdk_version: str) -> None
                     await session.send_notification(types.ClientNotification(notification))
 
                 await cancellation_journey(
-                    session, notify_cancel if sdk_version.startswith("1.") else None
+                    session, notify_cancel if sdk_version.startswith("1.") else None, modern=modern
                 )
 
 
-async def run_journeys(server_python: Path, sdk_version: str) -> None:
+async def run_journeys(server_python: Path, sdk_version: str, *, modern: bool = False) -> None:
     example = Path(__file__).parents[1] / "examples" / "mcp_inventory_server.py"
-    await run_client(server_python, example, sdk_version)
-    await run_cancellation_client(server_python, sdk_version)
+    await run_client(server_python, example, sdk_version, modern=modern)
+    await run_cancellation_client(server_python, sdk_version, modern=modern)
 
 
 def run_client_process(command: list[str], workspace: Path, *, timeout: float = 60) -> None:
@@ -345,8 +445,9 @@ def run_client_process(command: list[str], workspace: Path, *, timeout: float = 
             process.wait(timeout=10)
 
 
-def verify(wheel: Path, sdk_version: str) -> None:
+def verify(wheel: Path, sdk_version: str, *, modern: bool = False) -> None:
     require(sdk_version in SDK_VERSIONS, "unsupported SDK pin")
+    require(not modern or sdk_version == "2.1.1", "modern verification requires SDK 2.1.1")
     require(version("mcp") == sdk_version, "installed SDK differs from requested pin")
     wheel = wheel.resolve(strict=True)
     require(wheel.is_file() and wheel.suffix == ".whl", "expected a wheel file")
@@ -408,6 +509,7 @@ def verify(wheel: Path, sdk_version: str) -> None:
                 "--client",
                 str(server_python),
                 sdk_version,
+                *(["--modern"] if modern else []),
             ],
             workspace,
         )
@@ -419,7 +521,7 @@ def verify(wheel: Path, sdk_version: str) -> None:
         json.dumps(
             {
                 "sdk": sdk_version,
-                "protocol": PROTOCOL,
+                "protocol": MODERN_PROTOCOL if modern else PROTOCOL,
                 "wheel": wheel.name,
                 "sha256": digest.hexdigest(),
                 "result": "passed",
@@ -434,12 +536,15 @@ def verify(wheel: Path, sdk_version: str) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) == 4 and sys.argv[1] == "--client":
-        asyncio.run(run_journeys(Path(sys.argv[2]), sys.argv[3]))
+    if len(sys.argv) in (4, 5) and sys.argv[1] == "--client":
+        asyncio.run(run_journeys(Path(sys.argv[2]), sys.argv[3], modern="--modern" in sys.argv[4:]))
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wheel", type=Path, nargs="?", help="exact wheel, or the sole dist/*.whl")
     parser.add_argument("--sdk-version", required=True, choices=SDK_VERSIONS)
+    parser.add_argument(
+        "--modern", action="store_true", help="require opt-in MCP 2026-07-28 using SDK 2.1.1"
+    )
     arguments = parser.parse_args()
     wheel = arguments.wheel
     if wheel is None:
@@ -447,7 +552,7 @@ def main() -> None:
         if len(candidates) != 1:
             parser.error("dist/ must contain exactly one wheel; pass an explicit artifact path")
         wheel = candidates[0]
-    verify(wheel, arguments.sdk_version)
+    verify(wheel, arguments.sdk_version, modern=arguments.modern)
 
 
 if __name__ == "__main__":

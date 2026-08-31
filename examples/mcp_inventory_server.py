@@ -9,6 +9,7 @@ JSON-RPC on stdin and receives JSON-RPC on stdout; diagnostics belong on stderr.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 
 from samsarix_core import MCPServer, ToolRuntime, report_progress, samsarix_tool, serve_stdio
@@ -61,7 +62,7 @@ async def audit_inventory(skus: list[str]) -> dict[str, int]:
     return {"checked": len(skus), "known": known}
 
 
-async def main() -> None:
+async def main(*, enable_modern: bool = False) -> None:
     runtime = ToolRuntime(max_concurrency=4, default_timeout=10)
     runtime.register(check_inventory)
     runtime.register(reserve_inventory)
@@ -74,9 +75,12 @@ async def main() -> None:
         instructions="Confirm with the user before calling tools that are not read-only.",
         enable_logging=True,
         enable_tasks=True,
+        enable_modern=enable_modern,
     )
     await serve_stdio(server)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--modern", action="store_true", help="enable opt-in MCP 2026-07-28")
+    asyncio.run(main(enable_modern=parser.parse_args().modern))
