@@ -349,8 +349,11 @@ from an isolated Core-only wheel installation and verifies the supported
 `2025-11-25` tool journey, including 2.x automatic negotiation fallback and repeated
 cooperative cancellation with execution-slot recovery. SDK 1.x needs an explicit
 cancellation notification; the tested 2.x client sends it automatically. This does
-not claim newer protocol support, experimental-task interoperability or signed-in
-client approval. The SDK is a test-only dependency, not part of Core.
+not imply modern support from fallback: the separate `--modern` gate requires actual
+2026 discovery. The current checkout also checks persistent reservations through four
+fresh SDK sessions and independent disk reads: default denial, enabled writes, restart
+replay and denial after removing host opt-in. Experimental-task interoperability and
+signed-in client approval are not claimed. The SDK is test-only, not part of Core.
 
 Run `python benchmarks/runtime_benchmark.py` or
 `python benchmarks/mcp_stdio_benchmark.py` for machine-readable local

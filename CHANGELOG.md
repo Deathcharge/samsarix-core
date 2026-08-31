@@ -9,6 +9,10 @@
   both protocol eras and durable replay across server processes;
 - installed-wheel real-process and independent disk-state verification for that
   workflow, plus host-policy, CLI, schema-startup and checker negative controls.
+- extend all three pinned official-client modes to the persistent SQLite workflow:
+  four fresh sessions per mode, host opt-in/denial, restart replay, schema-validated
+  business outcomes and independent exact stock/ledger checks; preserve existing
+  isolation, cancellation checks and the whole-checker deadline.
 
 ### Changed
 

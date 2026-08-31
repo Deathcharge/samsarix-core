@@ -157,6 +157,10 @@ The server environment receives only Core, offline and outside the checkout. Req
 the same artifact digest in all three results. Modern verification must discover
 `2026-07-28` without falling back to the legacy handshake. All modes include repeated
 cooperative cancellation and recovery, not just local cancellation of a client waiter.
+The current checkout also requires the persistent SQLite SDK journey and its `sqlite`
+success field: four fresh server sessions, host opt-in/denial, restart replay, exact
+stock/ledger disk checks and schema-validated business outcomes. This added gate is
+not retroactively included in a10's release-time record or immutable source archive.
 CI runs these journeys on Linux, Windows and macOS before release. The Release workflow
 itself runs the offline gate; the downloaded-asset checks above are a separate acceptance
 step and must not be inferred from a green publication workflow.
