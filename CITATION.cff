@@ -4,8 +4,8 @@ title: "Samsarix Core"
 type: software
 authors:
   - name: "Samsarix LLC"
-version: "2.0.0a7"
-date-released: "2026-08-11"
+version: "2.0.0a8"
+date-released: "2026-08-31"
 repository-code: "https://github.com/Deathcharge/samsarix-core"
 url: "https://samsarix.com"
 license: "MPL-2.0"

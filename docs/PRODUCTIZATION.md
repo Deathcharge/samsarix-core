@@ -4,6 +4,22 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### 2.0.0a8 release preparation
+
+The finite-deadline fix merged in [PR #41](https://github.com/Deathcharge/samsarix-core/pull/41)
+at `1c05fb4bd46d4836b2f4ced6698d3071d7b00eeb`; all 12 exact-main CI jobs passed in
+[run 33385148670](https://github.com/Deathcharge/samsarix-core/actions/runs/33385148670).
+CodeRabbit completed its full review with no actionable findings (a non-blocking
+test/helper docstring-coverage warning remains separate from required quality gates).
+A freshly downloaded a7 wheel matched its immutable release and known digest, but
+correctly failed the new gate with `invalid deadline was not rejected`.
+
+The checkout now prepares `2.0.0a8` with synchronized package/citation metadata and
+a dated changelog. Publication still requires exact-head CI, a main-commit build-only
+release dry run, an annotated version tag, verified immutable assets and provenance,
+and a fresh offline installation of the downloaded wheel. Until that succeeds, a7
+remains the published artifact; no PyPI upload or stable-API claim is implied.
+
 ### Finite-deadline validation follow-up
 
 At clean main `0ccd94b55f0ade481ce073bf3e495f8b1711c73f`, a bounded reproduction

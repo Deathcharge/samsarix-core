@@ -124,7 +124,7 @@ release asset or exact commit. Core stores no remote runtime state.
 
 ## Published evidence: v2.0.0a7
 
-The finite-deadline validation fix in `Unreleased` is not in this artifact. The current
+The finite-deadline validation fix in `2.0.0a8` is not in this artifact. The current
 checkout's expanded gate requires that fix and therefore is not a passing gate for a7.
 The historical verification below used the earlier gate, before deadline regressions
 were added. Do not replace the immutable a7 files to incorporate newer changes.

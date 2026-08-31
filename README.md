@@ -53,6 +53,10 @@ gh attestation verify samsarix_core-2.0.0a7-py3-none-any.whl \
 python -m pip install samsarix_core-2.0.0a7-py3-none-any.whl
 ```
 
+The source checkout is preparing `2.0.0a8`, which fixes non-finite and overflowing
+timeout handling. The a7 wheel does not include that fix; use the source checkout
+for the corrected behavior until the next verified release is published.
+
 For a source checkout instead:
 
 ```bash
