@@ -138,6 +138,42 @@ async def test_real_mcp_subprocess_release_journey():
 
 
 @pytest.mark.asyncio
+async def test_real_sqlite_mcp_subprocess_release_journey():
+    await load_script("mcp_smoke_check").verify_sqlite_example(
+        SCRIPTS.parent / "examples" / "sqlite_reservations.py"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sqlite_checker_rejects_missing_durable_writes(monkeypatch):
+    script = load_script("mcp_smoke_check")
+
+    async def fake_conversation(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(script, "verify_server", fake_conversation)
+    with pytest.raises(RuntimeError, match="persisted stock differs"):
+        await script.verify_sqlite_example(SCRIPTS.parent / "examples" / "sqlite_reservations.py")
+
+
+@pytest.mark.asyncio
+async def test_sqlite_checker_rejects_missing_default_denial(monkeypatch):
+    script = load_script("mcp_smoke_check")
+    exchange = script.exchange
+
+    async def wrong_denial(process, message, **kwargs):
+        messages = await exchange(process, message, **kwargs)
+        result = messages[-1].get("result", {})
+        if result.get("_meta", {}).get("com.samsarix/status") == "denied":
+            result["isError"] = False
+        return messages
+
+    monkeypatch.setattr(script, "exchange", wrong_denial)
+    with pytest.raises(RuntimeError, match="not denied by default"):
+        await script.verify_sqlite_example(SCRIPTS.parent / "examples" / "sqlite_reservations.py")
+
+
+@pytest.mark.asyncio
 async def test_mcp_smoke_rejects_non_protocol_stdout(tmp_path):
     child = tmp_path / "broken_server.py"
     child.write_text("print('debug chatter', flush=True)\n", encoding="utf-8")

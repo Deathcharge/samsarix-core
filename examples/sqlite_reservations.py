@@ -1,20 +1,30 @@
 # Copyright 2026 Samsarix LLC
 # SPDX-License-Identifier: MPL-2.0
 
-"""Demonstrate real, replay-safe inventory reservations in a temporary SQLite database."""
+"""Demonstrate replay-safe reservations or serve an explicitly selected SQLite store."""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import re
 import sqlite3
+import sys
 import tempfile
 from contextlib import closing
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
-from samsarix_core import ToolPolicy, ToolRuntime, samsarix_tool
+from samsarix_core import (
+    MCPServer,
+    ToolPolicy,
+    ToolPolicyContext,
+    ToolPolicyDecision,
+    ToolRuntime,
+    samsarix_tool,
+    serve_stdio,
+)
 
 BUSY_TIMEOUT_SECONDS = 0.25
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
@@ -90,6 +100,15 @@ class InventoryStore:
         with closing(self._connect(read_only=True)) as db:
             row = db.execute("SELECT available FROM inventory WHERE sku = ?", (sku,)).fetchone()
             return {"available": row["available"] if row is not None else None}
+
+    def validate_schema(self) -> None:
+        """Fail startup on missing example tables/columns without creating or changing them."""
+
+        with closing(self._connect(read_only=True)) as db:
+            db.execute("SELECT sku, available FROM inventory LIMIT 0")
+            db.execute(
+                "SELECT request_id, sku, quantity, status, available FROM reservations LIMIT 0"
+            )
 
     def reserve(self, sku: str, quantity: int, request_id: str) -> ReservationResult:
         if (
@@ -173,6 +192,62 @@ def create_runtime(store: InventoryStore, *, policy: ToolPolicy | None = None) -
     return runtime
 
 
+def create_server(
+    store: InventoryStore, *, allow_reservations: bool = False, enable_modern: bool = False
+) -> MCPServer:
+    """Serve host-selected storage; every write/replay needs the host's explicit opt-in."""
+
+    if type(allow_reservations) is not bool or type(enable_modern) is not bool:
+        raise TypeError("server options must be booleans")
+    store.validate_schema()
+
+    async def policy(context: ToolPolicyContext) -> ToolPolicyDecision:
+        spec = context.spec
+        allowed = (
+            spec.name == "check_inventory"
+            and spec.read_only
+            and frozenset(context.arguments) == {"sku"}
+        ) or (
+            allow_reservations
+            and spec.name == "reserve_inventory"
+            and not spec.read_only
+            and spec.idempotent
+            and frozenset(context.arguments) == {"sku", "quantity", "request_id"}
+        )
+        return ToolPolicyDecision.ALLOW if allowed else ToolPolicyDecision.DENY
+
+    return MCPServer(
+        create_runtime(store, policy=policy),
+        name="samsarix-sqlite-inventory",
+        title="Samsarix Transactional Inventory Example",
+        instructions=(
+            "Local reference store, not a production inventory service. "
+            "Reservations require host --allow-reservations and client/user approval. "
+            "Reuse the same request_id and identical arguments after a lost response; "
+            "a business rejection is not a transport error."
+        ),
+        enable_modern=enable_modern,
+    )
+
+
+async def run_server(
+    store: InventoryStore, *, allow_reservations: bool = False, enable_modern: bool = False
+) -> None:
+    """Serve bounded stdio, then require worker quiescence without claiming forced termination."""
+
+    server = create_server(
+        store, allow_reservations=allow_reservations, enable_modern=enable_modern
+    )
+    try:
+        await serve_stdio(
+            server, max_message_bytes=16_384, max_in_flight_requests=8, close_runtime=False
+        )
+    finally:
+        await server.aclose(close_runtime=False)
+        if not await server.runtime.aclose(wait_for_sync=True, timeout=5):
+            raise RuntimeError("reservation worker did not stop")
+
+
 async def demonstrate(store: InventoryStore) -> dict[str, object]:
     """Execute, replay, reject a conflicting key, and replay after runtime restart."""
 
@@ -209,7 +284,7 @@ async def demonstrate(store: InventoryStore) -> dict[str, object]:
     }
 
 
-def main() -> None:
+def demonstrate_temporary() -> None:
     # Only this invocation's temporary database is created and later removed.
     with tempfile.TemporaryDirectory(prefix="samsarix-reservations-") as directory:
         path = Path(directory) / "inventory.sqlite3"
@@ -218,5 +293,54 @@ def main() -> None:
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
+def main(argv: list[str] | None = None) -> int:
+    """Run the disposable demo or explicit host-owned initialization/serving commands."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command")
+    commands.add_parser(
+        "demo", help="verify writes/replay in a disposable temporary store (default)"
+    )
+    initialize = commands.add_parser("init", help="create a new example store; never overwrite")
+    initialize.add_argument("database", type=Path, help="new host-owned database filename")
+    initialize.add_argument("--stock", type=int, default=5)
+    serve = commands.add_parser("serve", help="serve an existing store over MCP stdio")
+    serve.add_argument("database", type=Path, help="existing host-owned example database")
+    serve.add_argument("--allow-reservations", action="store_true", help="explicitly permit writes")
+    serve.add_argument("--modern", action="store_true", help="enable opt-in MCP 2026-07-28")
+    serve.add_argument(
+        "--max-requests", type=int, default=1_000, help="ledger cap; no automatic eviction"
+    )
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "init":
+            create_database(args.database, stock=args.stock)
+            print(json.dumps({"status": "created", "sku": "cable-usb-c", "available": args.stock}))
+        elif args.command == "serve":
+            asyncio.run(
+                run_server(
+                    InventoryStore(args.database, max_requests=args.max_requests),
+                    allow_reservations=args.allow_reservations,
+                    enable_modern=args.modern,
+                )
+            )
+        else:
+            demonstrate_temporary()
+    except (OSError, sqlite3.Error, TypeError, ValueError, RuntimeError) as exc:
+        # The host can diagnose its own file; never print DB paths or SQL error text on stdio.
+        print(
+            f"Inventory example failed ({type(exc).__name__}); check host configuration.",
+            file=sys.stderr,
+        )
+        return 2
+    except KeyboardInterrupt:
+        print(
+            "Inventory server interrupted; retry uncertain writes with the same request ID.",
+            file=sys.stderr,
+        )
+        return 130
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

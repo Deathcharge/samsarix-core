@@ -5,14 +5,55 @@ claims. Samsarix Core has a merged independent repository consumer; it does not
 yet have a documented third-party production deployment, paid customer, usage
 volume, or service-level commitment.
 
+"Independent repository" means a separately packaged codebase, not an independently
+operated company or customer. GitHub's API confirmed on 2026-08-31 that the consumer
+repository is private and the Guard/Orchestration dependencies are public. The owner
+can inspect the linked consumer evidence; public readers cannot reproduce it without
+access. Core never requires this private repository to install or run. Use the public
+[SQLite/MCP reservation example](SIDE_EFFECTS.md#use-the-persistent-store-from-an-mcp-client)
+for a credential-free stateful workflow.
+
 The latest published `2.0.0a10` prerelease has verified immutable artifacts, provenance,
 and installed-wheel runtime/deadline, bounded diagnostic/numeric, malformed-MCP
 subprocess and SQLite transaction/replay behavior, plus official-client legacy and
 opt-in modern MCP ordinary-tool/cancellation journeys against the downloaded wheel.
 The repository consumer below still pins the earlier merged per-tool circuit-breaker
 commit, so its exact Git installation reports package metadata `2.0.0a6`. It has not
-been repinned or revalidated against a8, a9 or a10 here. Release verification is tracked
-separately and is not presented as consumer-adoption evidence.
+been repinned to a8, a9 or a10 here. The a10 qualification experiment below is explicitly
+not a completed consumer upgrade. Release verification remains separate from adoption.
+
+## a10 candidate qualification, not adoption
+
+An unchanged archive of consumer commit `be56db8476454d6f241a5da7d5e846d92d1bcefb`
+was built in a fresh temporary directory. The resulting local wheel SHA-256 was
+`6059d41a0c5d539b2988a6ee71fac4cd30661c163992245039e768b9370345be`; it is a
+new diagnostic build, not the older artifact recorded below. An attempted reuse of
+a cached wheel was stopped when its hash differed from that historical record.
+No cached or immutable artifact was replaced.
+
+A fresh Python 3.11.9 environment installed the unchanged consumer wheel and the
+actual published Core a10 wheel, SHA-256
+`e84b26935ab9f73a7c632085ec9401256ffb8be0d107ce456a2e6604fec9d638`, offline with
+`--no-index --no-deps`. Guard and Orchestration were installed separately from the
+exact public commits in the table below; their installed `direct_url.json` commit
+identities were verified. Both consumer and Core imports resolved to that environment's
+`site-packages`, not either source checkout. The consumer's original dependency manifest
+was not edited: this is an intentional candidate override, not its declared install.
+`pip check` passed but does not prove an exact Git provenance pin was honored.
+
+Running `python -I -m pytest` on the unchanged archived consumer tests yielded
+**37 passed, 1 failed**, with 91.03% installed-consumer branch coverage. The sole
+failure requires Core's old `2.0.0a6` version; the installed candidate correctly
+reported `2.0.0a10`. No test was skipped, patched, xfailed or version-spoofed. The
+behavioral checks exercised the real redaction, policy, rate/circuit, cancellation,
+task, replay and filesystem contracts. This narrows upgrade work but does not prove
+modern consumer support: its unchanged factory uses the legacy MCP protocol.
+
+The original consumer worktree remained clean at the same commit. Its owner-side
+upgrade still needs a manifest repin, matching version expectation, fresh declared
+installation and its own CI/review. No private implementation was copied into Core,
+no consumer visibility was changed, and this test is not added as a credential-dependent
+public CI requirement.
 
 ## Privacy-first redaction MCP consumer
 

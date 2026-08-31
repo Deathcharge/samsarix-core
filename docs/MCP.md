@@ -27,6 +27,12 @@ It does not implement MCP resources, prompts, sampling, `tasks/list`, durable
 cross-process task persistence, HTTP transport, authentication, or authorization.
 Those remain host-application concerns.
 
+For real persistent effects, the current checkout's
+[SQLite MCP reservation walkthrough](SIDE_EFFECTS.md#use-the-persistent-store-from-an-mcp-client)
+uses the same public bridge with host-selected storage and explicit write opt-in.
+It is separate from the read-only inventory preview and works in both supported
+protocol eras. It enables neither experimental tasks nor operational logging.
+
 ## Opt-in MCP 2026-07-28
 
 From a `2.0.0a10` or newer checkout, install with `python -m pip

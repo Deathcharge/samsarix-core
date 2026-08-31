@@ -31,8 +31,80 @@ verifies this journey, closes its workers, and removes only that temporary direc
 The printed JSON contains `first`, `replay`, `conflict`, `after_restart`, and
 `current_stock`. The example exits nonzero if its verified outcomes differ. The test
 suite additionally proves replay from a separate Python process against the same file.
-The existing MCP inventory server and policy-gate example remain previews; running
-them does not start writing to this database.
+`mcp_inventory_server.py` and the policy-gate example remain previews; running
+them does not start writing to this database. The SQLite example's new MCP mode
+below is a separate, explicitly host-enabled write path.
+
+## Use the persistent store from an MCP client
+
+These `init` / `serve` commands are new in the current source checkout; they are
+not in the immutable a10 source archive. They work with Core `2.0.0a10` installed.
+Use a host-owned directory and a new database filename:
+
+```bash
+python examples/sqlite_reservations.py init inventory.sqlite3 --stock 5
+python examples/sqlite_reservations.py serve inventory.sqlite3
+```
+
+Initialization prints one JSON result and exits. It never overwrites an existing
+file or creates missing parent directories. Serving opens only an existing store
+and checks required example tables/columns without migrating or repairing them.
+The schema check is not a validation of arbitrary uploaded databases. A failed
+initialization may leave a file requiring host inspection; rerunning never clears it.
+
+`serve` waits for newline-delimited MCP messages, not interactive terminal input.
+Configure its command and arguments in a trusted local MCP client; use absolute paths
+for that client's Python interpreter, this script and the database. The default server
+can read stock, but its host policy denies **every** reservation, including saved
+replays. Both tools remain discoverable with conservative read/write annotations.
+Clients cannot choose a database path or enable writes through tool arguments.
+
+To permit real reservations, the host must explicitly launch:
+
+```bash
+python examples/sqlite_reservations.py serve inventory.sqlite3 --allow-reservations
+```
+
+Add `--modern` for the opt-in MCP `2026-07-28` path. The default protocol remains
+`2025-11-25`; enabling modern support still accepts legacy initialization first.
+This server does not enable tasks or operational logging. The host write flag is
+not authentication or proof of user consent: configure approval in the client too.
+Do not expose this single-tenant local process as an unauthenticated network service.
+
+Call `reserve_inventory` with:
+
+```json
+{"sku":"cable-usb-c","quantity":2,"request_id":"order-001"}
+```
+
+The MCP result has `isError: false` and structured content
+`{"status":"reserved","available":3}`. Repeat the identical call, or stop/restart
+the server on the same file and replay it: the saved result remains three, without
+another decrement. Reusing that ID for quantity three returns `idempotency_conflict`.
+Business refusals have `isError: false`; inspect `structuredContent.status`. Host
+policy denial and validation failures have `isError: true`. Restarting without
+`--allow-reservations` denies replay too, while `check_inventory` still returns three.
+
+`--max-requests` configures the bounded ledger (default 1,000). It never evicts entries
+or authorizes reuse of old IDs. Stopping the server retains the database and ledger;
+the no-argument `demo` still uses disposable data. Database files and SQLite sidecars
+are excluded from Git's default add and source distributions, not encrypted or deleted.
+The host remains responsible for backups, access control and eventual removal.
+
+Serving caps messages at 16 KiB and admitted protocol calls at eight, on top of the
+existing runtime budgets. EOF closes protocol work and waits up to five seconds for
+surviving workers; failure is reported, not called successful shutdown. That bounded
+quiescence wait cannot forcibly stop a blocked filesystem operation or Python thread,
+and interpreter exit may still wait for such work. Diagnostics go only to stderr and
+omit database paths/SQL error details. CLI failures exit 2; interruption exits 130.
+
+The installed-wheel gate launches eight independent server processes across both
+protocols. It tests default denial, enabled writes, replay after restart, conflicting
+IDs, full-ledger refusal, invalid input, empty lookup and clean EOF. After every
+process it independently reads SQLite stock and ledger rows. Checker negative controls
+reject a fake passing conversation with no durable write and a missing denial signal.
+This is reproducible public reference evidence, not third-party adoption or power-loss
+durability certification.
 
 ## The application contract
 
