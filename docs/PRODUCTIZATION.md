@@ -4,6 +4,51 @@ Last updated: 2026-08-31
 
 ## Current repository assessment
 
+### Post-a8 input-boundary review and remediation
+
+An offline standard security review at clean `ced7be6ee96ba08af5ecb92bfc2683ee6466ab9b`
+covered all 69 supported tracked files; the 38 unsupported `legacy/` files were
+explicitly excluded. Independent baseline, architecture, and focused boundary
+reviews were reconciled against source. The generated local report is scan
+`3565ffc8-e944-47f3-afaa-859cdc36624a`. No application code or network access was used
+during that scan, and the advisory connector was unavailable. The report describes
+the pre-fix commit, not the patched tree.
+
+The review confirmed medium-severity diagnostic amplification before execution and
+low-severity numeric overflow affecting a host-owned mixed batch. It also confirmed
+session-local MCP malformed-method/Unicode failures and output-frame overflow as
+reliability defects, without claiming a built-in remote service or new client authority.
+
+- [x] Bound error aggregation at every nesting level to 64 issues including an
+  explicit truncation marker; cap paths/messages at 128 characters and abbreviate
+  dictionary keys before composing descendant paths. Preserve valid long-key data,
+  short diagnostics, and valid alternatives after failed union validation.
+- [x] Normalize float overflow into finite-number validation errors, including
+  nested annotations, float-first unions, defaults, outputs, and ordered batches.
+- [x] Guard MCP method classification, escape lone-surrogate metadata safely,
+  and bound final fallback frames including their newline and oversized IDs.
+- [x] Add installed-wheel numeric/diagnostic and real-pipe malformed-MCP checks,
+  including negative controls for defective package checkers.
+- [x] Require an actual tag-push event for privileged release steps; preserve manual
+  dispatch as build-only even on a tag ref. Include that workflow in source archives
+  so its source-level regression test has the required fixture.
+- [x] Clarify lazy experimental task cleanup: TTL limits access, not timed physical
+  memory erasure. Remove the stale version-specific API introduction.
+
+Before fixes, the new suites reproduced 14 validation failures and 11 MCP failures
+on bounded payloads (the two initialization fixtures were corrected and independently
+reproduced their UTF-8 failures). No full-scale memory-exhaustion payload was run.
+After fixes, `python -m pytest` passed 311 tests with 95.23% branch-aware coverage;
+Black checked 35 files, Ruff passed, strict mypy checked 25 files, and Bandit over
+`src` passed. The fixes add no public exports, dependencies, external services,
+telemetry, or automatic retries. An isolated source-distribution-to-wheel build and
+strict Twine checks passed, followed by a fresh offline install exercising runtime
+boundaries, real MCP pipes, and SQLite transaction/replay. The actual published a8
+wheel matched its known SHA-256 but failed the expanded checker with the expected
+numeric `OverflowError`; that is a negative control, not a new passing a8 claim.
+Hosted exact-commit and new-release evidence is recorded in the follow-up. Published
+a8 remains immutable and does not acquire these fixes retroactively.
+
 ### 2.0.0a8 verified distribution
 
 The finite-deadline fix merged in [PR #41](https://github.com/Deathcharge/samsarix-core/pull/41)

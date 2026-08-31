@@ -251,8 +251,12 @@ progress update, and operational event carries
 
 Retention is in memory and scoped to one `MCPServer` session. Requested TTLs are
 positive finite numbers representable as Python floats, then clamped to
-`max_task_ttl_ms`; expired tasks and results are removed, and capacity
-is reclaimed. Arguments must pass the runtime's byte, depth, node, cycle, and JSON
+`max_task_ttl_ms`. Expiry is checked when the store is accessed, including creation,
+get, result, and cancellation; expired entries are removed and capacity reclaimed
+then. A pending `tasks/result` wait is also bounded by its remaining TTL. Cleanup
+is lazy: an idle server can retain expired result objects in memory until the next
+store operation or server close. TTL is an access-validity limit, not a timed memory
+erasure guarantee. Arguments must pass the runtime's byte, depth, node, cycle, and JSON
 compatibility preflight before the server detaches them for background execution.
 At `max_retained_tasks`, new task requests receive server-busy error `-32000`.
 Task cancellation is cooperative: async work is cancelled, while a running
@@ -395,8 +399,9 @@ already-computed tool result remains unchanged.
 - Client cancellation emits no response, stops cooperative async tools, and does
   not imply a running sync function has stopped.
 - A timed-out synchronous function retains its bounded worker slot until it stops.
-- Experimental tasks are disabled by default, retained only in memory, capped at
-  64 entries by default, and expire no later than the configured one-hour maximum.
+- Experimental tasks are disabled by default, retained only in memory, and capped
+  at 64 entries by default. Access expires within the configured TTL (one-hour
+  maximum by default); idle in-memory cleanup is lazy, not a timed erasure guarantee.
 - `tasks.list` is not exposed without requestor identity; possession of a valid
   task ID permits get, result, and cancellation within the same server session.
 - `serve_stdio()` closes without waiting indefinitely for surviving sync work. A

@@ -9,7 +9,7 @@ import inspect
 import json
 import math
 import types
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from copy import deepcopy
 from typing import (
     Annotated,
@@ -27,11 +27,60 @@ from .errors import ToolArgumentError, ToolDefinitionError, ValidationIssue
 from .models import JSONValue
 
 _EMPTY = inspect.Signature.empty
+_MAX_VALIDATION_ISSUES = 64
+_MAX_DIAGNOSTIC_CHARS = 128
 _COMPACT_JSON_ENCODER = json.JSONEncoder(
     ensure_ascii=False,
     allow_nan=False,
     separators=(",", ":"),
 )
+
+
+def _diagnostic_text(value: str) -> str:
+    """Bound diagnostic text before it can be copied into descendant paths."""
+
+    if len(value) <= _MAX_DIAGNOSTIC_CHARS:
+        return value
+    return value[: _MAX_DIAGNOSTIC_CHARS - 3] + "..."
+
+
+def _child_path(path: str, name: str) -> str:
+    """Compose a display path without copying an unbounded object key."""
+
+    return _diagnostic_text(f"{_diagnostic_text(path)}.{_diagnostic_text(name)}")
+
+
+class _ValidationIssues:
+    """Cap aggregation at every level, including errors from nested validators.
+
+    The final slot is reserved for an explicit truncation marker. Raising at the
+    cap stops traversal of invalid fields; a union may still try its next branch.
+    No invocation-global state is needed, and discarded union errors cannot make
+    an otherwise valid alternative fail.
+    """
+
+    def __init__(self) -> None:
+        self.items: list[ValidationIssue] = []
+
+    def append(self, issue: ValidationIssue) -> None:
+        if len(self.items) >= _MAX_VALIDATION_ISSUES - 1:
+            self.items.append(
+                ValidationIssue("$", "issues_truncated", "Further validation issues omitted")
+            )
+            raise ToolArgumentError(tuple(self.items))
+        self.items.append(
+            ValidationIssue(
+                _diagnostic_text(issue.path), issue.code, _diagnostic_text(issue.message)
+            )
+        )
+
+    def extend(self, issues: Iterable[ValidationIssue]) -> None:
+        for issue in issues:
+            self.append(issue)
+
+    def raise_if_any(self) -> None:
+        if self.items:
+            raise ToolArgumentError(tuple(self.items))
 
 
 def compile_tool_contract(
@@ -206,7 +255,7 @@ def validate_arguments(
             )
         )
 
-    issues: list[ValidationIssue] = []
+    issues = _ValidationIssues()
     parameters = signature.parameters
     for name in arguments:
         if not isinstance(name, str):
@@ -220,9 +269,9 @@ def validate_arguments(
         elif name not in parameters:
             issues.append(
                 ValidationIssue(
-                    path=f"$.{name}",
+                    path=_child_path("$", name),
                     code="unexpected_argument",
-                    message=f"Unexpected argument '{name}'",
+                    message=f"Unexpected argument '{_diagnostic_text(name)}'",
                 )
             )
 
@@ -232,21 +281,22 @@ def validate_arguments(
             if parameter.default is _EMPTY:
                 issues.append(
                     ValidationIssue(
-                        path=f"$.{name}",
+                        path=_child_path("$", name),
                         code="missing_argument",
-                        message=f"Missing required argument '{name}'",
+                        message=f"Missing required argument '{_diagnostic_text(name)}'",
                     )
                 )
             else:
                 validated[name] = deepcopy(parameter.default)
             continue
         try:
-            validated[name] = validate_value(arguments[name], hints[name], path=f"$.{name}")
+            validated[name] = validate_value(
+                arguments[name], hints[name], path=_child_path("$", name)
+            )
         except ToolArgumentError as exc:
             issues.extend(exc.issues)
 
-    if issues:
-        raise ToolArgumentError(tuple(issues))
+    issues.raise_if_any()
     return validated
 
 
@@ -325,6 +375,7 @@ def enforce_value_limits(
 def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
     """Validate one value and normalize tuples to their annotated Python form."""
 
+    path = _diagnostic_text(path)
     origin = get_origin(annotation)
     arguments = get_args(annotation)
 
@@ -355,7 +406,10 @@ def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
         raise _type_error(path, "integer")
     if annotation is float:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            number = float(value)
+            try:
+                number = float(value)
+            except OverflowError as exc:
+                raise _type_error(path, "finite number") from exc
             if math.isfinite(number):
                 return number
         raise _type_error(path, "finite number")
@@ -367,7 +421,7 @@ def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
         if not isinstance(value, dict):
             raise _type_error(path, "object")
         fields, required = _typed_dict_fields(annotation)
-        issues: list[ValidationIssue] = []
+        issues = _ValidationIssues()
         validated: dict[str, Any] = {}
         for name in value:
             if not isinstance(name, str):
@@ -381,9 +435,9 @@ def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
             elif name not in fields:
                 issues.append(
                     ValidationIssue(
-                        path=f"{path}.{name}",
+                        path=_child_path(path, name),
                         code="unexpected_field",
-                        message=f"Unexpected field '{name}'",
+                        message=f"Unexpected field '{_diagnostic_text(name)}'",
                     )
                 )
         for name, field_annotation in fields.items():
@@ -391,20 +445,19 @@ def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
                 if name in required:
                     issues.append(
                         ValidationIssue(
-                            path=f"{path}.{name}",
+                            path=_child_path(path, name),
                             code="missing_field",
-                            message=f"Missing required field '{name}'",
+                            message=f"Missing required field '{_diagnostic_text(name)}'",
                         )
                     )
                 continue
             try:
                 validated[name] = validate_value(
-                    value[name], field_annotation, path=f"{path}.{name}"
+                    value[name], field_annotation, path=_child_path(path, name)
                 )
             except ToolArgumentError as exc:
                 issues.extend(exc.issues)
-        if issues:
-            raise ToolArgumentError(tuple(issues))
+        issues.raise_if_any()
         return validated
     if origin is list:
         if not isinstance(value, list):
@@ -437,7 +490,7 @@ def validate_value(value: Any, annotation: Any, *, path: str) -> Any:
         if any(not isinstance(key, str) for key in value):
             raise _value_error(path, "invalid_object_key", "Object keys must be strings")
         return {
-            key: validate_value(item, arguments[1], path=f"{path}.{key}")
+            key: validate_value(item, arguments[1], path=_child_path(path, key))
             for key, item in value.items()
         }
     raise ToolDefinitionError(f"Unsupported tool annotation: {annotation!r}")
@@ -536,4 +589,10 @@ def _type_error(path: str, expected: str) -> ToolArgumentError:
 
 
 def _value_error(path: str, code: str, message: str) -> ToolArgumentError:
-    return ToolArgumentError((ValidationIssue(path=path, code=code, message=message),))
+    return ToolArgumentError(
+        (
+            ValidationIssue(
+                path=_diagnostic_text(path), code=code, message=_diagnostic_text(message)
+            ),
+        )
+    )

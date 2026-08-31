@@ -103,6 +103,9 @@ remain separate decisions.
   after exact-head review and clean-wheel evidence.
 - [x] Publish immutable GitHub prerelease `v2.0.0a7` with per-tool circuit breaking,
   independent consumer, clean-install, checksum, and SLSA provenance evidence.
+- [x] Publish immutable GitHub prerelease `v2.0.0a8` with finite-deadline rejection,
+  SQLite write/replay and dependency-outage evidence, and real installed-wheel gates.
+  This does not extend the older consumer pin's evidence to the new release.
 
 ## Samsarix adoption
 

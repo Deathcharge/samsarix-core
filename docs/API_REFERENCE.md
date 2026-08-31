@@ -1,6 +1,6 @@
 # API reference
 
-This page describes the complete supported API in the `2.0.0a6` alpha. Imports not exposed
+This page describes the supported API on the current `2.0` alpha source line. Imports not exposed
 from `samsarix_core.__all__` are internal.
 
 ## `samsarix_tool`
@@ -106,6 +106,15 @@ call later in a mixed batch reach free execution capacity when it fits within av
 pending capacity, instead of waiting behind workers queued on one constrained tool. An
 isolated batch still processes every accepted item rather than self-shedding. This
 process-local limit is not a request-rate or per-tenant quota.
+
+Derived validation errors have their own fixed bounds: at most 64 issues, including
+an `issues_truncated` marker when collection stops, and at most 128 Unicode characters
+per issue path/message. Long text is abbreviated with `...` before it can be copied
+into nested diagnostic paths. Paths are display hints, not lossless selectors; do not
+use them as authorization or identity keys. Ordinary short paths remain unchanged.
+An integer too large for a declared `float` produces a finite-number validation error;
+a `float | int` union still tries its valid integer alternative. Such invalid arguments
+do not abort valid items in an accepted batch.
 
 `register(..., max_concurrency=N)` gives that exact tool registration its own positive
 execution limit. Calls acquire the per-tool semaphore before the runtime-wide semaphore,
@@ -265,7 +274,13 @@ await serve_stdio(
 ```
 
 Runs the server using newline-delimited MCP messages. `max_message_bytes` must be
-at least 256 and caps individual input and output messages. Tool calls and blocking
+at least 256 and caps individual input and output frames, including the newline.
+Oversized responses become error `-32603`, preserving the request ID only when the
+fallback frame fits; otherwise the error ID is `null`. Oversized notifications are
+dropped with a content-free stderr diagnostic. Malformed method types are rejected
+without ending the session. Lone surrogate metadata is escaped on the wire so every
+accepted JSON string has a UTF-8-safe representation; ordinary Unicode stays compact.
+Tool calls and blocking
 task-result waits are dispatched concurrently so cancellation notifications remain
 responsive, with pending requests bounded separately by the positive
 `max_in_flight_requests` cap.

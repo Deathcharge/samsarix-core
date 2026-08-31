@@ -116,7 +116,12 @@ consume tokens; a token is not refunded after execution may have started. Replac
 discards the old bucket. The limiter uses a monotonic clock and has no content-bearing
 keys, but each process owns independent state.
 Registry and batch caps bound catalog and fan-out growth; per-value byte,
-depth, and node limits bound validation work. The stdio adapter separately caps
+depth, and node limits bound validation work. Derived diagnostics additionally cap
+issue aggregation at 64 entries (including the truncation marker), with paths and
+messages limited to 128 characters. Long keys are abbreviated before composing
+descendant paths; invalid-field collection stops at the issue cap. Failed union
+alternatives do not consume shared mutable state or prevent a valid alternative.
+The stdio adapter separately caps
 admitted tool-call and blocking task-result coroutines so cancellation can remain
 responsive without creating an unbounded wait queue. The task store independently
 caps retained entries and TTL. Process-local buckets do not replace shared rate limits,
